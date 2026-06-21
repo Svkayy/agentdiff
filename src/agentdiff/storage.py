@@ -151,6 +151,43 @@ def load_trajectory_set_from_sqlite(
     )
 
 
+def read_artifact(
+    db_path: Path,
+    name: str,
+    run_id: str | None = None,
+) -> Any | None:
+    """Read a named run artifact (``comparison`` / ``output_evals`` / ``attribution``).
+
+    Returns the JSON-decoded payload, or ``None`` if the database, the run, or the
+    named artifact is absent (or was stored as JSON ``null``). ``run_id=None``
+    selects the most recently written run.
+
+    The graph layer consumes this rather than re-querying SQLite directly, so
+    schema knowledge stays in storage.py (the module that writes the artifacts).
+    """
+    path = Path(db_path)
+    if not path.exists():
+        return None
+    with sqlite3.connect(path) as conn:
+        if run_id is None:
+            row = conn.execute(
+                "select run_id from runs order by rowid desc limit 1"
+            ).fetchone()
+            if row is None:
+                return None
+            run_id = row[0]
+        row = conn.execute(
+            "select payload_json from artifacts where run_id = ? and name = ?",
+            (run_id, name),
+        ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    try:
+        return json.loads(row[0])
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
 def _init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """

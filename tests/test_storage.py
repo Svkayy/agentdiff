@@ -8,6 +8,7 @@ from agentdiff.storage import (
     append_trajectory,
     load_trajectory_set,
     load_trajectory_set_from_sqlite,
+    read_artifact,
     write_run_store,
 )
 from agentdiff.trajectory import Trajectory, TrajectorySet
@@ -94,3 +95,62 @@ def test_sqlite_run_store_round_trip(tmp_path):
     assert len(loaded.trajectories) == 1
     assert loaded.trajectories[0].test_case_id == "tc1"
     assert loaded.trajectories[0].llm_calls()[0].inferred_agent == "My Agent"
+
+
+# ---------------------------------------------------------------------------
+# read_artifact (T1)
+# ---------------------------------------------------------------------------
+
+def _empty_sets():
+    return (
+        TrajectorySet(version_tag="baseline", trajectories=[]),
+        TrajectorySet(version_tag="candidate", trajectories=[]),
+    )
+
+
+def test_read_artifact_round_trip(tmp_path):
+    db = tmp_path / "agentdiff.sqlite"
+    baseline, candidate = _empty_sets()
+    write_run_store(
+        db,
+        metadata={"run_id": "run-1", "timestamp": "t"},
+        baseline_set=baseline,
+        candidate_set=candidate,
+        output_evals=[{"test_case_id": "tc1", "verdict": "pass"}],
+    )
+    assert read_artifact(db, "output_evals", run_id="run-1") == [
+        {"test_case_id": "tc1", "verdict": "pass"}
+    ]
+    # comparison was None → stored as JSON null → reads back as None.
+    assert read_artifact(db, "comparison", run_id="run-1") is None
+
+
+def test_read_artifact_missing_db(tmp_path):
+    assert read_artifact(tmp_path / "nope.sqlite", "comparison") is None
+
+
+def test_read_artifact_missing_name(tmp_path):
+    db = tmp_path / "agentdiff.sqlite"
+    baseline, candidate = _empty_sets()
+    write_run_store(
+        db,
+        metadata={"run_id": "r", "timestamp": "t"},
+        baseline_set=baseline,
+        candidate_set=candidate,
+    )
+    assert read_artifact(db, "does_not_exist") is None
+
+
+def test_read_artifact_defaults_to_latest_run(tmp_path):
+    db = tmp_path / "agentdiff.sqlite"
+    for rid, payload in [("r1", [{"v": 1}]), ("r2", [{"v": 2}])]:
+        baseline, candidate = _empty_sets()
+        write_run_store(
+            db,
+            metadata={"run_id": rid, "timestamp": "t"},
+            baseline_set=baseline,
+            candidate_set=candidate,
+            output_evals=payload,
+        )
+    # run_id=None selects the most recently written run (r2).
+    assert read_artifact(db, "output_evals") == [{"v": 2}]

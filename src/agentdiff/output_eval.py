@@ -252,7 +252,7 @@ def evaluate_output(
 
     length = _length_ratio(b_repr, c_repr)
 
-    judge: float | None = None
+    judge = None
     if llm_client is not None:
         judge = _run_judge(llm_client, b_repr, c_repr)
 

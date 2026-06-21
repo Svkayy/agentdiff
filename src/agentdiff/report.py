@@ -167,10 +167,10 @@ def _test_case_block(lines: list[str], tcc: TestCaseComparison) -> None:
         lines.append("")
         lines.append("| Tool | Baseline | Candidate | Delta | p-value | Verdict |")
         lines.append("|---|---|---|---|---|---|")
-        for d in tcc.tool_usage_deltas:
+        for td in tcc.tool_usage_deltas:
             lines.append(
-                f"| {d.tool_name} | {d.baseline_avg:.2f} | {d.candidate_avg:.2f} "
-                f"| {d.delta:+.2f} | {_fmt_p(d.p_value, d.significant)} | {_LABEL[d.verdict]} |"
+                f"| {td.tool_name} | {td.baseline_avg:.2f} | {td.candidate_avg:.2f} "
+                f"| {td.delta:+.2f} | {_fmt_p(td.p_value, td.significant)} | {_LABEL[td.verdict]} |"
             )
         lines.append("")
 

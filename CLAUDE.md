@@ -1,4 +1,11 @@
 
+## Health Stack
+
+- lint: .venv/bin/ruff check src/ tests/
+- test: .venv/bin/pytest tests/ -q
+- typecheck: .venv/bin/mypy src/agentdiff
+- deadcode: .venv/bin/vulture src/agentdiff
+
 ## Skill routing
 
 When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.

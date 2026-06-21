@@ -94,13 +94,14 @@ def _record_start(self, args, kwargs, kind: str):
 
 
 def _record_end(self, kind: str, call_id, *, is_error: bool, error: str | None = None) -> None:
-    metadata = {"method": _method_name(self), "is_error": is_error}
+    method_name = _method_name(self)
+    metadata: dict = {"method": method_name, "is_error": is_error}
     if error:
         metadata["error"] = error
     record_framework_event(
         framework="grpc",
         kind=f"{kind}_end",
-        name=metadata["method"],
+        name=method_name,
         metadata=metadata,
         call_id=call_id,
         skip=2,

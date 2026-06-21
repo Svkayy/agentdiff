@@ -5,7 +5,7 @@ has exited its Tracer, so no Tracer is active and the shims pass through. The
 constructor asserts this to catch accidental nesting.
 """
 import os
-from typing import Literal
+from typing import Any, Literal
 
 from agentdiff.capture.tracer import get_active_tracer
 
@@ -15,7 +15,7 @@ Provider = Literal["anthropic", "openai"]
 class LLMClient:
     def __init__(
         self,
-        provider: Provider | None = None,
+        provider: str | None = None,
         api_key: str | None = None,
         model: str | None = None,
     ):
@@ -29,7 +29,7 @@ class LLMClient:
         )
         self._api_key = api_key
         self._model = model
-        self._client = None  # lazily constructed
+        self._client: Any = None  # lazily constructed (anthropic/openai SDK client)
 
     @property
     def model(self) -> str:

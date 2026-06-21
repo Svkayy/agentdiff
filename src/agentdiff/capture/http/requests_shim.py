@@ -39,7 +39,7 @@ def uninstall() -> None:
         from requests.adapters import HTTPAdapter
     except ImportError:
         return
-    HTTPAdapter.send = _ORIGINALS["send"]  # type: ignore[method-assign]
+    HTTPAdapter.send = _ORIGINALS["send"]  # type: ignore[method-assign,assignment]
     _ORIGINALS.clear()
     _PATCHED = False
 

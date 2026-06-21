@@ -145,7 +145,11 @@ def _attribute_prompts_to_files(
             hashes[synth] = _sha(prompt)
     # de-dup, keep order
     seen: set[str] = set()
-    uniq = [f for f in files if not (f in seen or seen.add(f))]
+    uniq: list[str] = []
+    for name in files:
+        if name not in seen:
+            seen.add(name)
+            uniq.append(name)
     return uniq, hashes
 
 

@@ -41,8 +41,8 @@ def uninstall() -> None:
         import httpx
     except ImportError:
         return
-    httpx.Client.send = _ORIGINALS["sync_send"]  # type: ignore[method-assign]
-    httpx.AsyncClient.send = _ORIGINALS["async_send"]  # type: ignore[method-assign]
+    httpx.Client.send = _ORIGINALS["sync_send"]  # type: ignore[method-assign,assignment]
+    httpx.AsyncClient.send = _ORIGINALS["async_send"]  # type: ignore[method-assign,assignment]
     _ORIGINALS.clear()
     _PATCHED = False
 

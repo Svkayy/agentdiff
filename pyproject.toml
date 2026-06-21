@@ -47,6 +47,8 @@ dev = [
     "respx>=0.21",
     "responses>=0.25",
     "ruff>=0.6",
+    "mypy>=1.8",
+    "vulture>=2.10",
 ]
 
 [project.scripts]
@@ -62,3 +64,22 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/agentdiff"]
+
+# Optional integrations are soft-imported and only installed via extras. Their
+# absence (or lack of type stubs) is expected, so missing-import errors from
+# them are noise that would bury real type defects.
+[[tool.mypy.overrides]]
+module = [
+    "anthropic.*",
+    "openai.*",
+    "mcp.*",
+    "aiohttp.*",
+    "grpc.*",
+    "yaml",
+    "numpy.*",
+]
+ignore_missing_imports = true

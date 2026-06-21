@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -47,13 +47,15 @@ class Trajectory(BaseModel):
         return out
 
     def tool_calls(self, by_agent: str | None = None) -> list[Event]:
+        # Narrowed to the two tool-invoked types so `.inferred_agent` resolves;
+        # cast back to the public Event union for the return (list invariance).
         out = [
             e for e in self.events
             if isinstance(e, (MCPToolInvokedEvent, LocalToolInvokedEvent))
         ]
         if by_agent:
             out = [e for e in out if e.inferred_agent == by_agent]
-        return out
+        return cast("list[Event]", out)
 
     def framework_events(self, by_framework: str | None = None) -> list[FrameworkEvent]:
         out = [e for e in self.events if isinstance(e, FrameworkEvent)]

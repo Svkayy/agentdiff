@@ -5,6 +5,7 @@ difference is statistically real given the sample sizes, rather than relying on 
 effect size alone. All p-values are two-sided.
 """
 import math
+from collections.abc import Sequence
 
 _ALPHA = 0.05
 
@@ -38,7 +39,7 @@ def two_proportion_pvalue(
     return _two_sided_p_from_z(z)
 
 
-def mann_whitney_pvalue(baseline: list[float], candidate: list[float]) -> float:
+def mann_whitney_pvalue(baseline: Sequence[float], candidate: Sequence[float]) -> float:
     """Mann-Whitney U test p-value (normal approximation, tie-corrected).
 
     Compares two distributions of per-trajectory counts. Returns 1.0 when either

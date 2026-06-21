@@ -186,6 +186,19 @@ continuously ingests live traffic without a Runner boundary. See
 [`docs/recipes/limitations.md`](docs/recipes/limitations.md) for the current
 line.
 
+## Documentation
+
+| Doc | What it covers |
+|-----|----------------|
+| [Tutorial: Getting Started](docs/tutorial-getting-started.md) | Zero to first report — install, write a Runner, run a comparison, read the output |
+| [How-to: Interpret the Report](docs/howto-interpret-report.md) | Read PASS/WARN/FAIL verdicts, attribution confidence, and decide what to do |
+| [Reference: config.yaml](docs/reference-config.md) | Every config option with type, default, and effect |
+| [Explanation: Why Behavioral Testing](docs/explanation-why-behavioral.md) | Why output evaluation misses agent regressions and how AgentDiff catches them |
+| [Runner Recipes](docs/recipes/README.md) | Copy-paste Runner patterns for request-response, event-driven, scheduled, and multi-turn agents |
+| [METHODOLOGY.md](docs/METHODOLOGY.md) | Capture → comparison → attribution pipeline in detail |
+| [CODEBASE.md](docs/CODEBASE.md) | Module-by-module, function-by-function implementation reference |
+| [Limitations](docs/recipes/limitations.md) | What v0 deliberately does not support, and workarounds |
+
 ## How it works
 
 See [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for the capture → comparison →

@@ -11,6 +11,7 @@ from agentdiff.capture.callstack import (
 )
 from agentdiff.capture.http.provider_registry import match_provider
 from agentdiff.capture.http.canonical import build_canonical_from_http
+from agentdiff.capture.http.redact import redact_url
 from agentdiff.capture.http.streaming import record_stream_chunks
 
 _PATCHED = False
@@ -72,7 +73,7 @@ def _capture(tracer, original, self_adapter, request, args, kwargs):
             call_id=call_id,
             canonical=canonical_req,
             captured_by="http_shim",
-            request_url=url,
+            request_url=redact_url(url),
             raw_body=_get_request_body(request) if provider == "unknown" else None,
             callsite=callsite,
             call_stack=stack,

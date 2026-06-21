@@ -11,6 +11,7 @@ from agentdiff.capture.callstack import (
 from agentdiff.capture.events import LLMRequestEvent, LLMResponseEvent
 from agentdiff.capture.http.canonical import build_canonical_from_http
 from agentdiff.capture.http.provider_registry import match_provider
+from agentdiff.capture.http.redact import redact_url
 from agentdiff.capture.http.streaming import record_stream_chunks
 from agentdiff.capture.tracer import get_active_tracer
 
@@ -69,7 +70,7 @@ async def _capture(tracer, original, session, method, url, args, kwargs):
                 call_id=call_id,
                 canonical=build_canonical_from_http(provider, request, response=None),
                 captured_by="http_shim",
-                request_url=url_str,
+                request_url=redact_url(url_str),
                 raw_body=request.content if provider == "unknown" else None,
                 callsite=callsite_from_stack(stack),
                 call_stack=stack,

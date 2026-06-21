@@ -309,3 +309,55 @@ def test_trajectory_serialization_roundtrip(tmp_path):
     assert traj.status == "success"
     assert len(traj.events) == 2
     assert traj.total_tokens == 16
+
+
+# ---------------------------------------------------------------------------
+# URL credential redaction (security): keys in the query string must never be
+# persisted in request_url.
+# ---------------------------------------------------------------------------
+
+def test_redact_url_strips_query():
+    from agentdiff.capture.http.redact import redact_url
+
+    assert (
+        redact_url(
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            "gemini-pro:generateContent?key=AIzaSECRET"
+        )
+        == "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemini-pro:generateContent"
+    )
+    # No query string → returned unchanged.
+    assert (
+        redact_url("https://api.anthropic.com/v1/messages")
+        == "https://api.anthropic.com/v1/messages"
+    )
+    # Empty / unparseable input is tolerated.
+    assert redact_url("") == ""
+
+
+def test_gemini_url_key_not_persisted(tmp_path):
+    """A Gemini API key in the request URL must not reach the trajectory."""
+    output = tmp_path / "traces.jsonl"
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemini-pro:generateContent?key=AIzaSECRETKEY123"
+    )
+
+    with respx.mock() as rmock:
+        rmock.post(url).mock(return_value=httpx.Response(200, json={"candidates": []}))
+        with Tracer("tc_redact", "baseline", {}, output):
+            client = httpx.Client()
+            client.post(url, json={"contents": [{"parts": [{"text": "Hi"}]}]})
+
+    from agentdiff.capture.events import LLMRequestEvent
+
+    traj = _load_trajectory(output)
+    req = next(e for e in traj.events if isinstance(e, LLMRequestEvent))
+
+    # Provider matching still works (operates on the live URL).
+    assert req.canonical.provider == "gemini"
+    # The stored URL is redacted, and the key appears nowhere in the raw line.
+    assert req.request_url is not None
+    assert "key=" not in req.request_url
+    assert "AIzaSECRETKEY123" not in output.read_text()

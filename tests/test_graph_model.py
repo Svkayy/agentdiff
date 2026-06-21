@@ -12,17 +12,18 @@ from agentdiff.graph_model import build
 from agentdiff.trajectory import Trajectory, TrajectorySet
 
 
-def _agent_delta(name, b_rate, c_rate, verdict="pass"):
+def _agent_delta(name, b_rate, c_rate, verdict="pass", *, significant=True, total=10):
     return AgentInvocationDelta(
         agent_name=name,
         function=name,
         baseline_rate=b_rate,
         candidate_rate=c_rate,
         delta=c_rate - b_rate,
-        baseline_count=int(b_rate * 10),
-        candidate_count=int(c_rate * 10),
-        baseline_total=10,
-        candidate_total=10,
+        baseline_count=int(b_rate * total),
+        candidate_count=int(c_rate * total),
+        baseline_total=total,
+        candidate_total=total,
+        significant=significant,
         verdict=verdict,
     )
 
@@ -162,3 +163,28 @@ def test_empty_comparison_is_empty_graph():
     assert g.nodes == []
     assert g.edges == []
     assert g.has_change is False
+
+
+# --- trust signaling (#4) ---------------------------------------------------
+
+def test_unconfirmed_change_marks_uncertain():
+    # A flagged change that is NOT statistically significant → uncertain.
+    g = build(
+        _comparison([_agent_delta("researcher", 1.0, 0.0, "warn", significant=False, total=1)]),
+        None, *_empty(),
+    )
+    node = next(n for n in g.nodes if n.label == "researcher")
+    assert node.significant is False
+    assert g.has_uncertain is True
+    assert g.min_samples == 1
+
+
+def test_confirmed_change_is_certain():
+    g = build(
+        _comparison([_agent_delta("researcher", 1.0, 0.0, "fail", significant=True, total=20)]),
+        None, *_empty(),
+    )
+    node = next(n for n in g.nodes if n.label == "researcher")
+    assert node.significant is True
+    assert g.has_uncertain is False
+    assert g.min_samples == 20

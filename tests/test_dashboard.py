@@ -1,11 +1,6 @@
-"""Dashboard graph rendering + empty/partial states (Slice 1)."""
+"""Dashboard: inject the run's graph payload into the vendored React bundle."""
 from agentdiff.compare import AgentInvocationDelta, ComparisonResult, TestCaseComparison
-from agentdiff.dashboard import (
-    _graph_section,
-    render_dashboard,
-    summarize_report,
-    write_dashboard,
-)
+from agentdiff.dashboard import render_dashboard, summarize_report, write_dashboard
 from agentdiff.graph_model import AgentGraph, GraphNode
 from agentdiff.storage import write_run_store
 from agentdiff.trajectory import TrajectorySet
@@ -19,45 +14,36 @@ def _agent_node(label, b, c, verdict="pass", stopped=False, hunk=None):
     )
 
 
-# --- graph section states (fast, no SQLite) --------------------------------
+# --- injection contract (unit, no SQLite) ----------------------------------
 
-def test_graph_section_marks_stopped_agent():
+def test_render_injects_graph_payload():
     g = AgentGraph(nodes=[_agent_node("researcher", 1.0, 0.0, "fail", stopped=True)], has_change=True)
-    out = _graph_section(g)
-    assert "researcher" in out
-    assert "stopped firing" in out.lower()
-    assert "<svg" in out
+    out = render_dashboard({"graph": g, "meta": {"baseline_ref": "main"}})
+    assert "window.__AGENTDIFF__" in out
+    assert "researcher" in out          # node label rides in the payload
+    assert "true" in out                # has_change/stopped serialize as JSON true
 
 
-def test_graph_section_empty_state():
-    out = _graph_section(AgentGraph())
-    assert "No comparison data" in out
-    assert "<svg" not in out
+def test_render_empty_graph_still_injects():
+    out = render_dashboard({"graph": AgentGraph(), "meta": {}})
+    assert "window.__AGENTDIFF__" in out
+    assert '"nodes": []' in out
 
 
-def test_graph_section_no_change_banner():
-    g = AgentGraph(nodes=[_agent_node("researcher", 1.0, 1.0, "pass")], has_change=False)
-    out = _graph_section(g)
-    assert "No behavioral change detected" in out
+def test_render_escapes_closing_script_in_hunk():
+    # A diff hunk containing "</script>" must not break out of the injected tag.
+    g = AgentGraph(nodes=[_agent_node("x", 1.0, 0.0, "fail", stopped=True, hunk="a</script>b")])
+    out = render_dashboard({"graph": g, "meta": {}})
+    assert "a</script>b" not in out      # raw sequence escaped
+    assert "a<\\/script>b" in out        # escaped form present
 
 
-def test_graph_section_embeds_hunk_payload():
-    g = AgentGraph(
-        nodes=[_agent_node("researcher", 1.0, 0.0, "fail", stopped=True, hunk="@@ -1 +1 @@")],
-        has_change=True,
-    )
-    out = _graph_section(g)
-    assert "@@ -1 +1 @@" in out  # carried in the HUNKS JSON for click-to-reveal
-
-
-# --- end-to-end through summarize_report + render_dashboard ----------------
+# --- end to end through summarize_report + write_dashboard -----------------
 
 def _comparison(deltas, overall="pass"):
     return ComparisonResult(
         test_case_comparisons=[
-            TestCaseComparison(
-                test_case_id="tc1", agent_invocation_deltas=deltas, overall_verdict=overall
-            )
+            TestCaseComparison(test_case_id="tc1", agent_invocation_deltas=deltas, overall_verdict=overall)
         ],
         overall_verdict=overall,
     )
@@ -70,7 +56,7 @@ def _empty_sets():
     )
 
 
-def test_summarize_and_render_end_to_end(tmp_path):
+def test_summarize_builds_graph_and_meta(tmp_path):
     report_dir = tmp_path / "run"
     report_dir.mkdir()
     db = report_dir / "agentdiff.sqlite"
@@ -88,17 +74,22 @@ def test_summarize_and_render_end_to_end(tmp_path):
     baseline, candidate = _empty_sets()
     write_run_store(
         db,
-        metadata={"run_id": "r1", "timestamp": "t"},
-        baseline_set=baseline,
-        candidate_set=candidate,
-        comparison=comp,
+        metadata={"run_id": "r1", "timestamp": "t", "baseline_ref": "main"},
+        baseline_set=baseline, candidate_set=candidate, comparison=comp,
     )
+    # metadata.json is what summarize_report reads for meta.
+    (report_dir / "metadata.json").write_text(
+        '{"baseline_ref": "main", "candidate_ref": "working", "samples_per_case": 20}'
+    )
+
     summary = summarize_report(report_dir)
     assert summary["graph"].has_change is True
+    assert any(n.label == "researcher" and n.stopped for n in summary["graph"].nodes)
+    assert summary["meta"]["baseline_ref"] == "main"
+
     out = render_dashboard(summary)
+    assert "window.__AGENTDIFF__" in out
     assert "researcher" in out
-    assert "stopped firing" in out.lower()
-    assert "<svg" in out
 
 
 def test_write_dashboard_handles_run_with_no_comparison(tmp_path):
@@ -109,11 +100,10 @@ def test_write_dashboard_handles_run_with_no_comparison(tmp_path):
     write_run_store(
         db,
         metadata={"run_id": "r1", "timestamp": "t"},
-        baseline_set=baseline,
-        candidate_set=candidate,
+        baseline_set=baseline, candidate_set=candidate,
     )
     out = write_dashboard(report_dir)
     assert out.exists()
     text = out.read_text()
-    assert "<html" in text
-    assert "No comparison data" in text  # graceful empty state, no crash
+    assert "window.__AGENTDIFF__" in text
+    assert '"nodes": []' in text  # empty run → empty graph, handled at runtime

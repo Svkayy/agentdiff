@@ -31,6 +31,20 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Fail fast before the build if the tag doesn't match the packaged
+      # version — otherwise we'd publish a wheel whose version disagrees with
+      # its tag, or hit PyPI's "file already exists" on a forgotten bump.
+      - name: Verify tag matches package version
+        run: |
+          python - <<'PY'
+          import os, pathlib, sys, tomllib
+          version = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          if tag != f"v{version}":
+              sys.exit(f"Tag {tag} != package version v{version} (pyproject.toml). Bump the version or fix the tag.")
+          print(f"OK: tag {tag} matches package version {version}")
+          PY
+
       - name: Install
         run: |
           python -m pip install --upgrade pip

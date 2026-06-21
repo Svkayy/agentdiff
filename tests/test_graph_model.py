@@ -28,10 +28,10 @@ def _agent_delta(name, b_rate, c_rate, verdict="pass", *, significant=True, tota
     )
 
 
-def _tool_delta(name, b_avg, c_avg, verdict="pass"):
+def _tool_delta(name, b_avg, c_avg, verdict="pass", *, significant=True):
     return ToolUsageDelta(
         tool_name=name, baseline_avg=b_avg, candidate_avg=c_avg,
-        delta=c_avg - b_avg, verdict=verdict,
+        delta=c_avg - b_avg, verdict=verdict, significant=significant,
     )
 
 
@@ -188,3 +188,74 @@ def test_confirmed_change_is_certain():
     assert node.significant is True
     assert g.has_uncertain is False
     assert g.min_samples == 20
+
+
+def _two_tc_comparison(tc1_deltas, tc2_deltas):
+    return ComparisonResult(
+        test_case_comparisons=[
+            TestCaseComparison(test_case_id="tc1", agent_invocation_deltas=list(tc1_deltas)),
+            TestCaseComparison(test_case_id="tc2", agent_invocation_deltas=list(tc2_deltas)),
+        ],
+    )
+
+
+def test_confirmed_worst_verdict_stays_significant_across_test_cases():
+    # Same agent: a CONFIRMED fail in tc1 and an UNCERTAIN warn in tc2. The node
+    # shows the fail (worst), and that fail is confirmed — so the sparse tc2 must
+    # not flip the whole graph to "uncertain". (Regression for the aggregation bug.)
+    g = build(
+        _two_tc_comparison(
+            [_agent_delta("researcher", 1.0, 0.0, "fail", significant=True, total=20)],
+            [_agent_delta("researcher", 1.0, 0.5, "warn", significant=False, total=1)],
+        ),
+        None, *_empty(),
+    )
+    node = next(n for n in g.nodes if n.label == "researcher")
+    assert node.verdict == "fail"
+    assert node.significant is True
+    assert g.has_uncertain is False
+
+
+def test_min_samples_reflects_uncertain_agent_not_unrelated():
+    # Agent A is a confirmed pass observed once; agent B is the uncertain change
+    # at 8 runs. The banner's "N runs" must cite B's 8, not A's unrelated 1.
+    g = build(
+        _comparison([
+            _agent_delta("stable", 1.0, 1.0, "pass", significant=True, total=1),
+            _agent_delta("flaky", 1.0, 0.4, "warn", significant=False, total=8),
+        ]),
+        None, *_empty(),
+    )
+    assert g.has_uncertain is True
+    assert g.min_samples == 8
+
+
+def test_uncertain_tool_change_marks_graph_uncertain():
+    # The only flagged change is a non-significant tool delta; agents are all
+    # confirmed-pass. The trust banner must still fire on the tool's uncertainty.
+    g = build(
+        _comparison(
+            [_agent_delta("orchestrator", 1.0, 1.0, "pass", significant=True)],
+            tool_deltas=[_tool_delta("web_search", 2.0, 3.5, "warn", significant=False)],
+        ),
+        None, *_empty(),
+    )
+    tool = next(n for n in g.nodes if n.label == "web_search")
+    assert tool.significant is False
+    assert g.has_uncertain is True
+
+
+def test_empty_side_yields_zero_min_samples():
+    # An uncertain agent with an empty baseline side (baseline_total=0). The
+    # limiting per-side count is 0, so the backend reports min_samples=0 honestly.
+    # (The banner copy for the 0 case is a frontend follow-up, out of scope here.)
+    delta = AgentInvocationDelta(
+        agent_name="researcher", function="researcher",
+        baseline_rate=0.0, candidate_rate=1.0, delta=1.0,
+        baseline_count=0, candidate_count=5,
+        baseline_total=0, candidate_total=5,
+        significant=False, verdict="warn",
+    )
+    g = build(_comparison([delta]), None, *_empty())
+    assert g.has_uncertain is True
+    assert g.min_samples == 0

@@ -44,6 +44,38 @@ The same directory also contains raw trajectory JSONL files and
 `agentdiff.sqlite`, a queryable SQLite artifact for the run, plus a local
 `dashboard.html`.
 
+## Zero-setup: capture and diff (no Runner)
+
+The fastest way to a behavioral diff — no Runner, no `test_cases.yaml`, no git
+baseline. Wrap the code you already run, before and after your change:
+
+```python
+import agentdiff
+
+with agentdiff.record("before"):
+    run_my_agent("some input")   # your agent, however you normally call it
+
+# ... make your prompt / code change ...
+
+with agentdiff.record("after"):
+    run_my_agent("some input")
+```
+
+Then diff the two captures and open the dashboard:
+
+```bash
+agentdiff diff before after --serve
+```
+
+You get the before/after agent graph with any agent that stopped firing lit up.
+Structure is auto-inferred, so agents show real names without `agentdiff init`.
+
+Attribution here is observed-only: it can tell you the prompt, model, or tool set
+changed (from the captured data), but not the exact code-diff hunk, because the
+"before" source is gone by diff time. For the precise hunk, use the full
+`agentdiff compare` flow against a git ref, or `agentdiff diff before after
+--baseline <ref>` when the "before" code is a committed ref.
+
 ## The Runner
 
 The only code you write is a **Runner** — a `Callable[[dict], dict | str | None]`

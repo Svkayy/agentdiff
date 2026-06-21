@@ -1,0 +1,64 @@
+[project]
+name = "agentdiff"
+version = "0.1.0"
+description = "Behavioral regression testing for Python AI agent systems"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+
+dependencies = [
+    "httpx>=0.27",
+    "requests>=2.31",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "pydantic>=2.5",
+    "click>=8.1",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.39.0"]
+openai = ["openai>=1.50.0"]
+mcp = ["mcp>=1.0.0"]
+embeddings = ["sentence-transformers>=3.0"]
+aiohttp = ["aiohttp>=3.9"]
+grpc = ["grpcio>=1.60"]
+frameworks = [
+    "langgraph>=0.2",
+    "crewai>=0.70",
+    "pyautogen>=0.2",
+    "llama-index-core>=0.11",
+]
+all = [
+    "anthropic>=0.39.0",
+    "openai>=1.50.0",
+    "mcp>=1.0.0",
+    "sentence-transformers>=3.0",
+    "aiohttp>=3.9",
+    "grpcio>=1.60",
+    "langgraph>=0.2",
+    "crewai>=0.70",
+    "pyautogen>=0.2",
+    "llama-index-core>=0.11",
+]
+
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "responses>=0.25",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+agentdiff = "agentdiff.cli.main:cli"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"

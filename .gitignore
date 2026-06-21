@@ -22,3 +22,4 @@ htmlcov/
 .claude/settings.local.json
 .claude/launch.json
 .gstack/
+CLAUDE.md

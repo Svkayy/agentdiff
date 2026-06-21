@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from agentdiff.attribution.git_diff import collect_git_diff
 from agentdiff.attribution.manifest import build_manifest_for_side
-from agentdiff.attribution.manifest_diff import diff_manifests
+from agentdiff.attribution.manifest_diff import ManifestDelta, diff_manifests
 from agentdiff.attribution.rules import Attribution, apply_rules
 from agentdiff.compare import ComparisonResult
 from agentdiff.structure.structure_yaml import StructureDoc
@@ -111,3 +111,75 @@ def _reachable_changed_files(repo_root: Path, code_file: str, git_diff: dict[str
     except Exception:
         return []
     return sorted(set(git_diff) & reachable)
+
+
+def attribute_observed(
+    comparison: ComparisonResult,
+    structure: StructureDoc,
+    baseline_trajectories: list[Trajectory],
+    candidate_trajectories: list[Trajectory],
+    repo_root: Path,
+) -> AttributionResult:
+    """Attribution from captured data only — no git baseline.
+
+    Detects prompt / model / tool changes between two captures from the observed
+    trajectories (those fields are captured, not read from git). It cannot produce
+    a code-diff hunk, since the "before" source is gone by diff time — use the
+    git-baseline ``attribute`` path for that. Powers the low-friction
+    ``agentdiff diff`` flow.
+    """
+    repo_root = Path(repo_root)
+    baseline_manifests = build_manifest_for_side(repo_root, None, baseline_trajectories, structure)
+    candidate_manifests = build_manifest_for_side(repo_root, None, candidate_trajectories, structure)
+    deltas = diff_manifests(baseline_manifests, candidate_manifests)
+
+    results: list[BehavioralAttribution] = []
+    for tcc in comparison.test_case_comparisons:
+        for d in tcc.agent_invocation_deltas:
+            if d.verdict == "pass":
+                continue
+            summary = (
+                f"invocation rate {d.baseline_rate:.0%} → {d.candidate_rate:.0%} "
+                f"({d.delta:+.0%})"
+            )
+            reason, cause = _observed_reason(deltas.get(d.function), d.agent_name)
+            results.append(
+                BehavioralAttribution(
+                    test_case_id=tcc.test_case_id,
+                    agent_name=d.agent_name,
+                    function=d.function,
+                    metric="invocation_rate",
+                    delta_summary=summary,
+                    verdict=d.verdict,
+                    primary=Attribution(
+                        rule="observed_change",
+                        target_path=cause or "",
+                        hunk=None,
+                        weight=0.5,
+                        reason=reason,
+                    ),
+                    explanation=reason,
+                )
+            )
+    return AttributionResult(attributions=results)
+
+
+def _observed_reason(md: ManifestDelta | None, agent_name: str) -> tuple[str, str | None]:
+    """A plain-English cause from observed manifest changes (no git hunk)."""
+    if md is not None and md.prompt_changed:
+        return (
+            f"The system prompt observed for {agent_name} changed between the two captures.",
+            md.prompt_files[0] if md.prompt_files else None,
+        )
+    if md is not None and md.model_params_changed:
+        return (
+            f"The model or sampling parameters for {agent_name} changed between the two captures.",
+            None,
+        )
+    if md is not None and md.tools_changed:
+        return (f"The tool set available to {agent_name} changed between the two captures.", None)
+    return (
+        f"{agent_name}'s behavior changed, but the cause isn't visible without a git "
+        "baseline. Run `agentdiff diff --baseline <ref>` for the code diff.",
+        None,
+    )

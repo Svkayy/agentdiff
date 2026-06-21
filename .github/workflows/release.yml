@@ -1,0 +1,66 @@
+name: release
+
+# Publish to PyPI on a version tag. Cut a release with:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Requires a PyPI token in the repo secrets as PYPI_API_TOKEN
+# (Settings → Secrets and variables → Actions → New repository secret).
+# A more secure alternative is PyPI Trusted Publishing (OIDC): drop the
+# `password:` line, add `permissions: id-token: write` to this job, and
+# register this workflow as a trusted publisher on the PyPI project.
+#
+# The dashboard ships as a vendored single-file build
+# (src/agentdiff/dashboard_assets/index.html). Re-vendor it after any frontend
+# change: `npm --prefix frontend run build && cp frontend/dist/index.html
+# src/agentdiff/dashboard_assets/index.html`.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" build
+
+      - name: Lint
+        run: ruff check src/ tests/
+
+      - name: Type check
+        run: mypy
+
+      - name: Test
+        run: pytest -q
+
+      - name: Build sdist + wheel
+        run: python -m build
+
+      - name: Verify the dashboard asset is in the wheel
+        run: |
+          python - <<'PY'
+          import glob, zipfile, sys
+          wheel = sorted(glob.glob("dist/*.whl"))[-1]
+          names = zipfile.ZipFile(wheel).namelist()
+          asset = "agentdiff/dashboard_assets/index.html"
+          if asset not in names:
+              sys.exit(f"MISSING {asset} in {wheel}")
+          print(f"OK: {asset} present in {wheel}")
+          PY
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}

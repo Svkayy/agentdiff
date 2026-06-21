@@ -15,6 +15,7 @@ export interface GraphNode {
   cause_file: string | null;
   hunk: string | null;
   explanation: string | null;
+  significant: boolean;
 }
 
 export interface GraphEdge {
@@ -27,6 +28,8 @@ export interface AgentGraph {
   edges: GraphEdge[];
   overall_verdict: Verdict;
   has_change: boolean;
+  min_samples: number;
+  has_uncertain: boolean;
 }
 
 export interface DashboardData {

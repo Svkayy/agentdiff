@@ -41,6 +41,7 @@ class GraphNode(BaseModel):
     cause_file: str | None = None
     hunk: str | None = None
     explanation: str | None = None
+    significant: bool = True  # is this node's change statistically confirmed?
 
 
 class GraphEdge(BaseModel):
@@ -53,6 +54,10 @@ class AgentGraph(BaseModel):
     edges: list[GraphEdge] = Field(default_factory=list)
     overall_verdict: Verdict = "pass"
     has_change: bool = False
+    # Trust signaling: the smallest per-side sample count behind any agent, and
+    # whether any flagged change is NOT statistically confirmed at that N.
+    min_samples: int = 0
+    has_uncertain: bool = False
 
 
 def _worst(a: Verdict, b: Verdict) -> Verdict:
@@ -85,8 +90,13 @@ def build(
 
     # Agent nodes — aggregate each agent across test cases (one node per agent).
     agents: dict[str, GraphNode] = {}
+    sample_counts: list[int] = []
     for tc in comp.test_case_comparisons:
         for d in tc.agent_invocation_deltas:
+            sample_counts.append(min(d.baseline_total, d.candidate_total))
+            # A flagged change (non-pass) that isn't statistically significant is
+            # "uncertain" — could be variance at this sample size.
+            uncertain = d.verdict != "pass" and not d.significant
             node = agents.get(d.agent_name)
             if node is None:
                 agents[d.agent_name] = GraphNode(
@@ -96,11 +106,14 @@ def build(
                     baseline_rate=d.baseline_rate,
                     candidate_rate=d.candidate_rate,
                     verdict=d.verdict,
+                    significant=not uncertain,
                 )
             else:
                 node.baseline_rate = max(node.baseline_rate, d.baseline_rate)
                 node.candidate_rate = max(node.candidate_rate, d.candidate_rate)
                 node.verdict = _worst(node.verdict, d.verdict)
+                if uncertain:
+                    node.significant = False
     for node in agents.values():
         _finalize_fire_state(node)
 
@@ -155,4 +168,6 @@ def build(
         edges=[GraphEdge(source=s, target=t) for s, t in sorted(edges)],
         overall_verdict=comp.overall_verdict,
         has_change=has_change,
+        min_samples=min(sample_counts) if sample_counts else 0,
+        has_uncertain=any(not n.significant for n in agents.values()),
     )

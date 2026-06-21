@@ -3,6 +3,7 @@ import { AgentGraph } from "@/components/AgentGraph";
 import { AIExplainer } from "@/components/AIExplainer";
 import { Inspector } from "@/components/Inspector";
 import { TopNav } from "@/components/TopNav";
+import { TrustBanner } from "@/components/TrustBanner";
 import { Footer } from "@/components/Footer";
 import { SAMPLE } from "./sample";
 import type { GraphNode } from "@/types";
@@ -24,6 +25,8 @@ export default function App() {
         baselineRef={String(meta.baseline_ref ?? "main")}
         candidateRef={String(meta.candidate_ref ?? "working tree")}
       />
+
+      <TrustBanner graph={graph} />
 
       <div className="relative flex flex-1 overflow-hidden">
         <main className="relative flex-1 overflow-hidden bg-slate-50">

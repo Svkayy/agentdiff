@@ -11,9 +11,9 @@ from typing import Any
 from agentdiff.capture.events import (
     LLMRequestEvent, LLMResponseEvent, LocalToolInvokedEvent, MCPToolInvokedEvent,
 )
-from agentdiff.dashboard import summarize_report
+from agentdiff.graph_model import build as build_graph
 from agentdiff.storage import load_trajectory_set_from_sqlite, read_artifact
-from agentdiff.trajectory import Trajectory
+from agentdiff.trajectory import Trajectory, TrajectorySet
 
 _PREVIEW = 280
 
@@ -26,12 +26,22 @@ def build(report_dir: Path) -> dict[str, Any]:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     db_path = Path(metadata.get("sqlite_store", report_dir / "agentdiff.sqlite"))
 
-    summary = summarize_report(report_dir)  # reuses graph + meta builder
+    baseline_set = load_trajectory_set_from_sqlite(db_path, "baseline")
+    candidate_set = load_trajectory_set_from_sqlite(db_path, "candidate")
+    comparison = read_artifact(db_path, "comparison")
+    attribution = read_artifact(db_path, "attribution")
+    graph = build_graph(comparison, attribution, baseline_set, candidate_set)
+
+    meta: dict[str, Any] = {
+        "baseline_ref": metadata.get("baseline_ref"),
+        "candidate_ref": metadata.get("candidate_ref"),
+        "samples_per_case": metadata.get("samples_per_case"),
+        "timestamp": metadata.get("timestamp"),
+        "smoke_mode": metadata.get("smoke_mode", False),
+    }
+
     return {
-        "meta": {
-            **summary["meta"],
-            "smoke_mode": metadata.get("smoke_mode", False),
-        },
+        "meta": meta,
         "runQuality": {
             "baseline_trajectories": metadata.get("baseline_trajectories"),
             "candidate_trajectories": metadata.get("candidate_trajectories"),
@@ -40,19 +50,18 @@ def build(report_dir: Path) -> dict[str, Any]:
             "max_failure_rate": metadata.get("max_failure_rate"),
             "thresholds": metadata.get("thresholds"),
         },
-        "graph": summary["graph"].model_dump(),
-        "comparison": read_artifact(db_path, "comparison"),
+        "graph": graph.model_dump(),
+        "comparison": comparison,
         "outputEvals": read_artifact(db_path, "output_evals") or [],
-        "attribution": read_artifact(db_path, "attribution"),
+        "attribution": attribution,
         "trajectories": {
-            "baseline": _side(db_path, "baseline"),
-            "candidate": _side(db_path, "candidate"),
+            "baseline": _side(baseline_set),
+            "candidate": _side(candidate_set),
         },
     }
 
 
-def _side(db_path: Path, tag: str) -> list[dict[str, Any]]:
-    tset = load_trajectory_set_from_sqlite(db_path, tag)  # type: ignore[arg-type]
+def _side(tset: TrajectorySet) -> list[dict[str, Any]]:
     return [
         {
             "trajectory_id": str(t.run_id),

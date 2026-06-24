@@ -75,6 +75,8 @@ def _payload_json(summary: dict[str, Any]) -> str:
     else:
         graph = summary.get("graph") or AgentGraph()
         payload = {"graph": graph.model_dump(), "meta": summary.get("meta", {})}
+    # "</" is escaped so a diff hunk containing "</script>" can't break out of
+    # the injected <script> tag.
     return json.dumps(payload, default=str).replace("</", "<\\/")
 
 

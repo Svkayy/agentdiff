@@ -107,3 +107,15 @@ def test_write_dashboard_handles_run_with_no_comparison(tmp_path):
     text = out.read_text()
     assert "window.__AGENTDIFF__" in text
     assert '"nodes": []' in text  # empty run → empty graph, handled at runtime
+
+
+def test_dashboard_injects_full_payload(tmp_path):
+    from tests._sample_run import _write_run
+    from agentdiff import dashboard, report_payload
+    report_dir = _write_run(tmp_path)
+    html = dashboard.render_dashboard({
+        **dashboard.summarize_report(report_dir),
+        "full_payload": report_payload.build(report_dir),
+    })
+    assert "window.__AGENTDIFF__" in html
+    assert '"comparison"' in html and '"trajectories"' in html and '"runQuality"' in html

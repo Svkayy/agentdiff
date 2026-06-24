@@ -82,6 +82,7 @@ module = [
     "mcp.*",
     "aiohttp.*",
     "grpc.*",
+    "sentence_transformers.*",
     "yaml",
     "numpy.*",
 ]

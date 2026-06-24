@@ -9,19 +9,124 @@ gets retrieved. Traditional output evaluation misses this. **AgentDiff catches
 these behavioral regressions and tells you exactly which code or prompt change
 caused each one.**
 
+<p align="center">
+  <img src="docs/demo/hero.gif" alt="AgentDiff dashboard — a research agent where fact_checker silently stopped firing; output eval still passes while AgentDiff fails" width="840">
+</p>
+
+<p align="center"><em>A real run: a one-line change silently disabled a sub-agent. Output eval still says PASS — AgentDiff says FAIL and points at the exact line.</em></p>
+
 ## Two differentiators
 
 1. **Universal capture.** The foundation is HTTP-level interception (`httpx` +
    `requests`), so AgentDiff captures every LLM call regardless of provider or
    wrapper — Anthropic, OpenAI, Gemini, Mistral, Bedrock, Cohere, Azure OpenAI,
-   LiteLLM, or a raw `httpx.post` to a provider it's never heard of. SDK shims
-   (Anthropic, OpenAI, MCP) add richer metadata when present, but capture never
-   depends on them.
+   LiteLLM, a local Ollama, or a raw `httpx.post` to a provider it's never heard
+   of. SDK shims (Anthropic, OpenAI, MCP) add richer metadata when present, but
+   capture never depends on them.
 2. **Causal attribution.** For each behavioral delta, AgentDiff maps it back to a
    specific changed file — and where possible, the exact unified-diff hunk — using
    a deterministic rule engine over a dynamically-built agent manifest plus the
    git diff. The LLM is only used to write a 1–3 sentence explanation, never to
    decide the attribution.
+
+## The dashboard
+
+`agentdiff dashboard --serve` renders any run in a local, offline, single-file UI
+(React + React Flow + Tailwind/shadcn). It has **five views**, every one shown
+below — and every pixel is **real data from a real `agentdiff compare` run**
+(see [`docs/demo/`](docs/demo/)).
+
+**1 · Overview** — the before/after agent graph as the hero, with any stopped
+agent lit ember; a verdict banner; and the "output eval PASS / AgentDiff FAIL"
+contrast that is the product's whole thesis (shown in the hero GIF at the top).
+
+**2 · Behavioral Deltas** — every agent-invocation and tool-usage delta, per test
+case, with baseline/candidate rates, the signed delta, p-value, significance, and
+verdict. Stopped agents are lit ember.
+
+<p align="center"><img src="docs/demo/behavioral-deltas.png" alt="Behavioral Deltas table: fact_checker 100%→0% FAIL, web_search and calculator tool usage down, with p-values" width="820"></p>
+
+**3 · Causal Attribution** — each non-passing delta mapped to the file and exact
+diff hunk that caused it, with a model-written explanation and the alternatives
+the rule engine considered:
+
+<p align="center"><img src="docs/demo/attribution.gif" alt="Causal attribution: fact_checker's drop attributed to agents/fact_checker.py via the code_change rule, with the diff hunk" width="820"></p>
+
+**4 · Trajectory Timeline** — the captured LLM- and tool-call sequence. Toggle
+baseline → candidate and watch the regressed agent's calls disappear:
+
+<p align="center"><img src="docs/demo/timeline.gif" alt="Trajectory timeline toggling baseline to candidate; fact_checker's calls vanish" width="820"></p>
+
+**5 · Run Summary** — run quality (trajectories, failure budget), thresholds, the
+traditional output-eval details (semantic/structural/length/judge), and a
+copy-paste reproduction command:
+
+<p align="center"><img src="docs/demo/run-summary.png" alt="Run Summary: run quality table, thresholds, and output-evaluation details" width="820"></p>
+
+## Try the demo
+
+The dashboards above are reproducible end to end (needs a local
+[Ollama](https://ollama.com) with the model pulled — no API keys):
+
+```bash
+ollama pull llama3.1:8b
+pip install -e ".[openai]"
+
+# Real compare run on the bundled sample agent → docs/demo/sample-report/
+bash examples/research_assistant/run_demo.sh
+
+# Open the report in the dashboard
+agentdiff dashboard --report-dir docs/demo/sample-report --serve
+```
+
+The sample agent ([`examples/research_assistant/`](examples/research_assistant/))
+is an orchestrator that routes to `retriever`, `fact_checker`, and `summarizer`
+sub-agents. The candidate change disables `fact_checker` with a one-line early
+`return` — the answer still reads fine, so traditional output-eval passes while
+AgentDiff catches the regression and attributes it to `agents/fact_checker.py`.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A["Your agent + Runner"] -->|"httpx / requests / SDK shims<br/>capture every LLM + tool call"| B["Tracer"]
+    B --> C[("Trajectory store<br/>JSONL + agentdiff.sqlite")]
+    C --> D["Diff engine<br/>invocation rates · tool usage<br/>two-proportion + Mann–Whitney p-values"]
+    C --> E["Attribution engine<br/>agent manifest diff + git diff<br/>→ deterministic rule pipeline"]
+    D --> F["Report<br/>report.md + injected payload"]
+    E --> F
+    F --> G["Dashboard UI<br/>React · React Flow · Tailwind"]
+    E -. explanation only .-> H["LLM — Ollama / Anthropic / OpenAI"]
+```
+
+Capture and attribution are deterministic; the LLM is used **only** for the
+optional output-eval judge and the per-delta natural-language explanation —
+never to decide a verdict or an attribution.
+
+## Tech stack
+
+```mermaid
+flowchart TB
+    subgraph Engine["Engine — Python 3.10+"]
+        direction TB
+        cap["Capture — httpx · requests · aiohttp · gRPC · OpenAI/Anthropic/MCP SDK shims · framework adapters"]
+        cmp["Compare — NumPy stats (two-proportion · Mann–Whitney)"]
+        att["Attribution — AST manifest + git diff rule engine"]
+        sto["Storage — SQLite · JSONL · Pydantic v2"]
+        cli["CLI — Click · Rich"]
+    end
+    subgraph UI["Dashboard — TypeScript"]
+        direction TB
+        vite["Vite · React 18"]
+        flow["React Flow (before/after graph)"]
+        tw["Tailwind · shadcn/ui"]
+    end
+    subgraph LLM["LLM — pluggable, optional"]
+        ol["Ollama · Anthropic · OpenAI<br/>(judge + explanation)"]
+    end
+    Engine -->|"window.__AGENTDIFF__ payload"| UI
+    Engine -. optional .-> LLM
+```
 
 ## Quick start
 
@@ -125,7 +230,7 @@ Streaming HTTP bodies in SSE, NDJSON, and JSON-array forms are reconstructed int
 
 ## Framework and transport adapters
 
-AgentDiff now installs optional, soft-import adapters for:
+AgentDiff installs optional, soft-import adapters for:
 
 | Adapter | Captures |
 |---|---|
@@ -165,8 +270,11 @@ pip install -e ".[anthropic]"   # or [openai], [mcp], [aiohttp], [grpc], [framew
 
 AgentDiff's own LLM use (output-eval judge + attribution explainer) needs one of
 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, selected by `AGENTDIFF_LLM_PROVIDER`
-(default `anthropic`). If no key is set, the judge and explanation are skipped;
-behavioral findings and rule-based attribution still run.
+(default `anthropic`). Point `OPENAI_BASE_URL` at a local **Ollama**
+(`http://localhost:11434/v1`) with `AGENTDIFF_LLM_MODEL` to run the judge and
+explanations fully locally — that's how the demo above is generated. If no
+provider is reachable, the judge and explanation are skipped; behavioral findings
+and rule-based attribution still run.
 
 Semantic output similarity uses sentence-transformers and is optional:
 
@@ -201,13 +309,23 @@ agentdiff compare --baseline main --samples 20 --workers 4 --no-install-deps --m
 Thresholds, capture shims, dependency installation, and sample failure budgets
 can be configured in `.agentdiff/config.yaml`.
 
-The optional autoload hook is explicit:
+## Testing
 
 ```bash
-agentdiff hook install
-agentdiff hook status
-agentdiff hook uninstall
+# Engine (Python)
+pip install -e ".[dev]"
+pytest tests/ -q                 # behavioral, capture, attribution, storage, and UI-glue tests
+ruff check src/ tests/
+mypy src/agentdiff
+
+# Dashboard (TypeScript)
+npm --prefix frontend ci
+npm --prefix frontend run build  # tsc --noEmit && vite build
 ```
+
+External LLM/HTTP calls are mocked, so the suite is hermetic and runs offline. CI
+([`.github/workflows`](.github/workflows)) runs the engine suite, lint, type
+check, and the dashboard build on every push.
 
 ## What is still not hosted/distributed
 
@@ -230,11 +348,6 @@ line.
 | [METHODOLOGY.md](docs/METHODOLOGY.md) | Capture → comparison → attribution pipeline in detail |
 | [CODEBASE.md](docs/CODEBASE.md) | Module-by-module, function-by-function implementation reference |
 | [Limitations](docs/recipes/limitations.md) | What v0 deliberately does not support, and workarounds |
-
-## How it works
-
-See [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for the capture → comparison →
-attribution pipeline in detail.
 
 ## License
 

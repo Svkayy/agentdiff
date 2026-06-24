@@ -1,0 +1,10 @@
+test_cases:
+  - id: capital_of_france
+    input:
+      query: "What is the capital of France?"
+  - id: tallest_mountain
+    input:
+      query: "What is the tallest mountain on Earth?"
+  - id: speed_of_light
+    input:
+      query: "How fast does light travel in a vacuum?"

@@ -3,11 +3,13 @@
 Real GIFs and a real report from AgentDiff's dashboard — **not** mockups. Every
 frame renders data from an actual `agentdiff compare` run.
 
-| Asset | What it shows |
-|---|---|
-| [`hero.gif`](hero.gif) | The report Overview: verdict banner, before/after agent graph (`fact_checker` + `calculator` lit ember as *stopped*), and the "output eval PASS / AgentDiff FAIL" thesis card. |
-| [`attribution.gif`](attribution.gif) | Causal Attribution: `fact_checker`'s drop mapped to `agents/fact_checker.py` (`code_change`, 80%) with the exact diff hunk and an Ollama-written explanation. |
-| [`timeline.gif`](timeline.gif) | Trajectory Timeline toggling baseline → candidate — the `fact_checker` LLM/tool calls visibly disappear. |
+| Asset | Window | What it shows |
+|---|---|---|
+| [`hero.gif`](hero.gif) | Overview | Verdict banner, before/after agent graph (`fact_checker` + `calculator` lit ember as *stopped*), and the "output eval PASS / AgentDiff FAIL" thesis card. |
+| [`behavioral-deltas.png`](behavioral-deltas.png) | Behavioral Deltas | Per-test-case table of agent-invocation + tool-usage deltas with p-values, significance, and verdicts. |
+| [`attribution.gif`](attribution.gif) | Causal Attribution | `fact_checker`'s drop mapped to `agents/fact_checker.py` (`code_change`, 80%) with the exact diff hunk and an Ollama-written explanation. |
+| [`timeline.gif`](timeline.gif) | Trajectory Timeline | Toggling baseline → candidate — the `fact_checker` LLM/tool calls visibly disappear. |
+| [`run-summary.png`](run-summary.png) | Run Summary | Run quality, thresholds, output-evaluation details, and the reproduction command. |
 
 `*.mp4` are the source recordings. `sample-report/` is the real run the dashboard
 renders (`agentdiff.sqlite` + `report.md` + `metadata.json`).

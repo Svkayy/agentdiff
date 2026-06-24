@@ -36,6 +36,28 @@ const scrollBottom = () =>
 await page.goto(URL, { waitUntil: "networkidle" });
 await wait(2600); // initial load + one-time ember pulse + settle
 
+if (SCENE === "shots") {
+  // Still PNG of every dashboard window for the README gallery.
+  const shotsDir = path.join(HERE, "shots");
+  fs.mkdirSync(shotsDir, { recursive: true });
+  const shot = async (name, navName, scrollTop = 0) => {
+    if (navName) await nav(navName);
+    await wait(1400);
+    if (scrollTop) await page.locator("main").evaluate((el, t) => (el.scrollTop = t), scrollTop);
+    await wait(700);
+    await page.screenshot({ path: path.join(shotsDir, `${name}.png`) });
+  };
+  await shot("overview", null);
+  await shot("behavioral-deltas", "Behavioral Deltas");
+  await shot("attribution", "Causal Attribution");
+  await shot("timeline", "Trajectory Timeline");
+  await shot("run-summary", "Run Summary");
+  await ctx.close();
+  await browser.close();
+  console.log("wrote shots", fs.readdirSync(shotsDir));
+  process.exit(0);
+}
+
 if (SCENE === "hero" || SCENE === "tour") {
   await scrollMain(360);
   await wait(2200);

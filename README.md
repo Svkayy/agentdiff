@@ -32,25 +32,36 @@ caused each one.**
 ## The dashboard
 
 `agentdiff dashboard --serve` renders any run in a local, offline, single-file UI
-(React + React Flow + Tailwind/shadcn). Every screen below is **real data from a
-real `agentdiff compare` run** — see [`docs/demo/`](docs/demo/).
+(React + React Flow + Tailwind/shadcn). It has **five views**, every one shown
+below — and every pixel is **real data from a real `agentdiff compare` run**
+(see [`docs/demo/`](docs/demo/)).
 
-**Causal attribution** — each non-passing delta mapped to the file and exact diff
-hunk that caused it, with a model-written explanation and the alternatives the
-rule engine considered:
+**1 · Overview** — the before/after agent graph as the hero, with any stopped
+agent lit ember; a verdict banner; and the "output eval PASS / AgentDiff FAIL"
+contrast that is the product's whole thesis (shown in the hero GIF at the top).
+
+**2 · Behavioral Deltas** — every agent-invocation and tool-usage delta, per test
+case, with baseline/candidate rates, the signed delta, p-value, significance, and
+verdict. Stopped agents are lit ember.
+
+<p align="center"><img src="docs/demo/behavioral-deltas.png" alt="Behavioral Deltas table: fact_checker 100%→0% FAIL, web_search and calculator tool usage down, with p-values" width="820"></p>
+
+**3 · Causal Attribution** — each non-passing delta mapped to the file and exact
+diff hunk that caused it, with a model-written explanation and the alternatives
+the rule engine considered:
 
 <p align="center"><img src="docs/demo/attribution.gif" alt="Causal attribution: fact_checker's drop attributed to agents/fact_checker.py via the code_change rule, with the diff hunk" width="820"></p>
 
-**Trajectory timeline** — the captured LLM- and tool-call sequence. Toggle
+**4 · Trajectory Timeline** — the captured LLM- and tool-call sequence. Toggle
 baseline → candidate and watch the regressed agent's calls disappear:
 
 <p align="center"><img src="docs/demo/timeline.gif" alt="Trajectory timeline toggling baseline to candidate; fact_checker's calls vanish" width="820"></p>
 
-The dashboard has five views: **Overview** (the before/after agent graph as the
-hero, with any stopped agent lit ember), **Behavioral Deltas** (every invocation-
-and tool-usage delta with p-values and significance), **Causal Attribution**,
-**Trajectory Timeline**, and **Run Summary** (run quality, output-eval details,
-reproduction command).
+**5 · Run Summary** — run quality (trajectories, failure budget), thresholds, the
+traditional output-eval details (semantic/structural/length/judge), and a
+copy-paste reproduction command:
+
+<p align="center"><img src="docs/demo/run-summary.png" alt="Run Summary: run quality table, thresholds, and output-evaluation details" width="820"></p>
 
 ## Try the demo
 

@@ -1,22 +1,123 @@
+/* ── Self-hosted fonts (offline-safe — no CDN) ─────────────────────────────
+   Geist Variable  →  @fontsource-variable/geist (npm)
+   JetBrains Mono  →  @fontsource/jetbrains-mono (npm)
+   Cabinet Grotesk →  self-hosted TTF in src/fonts/ (Fontshare, downloaded)
+   ──────────────────────────────────────────────────────────────────────── */
+@import "@fontsource-variable/geist";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/700.css";
+
+/* Cabinet Grotesk — display / hero font (Fontshare, self-hosted TTF) */
+@font-face {
+  font-family: "Cabinet Grotesk";
+  src: url("./fonts/CabinetGrotesk-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── CSS design tokens (DESIGN.md) ─────────────────────────────────────────
+   Dark shell is the default — the graph plate is always dark;
+   a full dark shell reduces eye strain in the dev CLI context.
+   ──────────────────────────────────────────────────────────────────────── */
 @layer base {
+  :root {
+    /* ── Dark shell (default) ─────────────────────────────────────── */
+    --background: 220 12% 9%;           /* #14161A — dark shell */
+    --foreground: 210 20% 92%;          /* #E8EBEF — ink light */
+
+    --card: 220 13% 11%;                /* slightly lighter than shell */
+    --card-foreground: 210 20% 92%;
+
+    --popover: 220 13% 11%;
+    --popover-foreground: 210 20% 92%;
+
+    --primary: 12 100% 58%;             /* ember #FF4D2E */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 216 14% 18%;           /* node-fill #1B2027 */
+    --secondary-foreground: 210 20% 92%;
+
+    --muted: 215 12% 20%;
+    --muted-foreground: 215 10% 60%;    /* neutral-faint #8A929C approx */
+
+    --accent: 215 12% 20%;
+    --accent-foreground: 210 20% 92%;
+
+    --destructive: 12 100% 58%;         /* ember */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 216 15% 23%;              /* node-border #2A313B approx */
+    --input: 216 15% 23%;
+    --ring: 12 100% 58%;                /* ember ring */
+
+    --radius: 10px;                     /* md — DESIGN.md default */
+
+    /* ── Chart palette ────────────────────────────────────────────── */
+    --chart-1: 158 47% 47%;             /* pass #3FB27F */
+    --chart-2: 37 73% 57%;              /* warn #E8A33D */
+    --chart-3: 12 100% 58%;             /* ember #FF4D2E */
+    --chart-4: 215 10% 60%;             /* neutral-faint */
+    --chart-5: 215 14% 34%;             /* neutral-muted */
+
+    /* ── Raw DESIGN.md tokens (for use outside shadcn classes) ───── */
+    --color-ember: #FF4D2E;
+    --color-pass: #3FB27F;
+    --color-warn: #E8A33D;
+    --color-ink-dark: #15181D;
+    --color-ink-light: #E8EBEF;
+    --color-canvas: #0E1116;
+    --color-node-fill: #1B2027;
+    --color-node-border: #2A313B;
+    --color-shell-bg: #FAFAF8;
+    --color-shell-dark: #14161A;
+    --color-hairline: #E6E3DD;
+    --color-neutral-muted: #5B6470;
+    --color-neutral-faint: #8A929C;
+
+    /* ── Spacing (8px base, DESIGN.md scale) ─────────────────────── */
+    --space-2xs: 2px;
+    --space-xs:  4px;
+    --space-sm:  8px;
+    --space-md:  16px;
+    --space-lg:  24px;
+    --space-xl:  32px;
+    --space-2xl: 48px;
+    --space-3xl: 64px;
+
+    /* ── Motion durations (DESIGN.md) ────────────────────────────── */
+    --dur-micro:  80ms;
+    --dur-short:  200ms;
+    --dur-medium: 320ms;
+    --dur-long:   600ms;
+  }
+
   html,
   body {
     margin: 0;
     height: 100%;
   }
+
   body {
-    background-color: #f8fafc;
-    color: #0f172a;
-    font-family: Inter, system-ui, sans-serif;
+    /* Dark shell default */
+    background-color: #14161A;
+    color: #E8EBEF;
+    font-family: "Geist Variable", "Geist", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Tabular numerics helper (DESIGN.md: data / rates) */
   .tnum {
     font-variant-numeric: tabular-nums;
   }
+
+  /* Material Symbols shim (keep existing usage compiling) */
   .material-symbols-outlined {
     font-family: "Material Symbols Outlined";
     font-weight: normal;
@@ -31,40 +132,38 @@
 }
 
 @layer components {
-  /* Glassmorphism surfaces ported from the Stitch export. */
+  /* ── Glass surfaces (legacy — kept for existing components) ─────── */
   .glass-panel {
-    background: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.07);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
-      0 4px 6px -1px rgba(0, 0, 0, 0.05),
-      0 2px 4px -1px rgba(0, 0, 0, 0.03);
+      0 4px 6px -1px rgba(0, 0, 0, 0.2),
+      0 2px 4px -1px rgba(0, 0, 0, 0.1);
   }
+
   .glass-node {
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(125, 211, 252, 0.3);
-    box-shadow:
-      0 10px 15px -3px rgba(0, 0, 0, 0.05),
-      0 4px 6px -2px rgba(0, 0, 0, 0.025);
+    background: rgba(27, 32, 39, 0.9);    /* node-fill with slight transparency */
+    border: 1px solid #2A313B;            /* node-border */
     transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   }
+
   .glass-node:hover {
     transform: translateY(-2px);
-    box-shadow:
-      0 20px 25px -5px rgba(0, 0, 0, 0.05),
-      0 10px 10px -5px rgba(0, 0, 0, 0.02);
-    border-color: rgba(125, 211, 252, 0.6);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    border-color: #5B6470;
   }
+
+  /* Ember halo — DESIGN.md: one attention pulse on load, then still */
   .halo-glow {
-    box-shadow: 0 0 20px rgba(255, 77, 46, 0.2);
-    border: 1px solid rgba(255, 77, 46, 0.4) !important;
+    box-shadow: 0 0 20px rgba(255, 77, 46, 0.3);
+    border: 1px solid rgba(255, 77, 46, 0.5) !important;
+    animation: ember-pulse var(--dur-long) ease-out 1;
   }
 }
 
-/* Scrollbars */
+/* ── Scrollbars ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -73,26 +172,33 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #2A313B;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #5B6470;
 }
 
-/* React Flow overrides — light canvas, our edge colors. */
+/* ── React Flow overrides — dark canvas, DESIGN.md edge colors ───────────── */
 .react-flow__attribution {
   display: none;
 }
 .react-flow__edge-path {
-  stroke: #7dd3fc;
+  stroke: #5B6470;    /* neutral-muted for calm edges */
   stroke-width: 2;
 }
 .react-flow__edge.stopped .react-flow__edge-path {
   stroke: #ff4d2e;
   stroke-dasharray: 6 4;
-  filter: drop-shadow(0 0 4px rgba(255, 77, 46, 0.4));
+  filter: drop-shadow(0 0 4px rgba(255, 77, 46, 0.5));
 }
 .react-flow__handle {
   opacity: 0;
+}
+
+/* ── @keyframes (also declared in tailwind for Tailwind class usage) ─────── */
+@keyframes ember-pulse {
+  0%,
+  100% { box-shadow: 0 0 0 0 rgba(255, 77, 46, 0); }
+  50%   { box-shadow: 0 0 0 12px rgba(255, 77, 46, 0.25); }
 }

@@ -1,0 +1,36 @@
+{
+  "run_id": "2026-06-24_183422",
+  "timestamp": "2026-06-24_183422",
+  "baseline_ref": "309b7404fa643f675a908e801ef302e342ea978f",
+  "baseline_arg": "309b7404fa643f675a908e801ef302e342ea978f",
+  "baseline_sample_ref": "309b7404fa643f675a908e801ef302e342ea978f",
+  "candidate_ref": "working",
+  "smoke_mode": false,
+  "samples_per_case": 8,
+  "workers": 1,
+  "install_deps": false,
+  "max_failure_rate": 0.2,
+  "thresholds": {
+    "agent_invocation_rate_warn": 0.2,
+    "agent_invocation_rate_fail": 0.5,
+    "tool_usage_avg_warn": 0.5,
+    "tool_usage_avg_fail": 1.0
+  },
+  "capture": {
+    "httpx": true,
+    "requests": true,
+    "aiohttp": true,
+    "grpc": true,
+    "openai_sdk": true,
+    "anthropic_sdk": true,
+    "mcp": true,
+    "langgraph": true,
+    "crewai": true,
+    "autogen": true,
+    "llamaindex": true
+  },
+  "baseline_trajectories": 24,
+  "candidate_trajectories": 24,
+  "baseline_failed": 0,
+  "candidate_failed": 0
+}

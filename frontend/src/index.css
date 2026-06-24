@@ -28,7 +28,7 @@
 @layer base {
   :root {
     /* ── Dark shell (default) ─────────────────────────────────────── */
-    --background: 220 12% 9%;           /* #14161A — dark shell */
+    --background: 220 13% 9%;           /* #14161A — dark shell */
     --foreground: 210 20% 92%;          /* #E8EBEF — ink light */
 
     --card: 220 13% 11%;                /* slightly lighter than shell */

@@ -1,0 +1,31 @@
+version: "1"
+agents:
+  - name: orchestrator
+    function: run_research
+    file: agents/orchestrator.py
+    line: 1
+  - name: retriever
+    function: retriever_agent
+    file: agents/retriever.py
+    line: 1
+  - name: fact_checker
+    function: fact_checker_agent
+    file: agents/fact_checker.py
+    line: 1
+  - name: summarizer
+    function: summarizer_agent
+    file: agents/summarizer.py
+    line: 1
+tools:
+  - name: web_search
+    function: web_search
+    file: tools.py
+    line: 1
+  - name: calculator
+    function: calculator
+    file: tools.py
+    line: 1
+entry_points:
+  - function: run
+    file: runner.py
+    line: 1

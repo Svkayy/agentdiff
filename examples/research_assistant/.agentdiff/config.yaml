@@ -1,0 +1,9 @@
+runner:
+  module: runner
+  callable: run
+samples_per_case: 8
+llm_provider: openai          # judge + attribution explainer route to Ollama via OPENAI_BASE_URL
+sampling:
+  install_deps: false         # agentdiff + openai already live in the active venv
+  max_failure_rate: 0.2
+  workers: 1

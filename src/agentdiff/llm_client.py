@@ -28,7 +28,7 @@ class LLMClient:
             "AGENTDIFF_LLM_PROVIDER", "anthropic"
         )
         self._api_key = api_key
-        self._model = model
+        self._model = model or os.environ.get("AGENTDIFF_LLM_MODEL")
         self._client: Any = None  # lazily constructed (anthropic/openai SDK client)
 
     @property
@@ -71,7 +71,8 @@ class LLMClient:
         if self._client is None:
             import openai
             self._client = openai.OpenAI(
-                api_key=self._api_key or os.environ.get("OPENAI_API_KEY")
+                api_key=self._api_key or os.environ.get("OPENAI_API_KEY"),
+                base_url=os.environ.get("OPENAI_BASE_URL"),
             )
         resp = self._client.chat.completions.create(
             model=self.model,

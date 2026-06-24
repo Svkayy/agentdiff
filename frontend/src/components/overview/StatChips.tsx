@@ -62,18 +62,11 @@ export function StatChips({ data }: { data: ReportData }) {
         accent={flagged > 0 ? "ember" : "pass"}
       />
       <Chip label="Samples / Side" value={samples} />
+      {/* Behavioral overlap is a neutral statistic, not a regression signal.
+          Use neutral ink regardless of value — ember is reserved for stopped nodes. */}
       <Chip
         label="Behavioral Overlap"
         value={avgOverlap !== null ? `${avgOverlap}%` : "—"}
-        accent={
-          avgOverlap !== null
-            ? avgOverlap >= 80
-              ? "pass"
-              : avgOverlap >= 60
-                ? "warn"
-                : "ember"
-            : undefined
-        }
       />
     </div>
   );

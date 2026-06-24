@@ -41,7 +41,7 @@ export function GraphNodeCard({ data, selected }: { data: NodeData; selected: bo
         <span
           className={cn(
             "text-base font-semibold",
-            n.stopped ? "font-bold text-ember" : "text-slate-800",
+            n.stopped ? "font-bold text-ember" : "text-ink-light",
           )}
         >
           {n.label}
@@ -57,11 +57,11 @@ export function GraphNodeCard({ data, selected }: { data: NodeData; selected: bo
       <div
         className={cn(
           "mt-2 flex justify-between border-t pt-3 font-mono text-xs tnum",
-          n.stopped ? "border-red-100" : "border-slate-100",
+          n.stopped ? "border-ember/20" : "border-node-border",
         )}
       >
-        <span className="text-slate-500">{m.label}</span>
-        <span className={cn("font-medium", n.stopped ? "font-bold text-ember" : "text-slate-800")}>
+        <span className="text-neutral-faint">{m.label}</span>
+        <span className={cn("font-medium", n.stopped ? "font-bold text-ember" : "text-ink-light")}>
           {m.value}
         </span>
       </div>

@@ -95,6 +95,17 @@ def test_build_assembles_all_sections(tmp_path):
     assert tl[1]["response_preview"] == "B"
 
 
+def test_dashboard_injects_full_payload(tmp_path):
+    from agentdiff import dashboard, report_payload
+    report_dir = _write_run(tmp_path)
+    html = dashboard.render_dashboard({
+        **dashboard.summarize_report(report_dir),
+        "full_payload": report_payload.build(report_dir),
+    })
+    assert "window.__AGENTDIFF__" in html
+    assert '"comparison"' in html and '"trajectories"' in html and '"runQuality"' in html
+
+
 def test_build_tolerates_missing_metadata_and_artifacts(tmp_path):
     # A bare sqlite with no artifacts / no metadata.json still yields a valid shape.
     report_dir = tmp_path / "bare"

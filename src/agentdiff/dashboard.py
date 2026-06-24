@@ -36,7 +36,9 @@ def latest_report_dir(project_root: Path) -> Path | None:
 
 def write_dashboard(report_dir: Path) -> Path:
     report_dir = Path(report_dir)
+    from agentdiff import report_payload  # local import avoids a cycle
     summary = summarize_report(report_dir)
+    summary["full_payload"] = report_payload.build(report_dir)
     target = report_dir / "dashboard.html"
     target.write_text(render_dashboard(summary), encoding="utf-8")
     return target
@@ -68,13 +70,11 @@ def summarize_report(report_dir: Path) -> dict[str, Any]:
 
 
 def _payload_json(summary: dict[str, Any]) -> str:
-    graph = summary.get("graph") or AgentGraph()
-    payload = {
-        "graph": graph.model_dump(),
-        "meta": summary.get("meta", {}),
-    }
-    # ``</`` is escaped so a diff hunk containing "</script>" can't break out of
-    # the injected <script> tag.
+    if summary.get("full_payload") is not None:
+        payload = summary["full_payload"]
+    else:
+        graph = summary.get("graph") or AgentGraph()
+        payload = {"graph": graph.model_dump(), "meta": summary.get("meta", {})}
     return json.dumps(payload, default=str).replace("</", "<\\/")
 
 

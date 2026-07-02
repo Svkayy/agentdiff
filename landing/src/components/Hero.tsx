@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Copy, Star } from "lucide-react";
+import { useSkipEntrance } from "@/lib/utils";
 import { Spotlight } from "./aceternity/Spotlight";
 import { TextGenerateEffect } from "./aceternity/TextGenerateEffect";
 import { GraphPlate } from "./GraphPlate";
@@ -38,13 +39,14 @@ function InstallButton() {
 }
 
 export function Hero() {
+  const skip = useSkipEntrance();
   return (
     <section id="top" className="relative overflow-hidden border-b border-hairline">
       <Spotlight className="left-1/2 top-0 w-[140%] max-w-none -translate-x-1/2" />
       <div className="relative mx-auto grid max-w-content gap-12 px-5 pb-20 pt-16 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:pt-24">
         <div>
           <motion.p
-            initial={{ opacity: 0, y: 8 }}
+            initial={skip ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, ease: "easeOut" }}
             className="font-mono text-[12px] uppercase tracking-[0.16em] text-muted"
@@ -52,7 +54,7 @@ export function Hero() {
             Behavioral CI gate for AI agents
           </motion.p>
           <motion.h1
-            initial={{ opacity: 0, y: 12 }}
+            initial={skip ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, ease: "easeOut", delay: 0.06 }}
             className="mt-4 max-w-xl font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-ink sm:text-5xl"
@@ -65,7 +67,7 @@ export function Hero() {
             className="mt-5 max-w-xl text-lg leading-relaxed text-muted"
           />
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
+            initial={skip ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, ease: "easeOut", delay: 0.5 }}
             className="mt-8 flex flex-wrap items-center gap-3"
@@ -80,7 +82,7 @@ export function Hero() {
             </a>
           </motion.div>
           <motion.p
-            initial={{ opacity: 0 }}
+            initial={skip ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.32, ease: "easeOut", delay: 0.65 }}
             className="mt-6 font-mono text-[12px] text-faint"

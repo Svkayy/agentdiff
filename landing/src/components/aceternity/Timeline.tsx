@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
+import { useSkipEntrance } from "@/lib/utils";
 
 export interface TimelineEntry {
   step: string;
@@ -13,12 +14,13 @@ export interface TimelineEntry {
  * rise in on scroll (short, ease-out, staggered) and are still afterwards.
  */
 export function Timeline({ entries }: { entries: TimelineEntry[] }) {
+  const skip = useSkipEntrance();
   return (
     <ol className="relative ml-1 border-l border-hairline">
       {entries.map((entry, i) => (
         <motion.li
           key={entry.step}
-          initial={{ y: 12 }}
+          initial={skip ? false : { y: 12 }}
           whileInView={{ y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.32, ease: "easeOut", delay: 0.05 }}

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { cn, useSkipEntrance } from "@/lib/utils";
 
 /**
  * Aceternity "Text Generate Effect" pattern, adapted: words fade in once with
@@ -15,11 +15,12 @@ export function TextGenerateEffect({
   className?: string;
   delay?: number;
 }) {
+  const skip = useSkipEntrance();
   const tokens = words.split(" ");
   return (
     <motion.p
       className={cn(className)}
-      initial="hidden"
+      initial={skip ? "visible" : "hidden"}
       animate="visible"
       transition={{ staggerChildren: 0.028, delayChildren: delay }}
     >

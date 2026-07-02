@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { cn, useSkipEntrance } from "@/lib/utils";
 
 /**
  * Aceternity "Bento Grid" pattern, restyled: white cards, hairline borders,
@@ -36,9 +36,10 @@ export function BentoGridItem({
   header?: ReactNode;
   index?: number;
 }) {
+  const skip = useSkipEntrance();
   return (
     <motion.article
-      initial={{ y: 12 }}
+      initial={skip ? false : { y: 12 }}
       whileInView={{ y: 0 }}
       viewport={{ once: true, margin: "-60px" }}
       transition={{ duration: 0.32, ease: "easeOut", delay: (index % 3) * 0.07 }}

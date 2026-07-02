@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { cn, useSkipEntrance } from "@/lib/utils";
 
 export interface HoverCard {
   id: string;
@@ -22,13 +22,14 @@ export function CardHoverEffect({
   className?: string;
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
+  const skip = useSkipEntrance();
 
   return (
     <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-3", className)}>
       {items.map((item, index) => (
         <motion.div
           key={item.id}
-          initial={{ y: 12 }}
+          initial={skip ? false : { y: 12 }}
           whileInView={{ y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.32, ease: "easeOut", delay: index * 0.07 }}

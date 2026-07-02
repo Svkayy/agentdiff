@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useSkipEntrance } from "@/lib/utils";
 
 // DESIGN.md palette — ember is reserved for the regression signal only.
 const EMBER = "#FF4D2E";
@@ -50,14 +51,16 @@ function GraphPanel({
   title,
   verdict,
   candidate,
+  skip,
 }: {
   title: string;
   verdict: "PASS" | "FAIL";
   candidate: boolean;
+  skip: boolean;
 }) {
   const orchestrator = NODES[0];
   const enter = (i: number) => ({
-    initial: { opacity: 0, scale: 0.96 },
+    initial: skip ? false : { opacity: 0, scale: 0.96 },
     animate: { opacity: 1, scale: 1 },
     transition: { duration: 0.32, ease: "easeOut" as const, delay: 0.15 + i * 0.08 },
   });
@@ -92,7 +95,7 @@ function GraphPanel({
               strokeWidth={1.25}
               strokeDasharray={stoppedEdge ? "3 4" : undefined}
               strokeOpacity={stoppedEdge ? 0.7 : 1}
-              initial={{ pathLength: 0 }}
+              initial={skip ? false : { pathLength: 0 }}
               animate={{ pathLength: 1 }}
               transition={{ duration: 0.32, ease: "easeOut", delay: 0.3 + i * 0.08 }}
             />
@@ -114,7 +117,7 @@ function GraphPanel({
                   rx={10}
                   fill="none"
                   stroke={EMBER}
-                  initial={{ opacity: 0.9, scale: 1, strokeWidth: 1.5 }}
+                  initial={skip ? false : { opacity: 0.9, scale: 1, strokeWidth: 1.5 }}
                   animate={{ opacity: 0, scale: 1.28, strokeWidth: 0.5 }}
                   transition={{ duration: 0.6, ease: "easeOut", delay: 0.9 }}
                   style={{ transformOrigin: `${n.x + NODE_W / 2}px ${n.y + NODE_H / 2}px` }}
@@ -169,9 +172,10 @@ function GraphPanel({
  * where fact_checker has silently stopped firing — the one ember signal.
  */
 export function GraphPlate() {
+  const skip = useSkipEntrance();
   return (
     <motion.figure
-      initial={{ opacity: 0, y: 16 }}
+      initial={skip ? false : { opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: "easeOut", delay: 0.1 }}
       className="overflow-hidden rounded-lg border border-hairline bg-canvas shadow-[0_24px_60px_rgba(21,24,29,0.18)]"
@@ -185,9 +189,9 @@ export function GraphPlate() {
         </span>
       </div>
       <div className="dot-grid-dark flex flex-col gap-6 p-5 sm:flex-row sm:gap-4">
-        <GraphPanel title="baseline · origin/main" verdict="PASS" candidate={false} />
+        <GraphPanel title="baseline · origin/main" verdict="PASS" candidate={false} skip={skip} />
         <div aria-hidden="true" className="hidden w-px self-stretch bg-nodeborder sm:block" />
-        <GraphPanel title="candidate · working" verdict="FAIL" candidate />
+        <GraphPanel title="candidate · working" verdict="FAIL" candidate skip={skip} />
       </div>
       <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-nodeborder px-5 py-3 font-mono text-[11px]">
         <span style={{ color: EMBER }}>fact_checker: 100% → 0%</span>

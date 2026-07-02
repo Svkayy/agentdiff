@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { cn, useSkipEntrance } from "@/lib/utils";
 
 /**
  * Aceternity "Spotlight" pattern, restrained for the AgentDiff design system:
@@ -8,10 +8,11 @@ import { cn } from "@/lib/utils";
  * shell. Renders once, then stays still.
  */
 export function Spotlight({ className }: { className?: string }) {
+  const skip = useSkipEntrance();
   return (
     <motion.svg
       aria-hidden="true"
-      initial={{ opacity: 0 }}
+      initial={skip ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
       className={cn("pointer-events-none absolute -z-0 select-none", className)}

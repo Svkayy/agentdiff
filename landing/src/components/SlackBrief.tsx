@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useSkipEntrance } from "@/lib/utils";
 
 const EMBER = "#FF4D2E";
 
@@ -15,6 +16,7 @@ function SlackButton({ label }: { label: string }) {
  * Dark panel, ember left color bar — the ember here IS the regression signal.
  */
 export function SlackBrief() {
+  const skip = useSkipEntrance();
   return (
     <section aria-labelledby="slack-brief-heading" className="border-b border-hairline">
       <div className="mx-auto max-w-content px-5 py-20">
@@ -35,7 +37,7 @@ export function SlackBrief() {
         </div>
 
         <motion.div
-          initial={{ y: 14 }}
+          initial={skip ? false : { y: 14 }}
           whileInView={{ y: 0 }}
           viewport={{ once: true, margin: "-80px" }}
           transition={{ duration: 0.32, ease: "easeOut" }}

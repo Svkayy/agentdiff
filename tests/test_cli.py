@@ -19,7 +19,7 @@ def test_help_lists_all_commands():
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"], catch_exceptions=False)
     assert result.exit_code == 0
-    for cmd in ("init", "compare", "doctor", "hook", "structure", "replay"):
+    for cmd in ("init", "compare", "ci", "doctor", "hook", "structure", "replay"):
         assert cmd in result.output
 
 

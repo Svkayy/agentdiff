@@ -5,6 +5,7 @@ from agentdiff.capture.events import (
     CallSite, CanonicalLLMCall, LLMRequestEvent, LocalToolInvokedEvent,
 )
 from agentdiff.storage import (
+    JsonlTrajectorySink,
     append_trajectory,
     load_trajectory_set,
     load_trajectory_set_from_sqlite,
@@ -51,6 +52,18 @@ def test_round_trip(tmp_path):
     assert t.agents_invoked() == ["My Agent"]
     assert len(t.llm_calls()) == 1
     assert len(t.tool_calls()) == 1
+
+
+def test_jsonl_trajectory_sink_round_trips_by_side(tmp_path):
+    sink = JsonlTrajectorySink(tmp_path / "sink")
+    baseline = Trajectory(test_case_id="tc1", version_tag="baseline", input={})
+    candidate = Trajectory(test_case_id="tc1", version_tag="candidate", input={})
+
+    sink.append(baseline)
+    sink.append(candidate)
+
+    assert sink.load("baseline").trajectories == [baseline]
+    assert sink.load("candidate").trajectories == [candidate]
 
 
 def test_load_missing_file_returns_empty(tmp_path):

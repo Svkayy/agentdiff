@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from agentdiff.attribution import engine as attribution_engine
+from agentdiff.attribution.git_diff import GitRange
 from agentdiff.attribution.manifest import AgentManifest
 from agentdiff.attribution.manifest_diff import diff_manifests
 from agentdiff.attribution.rules import apply_rules
@@ -207,3 +208,53 @@ def test_engine_attributes_prompt_change_end_to_end(tmp_path):
     assert ba.primary.rule == "direct_prompt_change"
     assert ba.primary.target_path == "agent.py"
     assert "candidate" in ba.primary.hunk
+
+
+@pytestmark_git
+def test_attribute_range_matches_legacy_attribute_for_working_tree(tmp_path):
+    project = tmp_path / "proj"
+    project.mkdir()
+    baseline_prompt = "You are a helpful baseline assistant"
+    candidate_prompt = "You are a helpful candidate assistant"
+
+    (project / "agent.py").write_text(
+        "import anthropic\n"
+        f'PROMPT = "{baseline_prompt}"\n'
+        "def research_agent(query):\n"
+        "    client = anthropic.Anthropic()\n"
+        "    return client.messages.create(model='claude-x', system=PROMPT, messages=[])\n"
+    )
+    _git(["init"], project)
+    _git(["config", "user.email", "t@t.com"], project)
+    _git(["config", "user.name", "t"], project)
+    _git(["add", "-A"], project)
+    _git(["commit", "-m", "baseline"], project)
+
+    (project / "agent.py").write_text(
+        (project / "agent.py").read_text().replace(baseline_prompt, candidate_prompt)
+    )
+
+    structure = StructureDoc(
+        agents=[AgentEntry(name="Research", function="research_agent", file="agent.py", line=3)],
+    )
+    baseline = [_agent_traj("baseline", baseline_prompt) for _ in range(20)]
+    candidate = [_agent_traj("candidate", candidate_prompt) for _ in range(14)]
+    candidate += [_agent_traj("candidate", candidate_prompt, fires=False) for _ in range(6)]
+    comparison = compare_all(
+        TrajectorySet(version_tag="baseline", trajectories=baseline),
+        TrajectorySet(version_tag="candidate", trajectories=candidate),
+        structure,
+        ["tc1"],
+    )
+
+    result = attribution_engine.attribute_range(
+        comparison=comparison,
+        structure=structure,
+        baseline_trajectories=baseline,
+        candidate_trajectories=candidate,
+        repo_root=project,
+        git_range=GitRange(base_ref="HEAD", head_ref=None),
+    )
+
+    assert result.attributions[0].primary is not None
+    assert result.attributions[0].primary.target_path == "agent.py"

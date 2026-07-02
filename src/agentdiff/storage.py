@@ -7,9 +7,35 @@ SQLite is the structured run artifact written after comparison.
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from agentdiff.trajectory import Trajectory, TrajectorySet
+
+
+class TrajectorySink(Protocol):
+    """Write and read trajectory sets for one capture environment."""
+
+    def append(self, trajectory: Trajectory) -> None:
+        ...
+
+    def load(self, version_tag: Literal["baseline", "candidate"]) -> TrajectorySet:
+        ...
+
+
+class JsonlTrajectorySink:
+    """CI-friendly trajectory sink backed by one JSONL file per side."""
+
+    def __init__(self, root: str | Path):
+        self.root = Path(root)
+
+    def path_for(self, version_tag: Literal["baseline", "candidate"]) -> Path:
+        return self.root / f"{version_tag}.jsonl"
+
+    def append(self, trajectory: Trajectory) -> None:
+        append_trajectory(self.path_for(trajectory.version_tag), trajectory)
+
+    def load(self, version_tag: Literal["baseline", "candidate"]) -> TrajectorySet:
+        return load_trajectory_set(self.path_for(version_tag), version_tag)
 
 
 def load_trajectory_set(

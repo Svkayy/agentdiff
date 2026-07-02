@@ -1,4 +1,5 @@
 from agentdiff.capture.activator import install as _install, uninstall as _uninstall
+from agentdiff.capture.cassette import cassette
 from agentdiff.capture.decorators import tool
 from agentdiff.capture.session import record
 
@@ -32,4 +33,4 @@ def uninstall() -> None:
     _INSTALLED_CONFIG = None
 
 
-__all__ = ["install", "uninstall", "tool", "record"]
+__all__ = ["install", "uninstall", "tool", "record", "cassette"]

@@ -1,6 +1,19 @@
 """Collect per-file unified diffs between baseline and candidate."""
 import subprocess
 from pathlib import Path
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class GitRange:
+    """A deploy/PR attribution boundary."""
+
+    base_ref: str
+    head_ref: str | None = None
+
+    @property
+    def candidate_arg(self) -> str:
+        return self.head_ref or "working"
 
 
 def collect_git_diff(

@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
+import { useSkipEntrance } from "@/lib/utils";
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
@@ -15,10 +16,11 @@ export function SectionReveal({
   children: ReactNode;
   sectionKey: string;
 }) {
+  const skip = useSkipEntrance();
   return (
     <motion.div
       key={sectionKey}
-      initial={{ opacity: 0, y: 12 }}
+      initial={skip ? false : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: EASE_OUT }}
     >

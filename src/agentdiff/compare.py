@@ -103,7 +103,13 @@ def _tool_verdict(delta: float, thresholds: CompareThresholds | None = None) -> 
     return "pass"
 
 
-def _worst(verdicts: list[Verdict]) -> Verdict:
+def severity(verdict: Verdict) -> int:
+    """Ordering rank for a verdict: pass(0) < warn(1) < fail(2)."""
+    return _SEVERITY[verdict]
+
+
+def worst_verdict(*verdicts: Verdict) -> Verdict:
+    """The most severe verdict among the arguments (pass < warn < fail)."""
     worst: Verdict = "pass"
     for v in verdicts:
         if _SEVERITY[v] > _SEVERITY[worst]:
@@ -253,7 +259,7 @@ def compare_test_case(
     overlap = _jaccard(_exercised_tools(baseline), _exercised_tools(candidate))
 
     verdicts = [d.verdict for d in agent_deltas] + [d.verdict for d in tool_deltas]
-    overall = _worst(verdicts)
+    overall = worst_verdict(*verdicts)
 
     return TestCaseComparison(
         test_case_id=test_case_id,
@@ -293,5 +299,5 @@ def compare_all(
         c = candidate_set.for_test_case(tc_id)
         comparisons.append(compare_test_case(tc_id, b, c, structure, resolved_thresholds))
 
-    overall = _worst([c.overall_verdict for c in comparisons])
+    overall = worst_verdict(*(c.overall_verdict for c in comparisons))
     return ComparisonResult(test_case_comparisons=comparisons, overall_verdict=overall)

@@ -23,10 +23,8 @@ compare/sampling concern upstream of this rendering layer.
 """
 from pydantic import BaseModel, Field
 
-from agentdiff.compare import ComparisonResult, Verdict
+from agentdiff.compare import ComparisonResult, Verdict, severity, worst_verdict
 from agentdiff.trajectory import TrajectorySet
-
-_SEVERITY = {"pass": 0, "warn": 1, "fail": 2}
 
 
 class GraphNode(BaseModel):
@@ -60,13 +58,24 @@ class AgentGraph(BaseModel):
     has_uncertain: bool = False
 
 
-def _worst(a: Verdict, b: Verdict) -> Verdict:
-    return a if _SEVERITY[a] >= _SEVERITY[b] else b
-
-
 def _finalize_fire_state(node: GraphNode) -> None:
     node.fired = node.candidate_rate > 0.0
     node.stopped = node.baseline_rate > 0.0 and node.candidate_rate == 0.0
+
+
+def _finalize_significance(node: GraphNode, worst_sig: Verdict) -> None:
+    """Mark a node confirmed iff a *significant* delta reached its worst verdict.
+
+    A node's displayed verdict is the worst across its test cases; ``worst_sig``
+    is the worst verdict among only the statistically-significant deltas. The
+    node is "confirmed" when significance reaches the displayed severity — so a
+    node whose worst verdict comes from a confirmed delta stays significant even
+    if a separate, sparse delta for the same node was uncertain (the headline
+    signal is real). ``_apply_significance`` upstream already downgrades a
+    non-significant ``fail`` to ``warn``, so a ``fail`` verdict is always backed
+    by a significant delta and stays confirmed here.
+    """
+    node.significant = severity(worst_sig) >= severity(node.verdict)
 
 
 def build(
@@ -89,14 +98,22 @@ def build(
         comp = ComparisonResult.model_validate(comparison)
 
     # Agent nodes — aggregate each agent across test cases (one node per agent).
+    # ``worst_sig`` tracks the worst verdict among the *significant* deltas so a
+    # node's confirmed-ness follows its displayed verdict, not any sparse delta.
+    # ``samples`` records the per-side sample count behind each delta so the
+    # trust banner's "N runs" can be tied to the uncertain agents specifically.
     agents: dict[str, GraphNode] = {}
-    sample_counts: list[int] = []
+    worst_sig: dict[str, Verdict] = {}
+    samples: dict[str, list[int]] = {}
     for tc in comp.test_case_comparisons:
         for d in tc.agent_invocation_deltas:
-            sample_counts.append(min(d.baseline_total, d.candidate_total))
-            # A flagged change (non-pass) that isn't statistically significant is
-            # "uncertain" — could be variance at this sample size.
-            uncertain = d.verdict != "pass" and not d.significant
+            samples.setdefault(d.agent_name, []).append(
+                min(d.baseline_total, d.candidate_total)
+            )
+            if d.significant:
+                worst_sig[d.agent_name] = worst_verdict(
+                    worst_sig.get(d.agent_name, "pass"), d.verdict
+                )
             node = agents.get(d.agent_name)
             if node is None:
                 agents[d.agent_name] = GraphNode(
@@ -106,21 +123,25 @@ def build(
                     baseline_rate=d.baseline_rate,
                     candidate_rate=d.candidate_rate,
                     verdict=d.verdict,
-                    significant=not uncertain,
                 )
             else:
                 node.baseline_rate = max(node.baseline_rate, d.baseline_rate)
                 node.candidate_rate = max(node.candidate_rate, d.candidate_rate)
-                node.verdict = _worst(node.verdict, d.verdict)
-                if uncertain:
-                    node.significant = False
-    for node in agents.values():
+                node.verdict = worst_verdict(node.verdict, d.verdict)
+    for name, node in agents.items():
+        _finalize_significance(node, worst_sig.get(name, "pass"))
         _finalize_fire_state(node)
 
-    # Tool nodes — same aggregation over tool-usage deltas.
+    # Tool nodes — same aggregation, including the same significance logic so a
+    # flagged-but-unconfirmed tool change also drives the trust banner.
     tools: dict[str, GraphNode] = {}
+    tool_worst_sig: dict[str, Verdict] = {}
     for tc in comp.test_case_comparisons:
         for td in tc.tool_usage_deltas:
+            if td.significant:
+                tool_worst_sig[td.tool_name] = worst_verdict(
+                    tool_worst_sig.get(td.tool_name, "pass"), td.verdict
+                )
             node = tools.get(td.tool_name)
             if node is None:
                 tools[td.tool_name] = GraphNode(
@@ -134,8 +155,9 @@ def build(
             else:
                 node.baseline_rate = max(node.baseline_rate, td.baseline_avg)
                 node.candidate_rate = max(node.candidate_rate, td.candidate_avg)
-                node.verdict = _worst(node.verdict, td.verdict)
-    for node in tools.values():
+                node.verdict = worst_verdict(node.verdict, td.verdict)
+    for name, node in tools.items():
+        _finalize_significance(node, tool_worst_sig.get(name, "pass"))
         _finalize_fire_state(node)
 
     # Attach attribution (cause file + hunk + explanation) to agent nodes.
@@ -163,11 +185,25 @@ def build(
 
     nodes = list(agents.values()) + list(tools.values())
     has_change = any(n.verdict != "pass" or n.stopped for n in nodes)
+    has_uncertain = any(not n.significant for n in nodes)
+
+    # min_samples is the sample size the banner cites as the reason a change
+    # isn't confirmed, so draw it from the *uncertain* agents — not an unrelated
+    # well-sampled or low-sampled confirmed agent. Tool deltas carry no per-side
+    # totals, so they drive has_uncertain but not this count. Fall back to the
+    # global agent minimum when uncertainty has no agent sample data to cite.
+    uncertain_samples = [
+        c for name, node in agents.items() if not node.significant
+        for c in samples.get(name, [])
+    ]
+    all_samples = [c for counts in samples.values() for c in counts]
+    pool = uncertain_samples or all_samples
+    min_samples = min(pool) if pool else 0
     return AgentGraph(
         nodes=nodes,
         edges=[GraphEdge(source=s, target=t) for s, t in sorted(edges)],
         overall_verdict=comp.overall_verdict,
         has_change=has_change,
-        min_samples=min(sample_counts) if sample_counts else 0,
-        has_uncertain=any(not n.significant for n in agents.values()),
+        min_samples=min_samples,
+        has_uncertain=has_uncertain,
     )

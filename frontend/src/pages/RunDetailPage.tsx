@@ -241,7 +241,11 @@ function AgentGraph({
     findings
       .filter((f) => f.verdict === "fail")
       .flatMap((f) =>
-        agents.map((a) => a.name).filter((name) => f.title.toLowerCase().startsWith(name.toLowerCase())),
+        agents.map((a) => a.name).filter((name) => {
+          const t = f.title.toLowerCase();
+          const n = name.toLowerCase();
+          return t.startsWith(n) && (t.length === n.length || t[n.length] === " ");
+        }),
       ),
   );
 

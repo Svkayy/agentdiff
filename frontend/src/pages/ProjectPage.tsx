@@ -276,8 +276,8 @@ function SetupTab({ projectId }: { projectId: string }) {
     try {
       const data = await listKeys(projectId, getToken);
       setKeys(data);
-    } catch {
-      /* keys endpoint may not exist — ignore gracefully */
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load API keys");
     } finally {
       setKeysLoading(false);
     }
@@ -360,7 +360,7 @@ AGENTDIFF_API_KEY=<your-key>`;
               <button
                 onClick={() => void handleRevoke(confirmRevoke)}
                 disabled={revoking === confirmRevoke}
-                className="flex-1 rounded-sm bg-ember px-md py-sm text-small font-medium text-white disabled:opacity-40"
+                className="flex-1 rounded-sm bg-ink text-white hover:bg-[#2A2E35] px-md py-sm text-small font-medium disabled:opacity-40"
               >
                 {revoking === confirmRevoke ? "Revoking…" : "Revoke"}
               </button>
@@ -436,7 +436,7 @@ AGENTDIFF_API_KEY=<your-key>`;
                     </td>
                     <td className="px-md py-sm">
                       {k.revoked_at ? (
-                        <span className="font-mono text-micro text-ember">Revoked</span>
+                        <span className="font-mono text-micro text-muted line-through">Revoked</span>
                       ) : (
                         <span className="font-mono text-micro text-verdict-pass">Active</span>
                       )}

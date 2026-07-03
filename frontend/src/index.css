@@ -172,11 +172,11 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2A313B;
+  background: #E6E3DD;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #5B6470;
+  background: #C9C5BD;
 }
 
 /* ── Light dot-grid for agent graph plates ───────────────────────────────── */

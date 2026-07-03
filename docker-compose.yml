@@ -46,7 +46,12 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
   dashboard:
-    build: { context: ., dockerfile: frontend/Dockerfile }
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
+        VITE_AGENTDIFF_API_URL: ${VITE_AGENTDIFF_API_URL:-http://localhost:8000}
     restart: unless-stopped
     ports: ["5173:80"]
     depends_on: [api]

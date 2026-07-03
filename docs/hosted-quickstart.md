@@ -151,7 +151,12 @@ clicks without touching a bot token.
 3. Under **OAuth & Permissions** → **Bot Token Scopes**, add:
    - `incoming-webhook`
    - `chat:write`
+   - `channels:join`
 4. Install the app to your workspace (needed to activate the scopes).
+   > **Note for existing installs:** if you added `channels:join` to an app that
+   > was already installed, each user must re-authorize ("Add to Slack" again) to
+   > grant the new scope. Until they do, the bot cannot auto-join public channels
+   > and will fall back to the webhook.
 5. Copy the **Client ID** and **Client Secret** from **Basic Information**.
 6. Set these environment variables on the API service:
 
@@ -171,8 +176,13 @@ clicks without touching a bot token.
 
 Slack briefs are sent for every `warn` or `fail` verdict — both from CI runs
 uploaded via `AGENTDIFF_API_KEY` and from automated drift detection. `pass`
-verdicts are silent. Delivery uses the incoming-webhook URL from the OAuth flow
-(preferred) with a fallback to the bot-token `chat.postMessage` path.
+verdicts are silent.
+
+**How delivery works:** AgentDiff posts as a bot member of the chosen channel
+(the bot appears in the member list and is @mentionable). For public channels it
+auto-joins via `conversations.join` during the OAuth callback. For private
+channels it cannot self-join, so it falls back to the incoming-webhook URL from
+the install flow.
 
 ### 5c. Manual / advanced setup (fallback)
 

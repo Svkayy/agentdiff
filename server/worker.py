@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 
 from arq import ArqRedis
 from arq.connections import RedisSettings
@@ -44,12 +43,20 @@ async def process_run(ctx, run_id: str) -> None:
             )
         ).scalars().all()
 
+        # Extract plain data from ORM objects while the session is live,
+        # so the thread receives no SQLAlchemy objects.
+        config = run.config
+        attribution = run.attribution
+        traj_data = [
+            {"side": r.side, "test_case_id": r.test_case_id, "payload": r.payload}
+            for r in rows
+        ]
+        test_case_ids = sorted({r.test_case_id for r in rows})
+
         try:
-            loop = asyncio.get_event_loop()
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                verdict, finding_dicts = await loop.run_in_executor(
-                    pool, process_run_sync, run, rows
-                )
+            verdict, finding_dicts = await asyncio.to_thread(
+                process_run_sync, config, attribution, traj_data, test_case_ids
+            )
         except Exception as exc:  # noqa: BLE001
             run.status = "failed"
             run.error = f"{type(exc).__name__}: {exc}"

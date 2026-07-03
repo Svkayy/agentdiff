@@ -153,8 +153,8 @@ async def test_process_run_engine_error_sets_failed(session):
         baseline_ref="main",
         candidate_ref="feat",
         tier="hermetic",
-        # Intentionally broken config — missing required 'function'/'file'/'line'
-        # fields inside agents list, so StructureDoc.model_validate will raise.
+        # Intentionally broken config — null values for required 'function'/'file'/'line'
+        # fields cause StructureDoc.model_validate to raise before trajectories are touched.
         config={"agents": [{"name": "Bad", "function": None, "file": None, "line": None}]},
         status="pending",
     )

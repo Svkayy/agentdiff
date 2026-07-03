@@ -12,6 +12,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
   redis:
     image: redis:7
     restart: unless-stopped
@@ -59,3 +61,6 @@ services:
     restart: unless-stopped
     ports: ["5173:80"]
     depends_on: [api]
+
+volumes:
+  pgdata:

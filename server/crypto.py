@@ -22,5 +22,5 @@ def encrypt(plaintext: str) -> str:
 
 
 def decrypt(token: str, ttl: int | None = None) -> str:
-    kwargs: dict = {} if ttl is None else {"ttl": ttl}
+    kwargs: dict[str, int] = {} if ttl is None else {"ttl": ttl}
     return _fernet().decrypt(token.encode(), **kwargs).decode()

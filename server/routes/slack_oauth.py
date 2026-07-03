@@ -111,6 +111,7 @@ async def slack_callback(
         return error_redirect
 
     if not data.get("ok"):
+        # Slack error codes ("access_denied" etc.) are safe to log — never tokens.
         log.warning("Slack token exchange returned ok=false: %s", data.get("error"))
         return error_redirect
 
@@ -119,7 +120,7 @@ async def slack_callback(
     webhook_url = webhook_info.get("url", "")
     channel_id = webhook_info.get("channel_id", "")
 
-    if not access_token or not channel_id:
+    if not access_token or not (channel_id or "").strip():
         log.warning("Slack token exchange missing required fields")
         return error_redirect
 

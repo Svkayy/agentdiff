@@ -165,6 +165,7 @@ async def test_callback_happy_path(session, monkeypatch):
                 follow_redirects=False,
             )
             assert r.status_code == 307
+            assert r.headers["location"].startswith("http://localhost:5173/projects/")
             assert "slack=connected" in r.headers["location"]
 
         # SlackConfig row should exist.
@@ -236,6 +237,7 @@ async def test_callback_exchange_error_redirects_to_error(session, monkeypatch):
                 follow_redirects=False,
             )
             assert r.status_code == 307
+            assert r.headers["location"].startswith("http://localhost:5173/projects/")
             assert "slack=error" in r.headers["location"]
 
         # No SlackConfig should have been written.

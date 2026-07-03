@@ -57,3 +57,4 @@
 |------|----------|-----------|
 | 2026-06-21 | Initial design system created | /design-consultation. Memorable thing: "you can SEE the regression." One ember signal color, editorial data-viz, graph-as-plate. |
 | 2026-06-21 | Stack: Vite + React + React Flow | User chose Option C for the richest interactive graph; real layout engine + custom node components. |
+| 2026-07-03 | Dashboard light theme (user-approved override of dark graph canvas); Aceternity motion components adopted | User directive during Tier 1-3 build |

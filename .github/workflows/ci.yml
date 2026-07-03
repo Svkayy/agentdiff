@@ -29,8 +29,49 @@ jobs:
       - name: Type check
         run: mypy src/agentdiff
 
-      - name: Test
-        run: pytest tests/ -q
+      - name: Test (engine only — hosted suite runs in the `server` job)
+        run: pytest tests/ --ignore=tests/server --ignore=tests/collector -q
+
+  server:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: agentdiff
+          POSTGRES_PASSWORD: agentdiff
+          POSTGRES_DB: agentdiff_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agentdiff"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,server,server-dev]"
+
+      - name: Lint hosted backend + collector
+        run: ruff check server/ collector/
+
+      - name: Test hosted backend + collector
+        run: pytest tests/server tests/collector -q
 
   dashboard:
     runs-on: ubuntu-latest
@@ -45,6 +86,10 @@ jobs:
 
       - name: Install
         run: npm ci
+        working-directory: frontend
+
+      - name: Test (vitest)
+        run: npx vitest run
         working-directory: frontend
 
       - name: Build dashboard (tsc + vite)

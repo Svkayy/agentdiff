@@ -276,6 +276,29 @@ def ci_run_cmd(
         detail_url=detail_url,
     )
 
+    # Opt-in upload to hosted API (only when both env vars are set)
+    _api_url = os.environ.get("AGENTDIFF_API_URL")
+    _api_key = os.environ.get("AGENTDIFF_API_KEY")
+    if _api_url and _api_key:
+        from collector import uploader as _uploader   # lazy: only needed for hosted upload
+        _payload = _uploader.build_payload(
+            idempotency_key=os.environ.get("GITHUB_SHA") or str(meta["timestamp"]),
+            baseline_ref=baseline_label,
+            candidate_ref=candidate,
+            tier=tier,
+            config=structure.model_dump() if hasattr(structure, "model_dump") else {},
+            attribution=attribution.model_dump() if attribution is not None else None,
+            baseline_trajs=[t.model_dump() for t in baseline_set.trajectories],
+            candidate_trajs=[t.model_dump() for t in candidate_set.trajectories],
+        )
+        try:
+            _uploader.upload(_api_url, _api_key, _payload)
+            console.print("[green]AgentDiff run uploaded to hosted API[/green]")
+        except Exception as _exc:
+            console.print(
+                f"[yellow]Upload failed (local artifacts still written): {_exc}[/yellow]"
+            )
+
     console.print(f"\n[green]CI artifacts written[/green] → {out}")
     console.print(f"AgentDiff CI verdict: [bold]{summary.verdict.upper()}[/bold]")
     raise SystemExit(_exit_code(summary.verdict, fail_on))

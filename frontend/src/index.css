@@ -104,9 +104,9 @@
   }
 
   body {
-    /* Dark shell default */
-    background-color: #14161A;
-    color: #E8EBEF;
+    /* Light shell — user-approved override of dark canvas default */
+    background-color: #FAFAF8;
+    color: #15181D;
     font-family: "Geist Variable", "Geist", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -172,11 +172,17 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2A313B;
+  background: #E6E3DD;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #5B6470;
+  background: #C9C5BD;
+}
+
+/* ── Light dot-grid for agent graph plates ───────────────────────────────── */
+.dot-grid-light {
+  background-image: radial-gradient(circle, #E6E3DD 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 
 /* ── React Flow overrides — dark canvas, DESIGN.md edge colors ───────────── */

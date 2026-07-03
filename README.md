@@ -377,6 +377,25 @@ External LLM/HTTP calls are mocked, so the suite is hermetic and runs offline. C
 ([`.github/workflows`](.github/workflows)) runs the engine suite, lint, type
 check, and the dashboard build on every push.
 
+## Hosted platform
+
+AgentDiff ships a multi-tenant API + background worker + React dashboard that
+teams can self-host with a single command:
+
+```bash
+cp .env.example .env   # fill in Clerk keys + Fernet encryption key
+docker compose up --build -d
+```
+
+Five services start (`postgres`, `redis`, `api`, `worker`, `dashboard`). Sign in
+at `http://localhost:5173`, create a project, mint an API key, then point CI and
+your live `LiveCollector` at the API. Drift detection runs every 5 minutes and
+posts Slack briefs on `warn`/`fail` verdicts.
+
+See **[docs/hosted-quickstart.md](docs/hosted-quickstart.md)** for the full
+walkthrough: Clerk setup, CI wiring, live monitoring, Slack config, and a
+troubleshooting table.
+
 ## What is still not hosted/distributed
 
 AgentDiff has local quickstart, traffic discovery, framework adapters, stream

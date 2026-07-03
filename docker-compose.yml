@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentdiff
+      POSTGRES_PASSWORD: agentdiff
+      POSTGRES_DB: agentdiff
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentdiff"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  api:
+    build: { context: ., dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    environment:
+      AGENTDIFF_DATABASE_URL: postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff
+      AGENTDIFF_REDIS_URL: redis://redis:6379
+      AGENTDIFF_SECRET_ENCRYPTION_KEY: ${AGENTDIFF_SECRET_ENCRYPTION_KEY}
+      AGENTDIFF_CLERK_JWKS_URL: ${AGENTDIFF_CLERK_JWKS_URL}
+      AGENTDIFF_CLERK_ISSUER: ${AGENTDIFF_CLERK_ISSUER}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports: ["8000:8000"]
+  worker:
+    build: { context: ., dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    command: arq server.worker.WorkerSettings
+    environment:
+      AGENTDIFF_DATABASE_URL: postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff
+      AGENTDIFF_REDIS_URL: redis://redis:6379
+      AGENTDIFF_SECRET_ENCRYPTION_KEY: ${AGENTDIFF_SECRET_ENCRYPTION_KEY}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  dashboard:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
+        VITE_AGENTDIFF_API_URL: ${VITE_AGENTDIFF_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    ports: ["5173:80"]
+    depends_on: [api]

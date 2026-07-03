@@ -5,6 +5,8 @@ from cryptography.fernet import Fernet
 os.environ.setdefault("AGENTDIFF_SECRET_ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("AGENTDIFF_CLERK_ISSUER", "https://clerk.test")
 os.environ.setdefault("AGENTDIFF_CLERK_JWKS_URL", "https://clerk.test/.well-known/jwks.json")
+os.environ.setdefault("AGENTDIFF_SLACK_CLIENT_ID", "test-client-id-default")
+os.environ.setdefault("AGENTDIFF_SLACK_CLIENT_SECRET", "test-client-secret-default")
 
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine

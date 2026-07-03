@@ -67,6 +67,7 @@ class SlackConfig(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
     channel_id: Mapped[str] = mapped_column(String(64))
     bot_token_encrypted: Mapped[str] = mapped_column(Text)
+    webhook_url_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True)
     project: Mapped[Project] = relationship(back_populates="slack_config")
 

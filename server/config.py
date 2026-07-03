@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     # CORS: comma-separated allowed origins.
     cors_origins: str = "http://localhost:5173"
 
+    # Slack OAuth (platform-level app — owner registers once).
+    slack_client_id: str = ""
+    slack_client_secret: str = ""
+    # Slack requires an HTTPS redirect URL in production; for local dev use an
+    # ngrok/cloudflared tunnel pointing to :8000.
+    slack_redirect_url: str = "http://localhost:8000/v1/slack/callback"
+    dashboard_url: str = "http://localhost:5173"
+
 
 @lru_cache
 def get_settings() -> Settings:

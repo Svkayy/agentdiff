@@ -4,6 +4,7 @@ type GetToken = () => Promise<string | null>;
 
 async function authed(path: string, getToken: GetToken) {
   const token = await getToken();
+  if (!token) throw new Error("Not authenticated");
   const res = await fetch(`${API_URL}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });

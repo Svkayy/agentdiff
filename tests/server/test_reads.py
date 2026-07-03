@@ -3,7 +3,7 @@ from httpx import ASGITransport, AsyncClient
 from server.main import app
 from server.db import get_session
 from server.deps import get_user_ctx
-from server.models import Org, Project, Run
+from server.models import Org, Project, Run, User
 
 
 async def _client(session, user_ctx):
@@ -31,8 +31,6 @@ async def test_lists_only_own_org_runs(session):
     session.add_all([runA, pB])
     await session.commit()
 
-    from server.models import User
-
     userA = User(org_id=orgA.id, clerk_user_id="ua_reads", email="a@a")
     session.add(userA)
     await session.commit()
@@ -53,10 +51,11 @@ async def test_lists_only_own_org_runs(session):
 async def test_list_projects_own_org(session):
     orgC = Org(name="C")
     pC = Project(org=orgC, name="pc")
-    session.add(pC)
+    # Seed a project in a DIFFERENT org — it must NOT appear in orgC's listing.
+    orgX = Org(name="X")
+    pX = Project(org=orgX, name="px")
+    session.add_all([pC, pX])
     await session.commit()
-
-    from server.models import User
 
     userC = User(org_id=orgC.id, clerk_user_id="uc_reads", email="c@c")
     session.add(userC)
@@ -68,6 +67,7 @@ async def test_list_projects_own_org(session):
             assert r.status_code == 200
             ids = [p["id"] for p in r.json()]
             assert str(pC.id) in ids
+            assert str(pX.id) not in ids
     finally:
         app.dependency_overrides.clear()
 
@@ -88,8 +88,6 @@ async def test_get_run_with_findings(session):
     )
     session.add(runD)
     await session.commit()
-
-    from server.models import User
 
     userD = User(org_id=orgD.id, clerk_user_id="ud_reads", email="d@d")
     session.add(userD)
@@ -113,8 +111,6 @@ async def test_set_slack_config(session):
     session.add(pE)
     await session.commit()
 
-    from server.models import User
-
     userE = User(org_id=orgE.id, clerk_user_id="ue_reads", email="e@e")
     session.add(userE)
     await session.commit()
@@ -127,5 +123,26 @@ async def test_set_slack_config(session):
             )
             assert r.status_code == 200
             assert r.json()["status"] == "ok"
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cross_tenant_slack_write_rejected(session):
+    """PUT /v1/projects/{other_org_project}/slack must return 404 via _own_project guard."""
+    orgF = Org(name="F")
+    pF = Project(org=orgF, name="pf")
+    orgG = Org(name="G")
+    userG = User(org=orgG, clerk_user_id="ug_reads", email="g@g")
+    session.add_all([pF, userG])
+    await session.commit()
+
+    try:
+        async with await _client(session, (userG, orgG)) as c:
+            r = await c.put(
+                f"/v1/projects/{pF.id}/slack",
+                json={"channel_id": "C1", "bot_token": "xoxb-x"},
+            )
+            assert r.status_code == 404
     finally:
         app.dependency_overrides.clear()

@@ -14,7 +14,7 @@ class RunUpload(BaseModel):
     tier: str = "hermetic"
     config: dict = Field(default_factory=dict)
     attribution: dict | None = None
-    trajectories: list[TrajectoryIn]
+    trajectories: list[TrajectoryIn] = Field(max_length=5000)
 
 
 class RunAccepted(BaseModel):

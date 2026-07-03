@@ -9,8 +9,17 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     clerk_jwks_url: str = ""
     clerk_issuer: str = ""
-    # 32-byte urlsafe base64 Fernet key for encrypting Slack tokens at rest.
+    # 32-byte urlsafe base64 Fernet key (or comma-separated keys) for encrypting Slack tokens at rest.
     secret_encryption_key: str = ""
+
+    # Body-size cap (default 50 MB).
+    max_body_bytes: int = 52_428_800
+
+    # Rate limiting: POST /v1/runs per project per minute.
+    rate_limit_runs_per_minute: int = 60
+
+    # CORS: comma-separated allowed origins.
+    cors_origins: str = "http://localhost:5173"
 
 
 @lru_cache

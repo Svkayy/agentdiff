@@ -13,6 +13,7 @@ from agentdiff.capture.http.provider_registry import match_provider
 from agentdiff.capture.http.canonical import build_canonical_from_http
 from agentdiff.capture.http.redact import redact_url
 from agentdiff.capture.http.streaming import record_stream_chunks
+from agentdiff.capture.cassette import active_cassette
 
 _PATCHED = False
 _ORIGINALS: dict[str, object] = {}
@@ -92,8 +93,19 @@ def _capture_sync(tracer, original, self_client, request, args, kwargs):
         print(f"[agentdiff] httpx shim request-capture error: {exc}")
 
     t0 = time.perf_counter()
+    cassette = active_cassette()
     try:
-        response = original(self_client, request, *args, **kwargs)
+        if cassette is not None and cassette.mode == "replay":
+            recorded = cassette.lookup(request.method, str(request.url), bytes(request.content))
+            import httpx
+            response = httpx.Response(
+                recorded.status_code,
+                headers=recorded.headers,
+                content=recorded.body,
+                request=request,
+            )
+        else:
+            response = original(self_client, request, *args, **kwargs)
     except Exception:
         # Transport/timeout failure: record an error response so the trajectory
         # shows the failed call instead of a dangling request, then re-raise.
@@ -103,6 +115,15 @@ def _capture_sync(tracer, original, self_client, request, args, kwargs):
 
     try:
         body = response.read()
+        if cassette is not None and cassette.mode == "record":
+            cassette.record(
+                method=request.method,
+                url=str(request.url),
+                body=bytes(request.content),
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                response_body=body,
+            )
         canonical_resp = build_canonical_from_http(provider, request, response=(response, body))
         tracer.record(LLMResponseEvent(
             call_id=call_id,
@@ -156,8 +177,19 @@ async def _capture_async(tracer, original, self_client, request, args, kwargs):
         print(f"[agentdiff] httpx async shim request-capture error: {exc}")
 
     t0 = time.perf_counter()
+    cassette = active_cassette()
     try:
-        response = await original(self_client, request, *args, **kwargs)
+        if cassette is not None and cassette.mode == "replay":
+            recorded = cassette.lookup(request.method, str(request.url), bytes(request.content))
+            import httpx
+            response = httpx.Response(
+                recorded.status_code,
+                headers=recorded.headers,
+                content=recorded.body,
+                request=request,
+            )
+        else:
+            response = await original(self_client, request, *args, **kwargs)
     except Exception:
         _record_transport_error(tracer, provider, request, call_id, t0)
         raise
@@ -165,6 +197,15 @@ async def _capture_async(tracer, original, self_client, request, args, kwargs):
 
     try:
         body = await response.aread()
+        if cassette is not None and cassette.mode == "record":
+            cassette.record(
+                method=request.method,
+                url=str(request.url),
+                body=bytes(request.content),
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                response_body=body,
+            )
         canonical_resp = build_canonical_from_http(provider, request, response=(response, body))
         tracer.record(LLMResponseEvent(
             call_id=call_id,

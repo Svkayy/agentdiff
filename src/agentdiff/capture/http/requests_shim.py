@@ -13,6 +13,7 @@ from agentdiff.capture.http.provider_registry import match_provider
 from agentdiff.capture.http.canonical import build_canonical_from_http
 from agentdiff.capture.http.redact import redact_url
 from agentdiff.capture.http.streaming import record_stream_chunks
+from agentdiff.capture.cassette import active_cassette
 
 _PATCHED = False
 _ORIGINALS: dict[str, object] = {}
@@ -83,8 +84,19 @@ def _capture(tracer, original, self_adapter, request, args, kwargs):
         print(f"[agentdiff] requests shim request-capture error: {exc}")
 
     t0 = time.perf_counter()
+    cassette = active_cassette()
     try:
-        response = original(self_adapter, request, *args, **kwargs)
+        if cassette is not None and cassette.mode == "replay":
+            recorded = cassette.lookup(request.method, url, _get_request_body(request))
+            from requests import Response
+            response = Response()
+            response.status_code = recorded.status_code
+            response._content = recorded.body
+            response.headers.update(recorded.headers)
+            response.url = url
+            response.request = request
+        else:
+            response = original(self_adapter, request, *args, **kwargs)
     except Exception:
         # Record the failed call (is_error) so the trajectory isn't left with a
         # dangling request, then let the exception propagate to the caller.
@@ -105,6 +117,15 @@ def _capture(tracer, original, self_adapter, request, args, kwargs):
 
     try:
         body = response.content  # requests always reads fully
+        if cassette is not None and cassette.mode == "record":
+            cassette.record(
+                method=request.method,
+                url=url,
+                body=_get_request_body(request),
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                response_body=body,
+            )
         resp_adapter = _RequestsRequestAdapter(request)
         canonical_resp = build_canonical_from_http(
             provider, resp_adapter, response=(_RequestsResponseAdapter(response), body)

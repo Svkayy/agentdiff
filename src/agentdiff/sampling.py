@@ -13,7 +13,7 @@ import inspect
 import subprocess
 import sys
 import tempfile
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from importlib import import_module
 from pathlib import Path
@@ -36,6 +36,8 @@ def run_samples(
     structure_root: Path | None = None,
     progress: bool = True,
     workers: int = 1,
+    cassette_path: str | Path | None = None,
+    cassette_mode: str | None = None,
 ) -> int:
     """Run the sampling loop in the current process. Returns trajectories written.
 
@@ -52,50 +54,52 @@ def run_samples(
     written = 0
 
     workers = max(1, workers)
-    if workers == 1:
-        for tc in test_cases:
-            tc_id = tc["id"]
-            tc_input = tc.get("input", {})
-            if progress:
-                print(f"  Sampling {samples_per_case} run(s) of '{tc_id}'...")
-            for i in range(samples_per_case):
-                _run_one_sample(
-                    runner=runner,
-                    tc_id=tc_id,
-                    tc_input=tc_input,
-                    sample_index=i,
-                    version_tag=version_tag,
-                    output_path=output_path,
-                    structure_root=structure_root,
-                )
-                written += 1
-    else:
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = []
+    ctx = _cassette_context(cassette_path, cassette_mode)
+    with ctx:
+        if workers == 1:
             for tc in test_cases:
                 tc_id = tc["id"]
                 tc_input = tc.get("input", {})
                 if progress:
-                    print(
-                        f"  Sampling {samples_per_case} run(s) of '{tc_id}' "
-                        f"with {workers} worker(s)..."
-                    )
+                    print(f"  Sampling {samples_per_case} run(s) of '{tc_id}'...")
                 for i in range(samples_per_case):
-                    futures.append(
-                        executor.submit(
-                            _run_one_sample,
-                            runner=runner,
-                            tc_id=tc_id,
-                            tc_input=tc_input,
-                            sample_index=i,
-                            version_tag=version_tag,
-                            output_path=output_path,
-                            structure_root=structure_root,
-                        )
+                    _run_one_sample(
+                        runner=runner,
+                        tc_id=tc_id,
+                        tc_input=tc_input,
+                        sample_index=i,
+                        version_tag=version_tag,
+                        output_path=output_path,
+                        structure_root=structure_root,
                     )
-            for future in as_completed(futures):
-                future.result()
-                written += 1
+                    written += 1
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = []
+                for tc in test_cases:
+                    tc_id = tc["id"]
+                    tc_input = tc.get("input", {})
+                    if progress:
+                        print(
+                            f"  Sampling {samples_per_case} run(s) of '{tc_id}' "
+                            f"with {workers} worker(s)..."
+                        )
+                    for i in range(samples_per_case):
+                        futures.append(
+                            executor.submit(
+                                _run_one_sample,
+                                runner=runner,
+                                tc_id=tc_id,
+                                tc_input=tc_input,
+                                sample_index=i,
+                                version_tag=version_tag,
+                                output_path=output_path,
+                                structure_root=structure_root,
+                            )
+                        )
+                for future in as_completed(futures):
+                    future.result()
+                    written += 1
 
     return written
 
@@ -113,6 +117,8 @@ def sample_for_side(
     install_deps: bool = True,
     capture: dict[str, bool] | None = None,
     workers: int = 1,
+    cassette_path: str | Path | None = None,
+    cassette_mode: str | None = None,
 ) -> None:
     """Sample one side. ``git_ref=None`` means the live working tree."""
     import agentdiff
@@ -134,6 +140,8 @@ def sample_for_side(
             output_path=Path(output_path),
             structure_root=Path(repo_root),
             workers=workers,
+            cassette_path=cassette_path,
+            cassette_mode=cassette_mode,
         )
     else:
         with _checked_out(Path(repo_root), git_ref, install_deps=install_deps) as checkout:
@@ -147,6 +155,8 @@ def sample_for_side(
                 output_path=Path(output_path),
                 capture=capture,
                 workers=workers,
+                cassette_path=cassette_path,
+                cassette_mode=cassette_mode,
             )
 
 
@@ -220,6 +230,15 @@ def _normalize_output(result: Any) -> str:
     return json.dumps(result, default=str)
 
 
+def _cassette_context(cassette_path: str | Path | None, cassette_mode: str | None):
+    if cassette_path is None or cassette_mode is None:
+        return nullcontext()
+    if cassette_mode not in {"record", "replay"}:
+        raise ValueError("cassette_mode must be 'record' or 'replay'")
+    import agentdiff
+    return agentdiff.cassette(cassette_path, cassette_mode)  # type: ignore[arg-type]
+
+
 @contextmanager
 def _checked_out(repo_root: Path, git_ref: str, install_deps: bool = True) -> Iterator[Path]:
     """Extract a git ref into a temp dir via ``git archive | tar -x``."""
@@ -282,6 +301,8 @@ def _sample_in_checkout(
     output_path: Path,
     capture: dict[str, bool] | None = None,
     workers: int = 1,
+    cassette_path: str | Path | None = None,
+    cassette_mode: str | None = None,
 ) -> None:
     """Run the sampling loop in a subprocess rooted at the checkout dir."""
     params = {
@@ -294,6 +315,8 @@ def _sample_in_checkout(
         "output_path": str(output_path),
         "capture": capture or {},
         "workers": workers,
+        "cassette_path": str(cassette_path) if cassette_path is not None else None,
+        "cassette_mode": cassette_mode,
     }
     params_file = checkout / ".agentdiff_sample_params.json"
     params_file.write_text(json.dumps(params), encoding="utf-8")
@@ -330,5 +353,7 @@ run_samples(
     output_path=p["output_path"],
     structure_root=p["checkout"],
     workers=p.get("workers", 1),
+    cassette_path=p.get("cassette_path"),
+    cassette_mode=p.get("cassette_mode"),
 )
 """

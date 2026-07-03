@@ -1,0 +1,96 @@
+# SECURITY: this action executes your agent code on both git refs. Use the
+# `pull_request` trigger (never `pull_request_target`). The hermetic tier needs
+# zero secrets and is safe for fork PRs; gate the live tier and Slack delivery
+# to same-repo PRs — see docs/integrations.md "Security: fork PRs and secrets".
+name: AgentDiff CI Gate
+description: Behavioral CI gate for Python AI agent systems
+
+inputs:
+  project:
+    description: Project directory
+    default: "."
+  baseline:
+    description: Git ref for the known-good baseline
+    default: "origin/main"
+  candidate:
+    description: Git ref for the candidate, or working
+    default: "working"
+  tier:
+    description: hermetic or live
+    default: "hermetic"
+  cassette:
+    description: HTTP cassette path for hermetic replay
+    required: false
+  samples:
+    description: Samples per test case per side
+    required: false
+  slack-channel:
+    description: Slack channel ID for optional incident brief
+    required: false
+  webhook-url:
+    description: Generic JSON webhook URL for Linear/Jira/PagerDuty/incident routing
+    required: false
+  github-pr-comment:
+    description: Post or update an AgentDiff PR comment when GitHub context is available
+    default: "true"
+  detail-url:
+    description: URL linked from the Slack brief
+    required: false
+  fail-on:
+    description: fail, warn, or never
+    default: "fail"
+
+outputs:
+  verdict:
+    description: AgentDiff verdict
+    value: ${{ steps.agentdiff.outputs.verdict }}
+  artifact-dir:
+    description: Directory containing AgentDiff CI artifacts
+    value: ${{ steps.agentdiff.outputs.artifact_dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install AgentDiff
+      shell: bash
+      run: python -m pip install -e "$GITHUB_ACTION_PATH"
+
+    - name: Run AgentDiff
+      id: agentdiff
+      shell: bash
+      env:
+        SLACK_BOT_TOKEN: ${{ env.SLACK_BOT_TOKEN }}
+        AGENTDIFF_SLACK_CHANNEL: ${{ inputs.slack-channel }}
+        AGENTDIFF_WEBHOOK_URL: ${{ inputs.webhook-url }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_EVENT_PATH: ${{ github.event_path }}
+      run: |
+        args=(
+          ci run
+          --project "${{ inputs.project }}"
+          --baseline "${{ inputs.baseline }}"
+          --candidate "${{ inputs.candidate }}"
+          --tier "${{ inputs.tier }}"
+          --fail-on "${{ inputs.fail-on }}"
+        )
+        if [ -n "${{ inputs.cassette }}" ]; then
+          args+=(--cassette "${{ inputs.cassette }}")
+        fi
+        if [ -n "${{ inputs.samples }}" ]; then
+          args+=(--samples "${{ inputs.samples }}")
+        fi
+        if [ -n "${{ inputs.detail-url }}" ]; then
+          args+=(--detail-url "${{ inputs.detail-url }}")
+        fi
+        if [ "${{ inputs.github-pr-comment }}" != "true" ]; then
+          unset GITHUB_TOKEN
+        fi
+        agentdiff "${args[@]}"
+
+    - name: Upload AgentDiff artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: agentdiff-ci
+        path: ${{ steps.agentdiff.outputs.artifact_dir }}

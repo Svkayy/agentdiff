@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from agentdiff.attribution.git_diff import collect_git_diff
+from agentdiff.attribution.git_diff import GitRange, collect_git_diff
 from agentdiff.attribution.manifest import build_manifest_for_side
 from agentdiff.attribution.manifest_diff import ManifestDelta, diff_manifests
 from agentdiff.attribution.rules import Attribution, apply_rules
@@ -47,15 +47,39 @@ def attribute(
 
     ``candidate_ref=None`` means the working tree.
     """
+    return attribute_range(
+        comparison=comparison,
+        structure=structure,
+        baseline_trajectories=baseline_trajectories,
+        candidate_trajectories=candidate_trajectories,
+        repo_root=repo_root,
+        git_range=GitRange(base_ref=baseline_ref, head_ref=candidate_ref),
+        llm_client=llm_client,
+    )
+
+
+def attribute_range(
+    comparison: ComparisonResult,
+    structure: StructureDoc,
+    baseline_trajectories: list[Trajectory],
+    candidate_trajectories: list[Trajectory],
+    repo_root: Path,
+    git_range: GitRange,
+    llm_client=None,
+) -> AttributionResult:
+    """Attribute behavioral deltas across a git range.
+
+    Phase 1 usually passes a range-of-one PR diff. Phase 2 can pass a deploy
+    boundary such as last-known-good..current without changing this interface.
+    """
     repo_root = Path(repo_root)
-    git_arg = candidate_ref if candidate_ref else "working"
-    git_diff = collect_git_diff(baseline_ref, git_arg, repo_root)
+    git_diff = collect_git_diff(git_range.base_ref, git_range.candidate_arg, repo_root)
 
     baseline_manifests = build_manifest_for_side(
-        repo_root, baseline_ref, baseline_trajectories, structure
+        repo_root, git_range.base_ref, baseline_trajectories, structure
     )
     candidate_manifests = build_manifest_for_side(
-        repo_root, candidate_ref, candidate_trajectories, structure
+        repo_root, git_range.head_ref, candidate_trajectories, structure
     )
     deltas = diff_manifests(baseline_manifests, candidate_manifests)
 

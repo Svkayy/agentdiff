@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { CardSpotlight } from "@/components/aceternity/CardSpotlight";
 import { DiffHunk } from "@/components/attribution/DiffHunk";
 import type { AttributionEntry, Verdict } from "@/types";
 
@@ -31,7 +32,7 @@ export function AttributionCard({ entry }: { entry: AttributionEntry }) {
   const confidencePct = primary ? Math.round(primary.weight * 100) : null;
 
   return (
-    <div className="rounded-md border border-node-border bg-node-fill p-lg space-y-md">
+    <CardSpotlight className="rounded-md border border-node-border bg-node-fill p-lg space-y-md">
       {/* Card header */}
       <div className="flex items-start justify-between gap-md">
         <div>
@@ -114,6 +115,6 @@ export function AttributionCard({ entry }: { entry: AttributionEntry }) {
           </div>
         </div>
       )}
-    </div>
+    </CardSpotlight>
   );
 }

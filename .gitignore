@@ -28,6 +28,8 @@ CLAUDE.md
 
 frontend/node_modules/
 frontend/dist/
+landing/node_modules/
+landing/dist/
 docs/demo/sample-report/dashboard.html
 docs/demo/video/
 docs/demo/shots/

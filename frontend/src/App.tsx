@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SectionReveal } from "@/components/aceternity/SectionReveal";
 import { useReportData, shortRef } from "@/lib/payload";
 import { Overview } from "@/sections/Overview";
 import { BehavioralDeltas } from "@/sections/BehavioralDeltas";
@@ -85,11 +86,13 @@ export default function App() {
         {/* Content column */}
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
-            {section === "overview" && <Overview data={data} />}
-            {section === "deltas" && <BehavioralDeltas data={data} />}
-            {section === "attribution" && <Attribution data={data} />}
-            {section === "timeline" && <Timeline data={data} />}
-            {section === "summary" && <RunSummary data={data} />}
+            <SectionReveal sectionKey={section}>
+              {section === "overview" && <Overview data={data} />}
+              {section === "deltas" && <BehavioralDeltas data={data} />}
+              {section === "attribution" && <Attribution data={data} />}
+              {section === "timeline" && <Timeline data={data} />}
+              {section === "summary" && <RunSummary data={data} />}
+            </SectionReveal>
           </div>
         </main>
       </div>

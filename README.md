@@ -292,6 +292,7 @@ agentdiff init       Scan a project, infer structure, scaffold .agentdiff/.
 agentdiff quickstart Infer structure + runner and create a runnable starter setup.
 agentdiff compare    Sample baseline + candidate, compare behavior, evaluate output, attribute deltas.
 agentdiff traffic    Discover test cases from JSONL/JSON/CSV/text traffic samples.
+agentdiff ci         Run AgentDiff as a CI gate: artifacts, PR comment, Slack brief, postmortem draft.
 agentdiff dashboard  Generate or serve a local HTML dashboard for a run.
 agentdiff monitor    Run local compare monitoring or summarize the latest report.
 agentdiff doctor     Validate config, runner imports, git refs, hook status, and optional deps.
@@ -308,6 +309,55 @@ agentdiff compare --baseline main --samples 20 --workers 4 --no-install-deps --m
 
 Thresholds, capture shims, dependency installation, and sample failure budgets
 can be configured in `.agentdiff/config.yaml`.
+
+## The CI gate and incident brief
+
+`agentdiff ci run` turns the compare engine into a pipeline gate. On every PR it
+samples the agent on both refs, diffs behavior, attributes any regression to the
+exact hunk, and delivers the result everywhere your team looks:
+
+- **PR check + comment** — verdict, findings, and cause, upserted into one comment.
+- **Slack brief** — PM-readable in three seconds: what broke, the likely cause,
+  and buttons for the report, the PR, and the CI run. Color-coded by verdict
+  (pass green / warn amber / fail ember).
+- **Postmortem draft** — `postmortem.md` written on every run, ready to paste
+  into your incident tracker.
+- **Artifacts** — every verdict is reconstructable from `summary.json`,
+  `comparison.json`, `attribution.json`, and `slack_payload.json`.
+
+Two execution tiers:
+
+| Tier | Cost | Determinism | Catches |
+|------|------|-------------|---------|
+| `hermetic` (default) | $0, no API keys | fully deterministic (cassette replay) | agent-invocation, tool-usage, routing regressions |
+| `live` (opt-in) | N samples × 2 refs of real calls | statistical (two-proportion + Mann-Whitney) | everything hermetic catches **plus** output-quality drift |
+
+```bash
+# Record a cassette once on a known-good ref
+agentdiff ci run --tier hermetic --cassette .agentdiff/cassettes/main.jsonl \
+  --cassette-mode record --baseline origin/main
+
+# Gate every PR for free
+agentdiff ci run --tier hermetic --cassette .agentdiff/cassettes/main.jsonl
+```
+
+Or drop the composite GitHub Action into a workflow:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+- uses: ./  # or your-org/agentdiff@v1
+  with:
+    tier: hermetic
+    cassette: .agentdiff/cassettes/main.jsonl
+    slack-channel: C0123456789
+```
+
+Delivery is degrade-not-swallow by design: if Slack or GitHub is down, the
+verdict still lands in the PR check and artifacts. Fork PRs run the hermetic
+tier with zero secrets — see
+[docs/integrations.md](docs/integrations.md) for the security model.
 
 ## Testing
 
@@ -344,6 +394,8 @@ line.
 | [How-to: Interpret the Report](docs/howto-interpret-report.md) | Read PASS/WARN/FAIL verdicts, attribution confidence, and decide what to do |
 | [Reference: config.yaml](docs/reference-config.md) | Every config option with type, default, and effect |
 | [Explanation: Why Behavioral Testing](docs/explanation-why-behavioral.md) | Why output evaluation misses agent regressions and how AgentDiff catches them |
+| [Integrations](docs/integrations.md) | Slack, GitHub PR comments, generic webhook, and the fork-PR security model |
+| [CI Troubleshooting](docs/recipes/ci-troubleshooting.md) | Runbook for every CI-gate failure mode: cassette misses, sampling failures, delivery errors |
 | [Runner Recipes](docs/recipes/README.md) | Copy-paste Runner patterns for request-response, event-driven, scheduled, and multi-turn agents |
 | [METHODOLOGY.md](docs/METHODOLOGY.md) | Capture → comparison → attribution pipeline in detail |
 | [CODEBASE.md](docs/CODEBASE.md) | Module-by-module, function-by-function implementation reference |

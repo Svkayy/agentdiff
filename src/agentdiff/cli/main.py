@@ -2,6 +2,7 @@ import click
 
 from agentdiff.cli.init import init_cmd
 from agentdiff.cli.compare import compare_cmd
+from agentdiff.cli.ci import ci_cmd
 from agentdiff.cli.dashboard import dashboard_cmd
 from agentdiff.cli.diff import diff_cmd
 from agentdiff.cli.doctor import doctor_cmd
@@ -20,6 +21,7 @@ def cli() -> None:
 
 cli.add_command(init_cmd)
 cli.add_command(compare_cmd)
+cli.add_command(ci_cmd)
 cli.add_command(dashboard_cmd)
 cli.add_command(diff_cmd)
 cli.add_command(doctor_cmd)

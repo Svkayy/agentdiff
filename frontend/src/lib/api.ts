@@ -46,6 +46,8 @@ export interface RunDetail extends Run {
   error: string | null;
   config: Record<string, unknown>;
   findings: Finding[];
+  baseline_samples: number;
+  candidate_samples: number;
 }
 
 export interface Finding {
@@ -56,6 +58,22 @@ export interface Finding {
   impact_summary: string;
   cause_path: string | null;
   cause_rule: string | null;
+  cause_hunk: string | null;
+  explanation: string | null;
+}
+
+export interface ProjectStats {
+  total_runs: number;
+  pass_rate_30: number | null;
+  failing_streak: number;
+  last_failure_at: string | null;
+  drift_runs_7d: number;
+  recent: Array<{
+    id: string;
+    verdict: string | null;
+    kind: string;
+    created_at: string;
+  }>;
 }
 
 export interface ApiKey {
@@ -86,6 +104,10 @@ export interface Me {
 }
 
 // ── Read endpoints ────────────────────────────────────────────────────────────
+
+export function fetchProjectStats(projectId: string, getToken: GetToken): Promise<ProjectStats> {
+  return authed(`/v1/projects/${projectId}/stats`, getToken) as Promise<ProjectStats>;
+}
 
 export function fetchRuns(projectId: string, getToken: GetToken): Promise<Run[]> {
   return authed(`/v1/projects/${projectId}/runs`, getToken) as Promise<Run[]>;

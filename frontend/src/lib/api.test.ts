@@ -12,6 +12,7 @@ import {
   getSlackStatus,
   getSlackInstallUrl,
   disconnectSlack,
+  fetchProjectStats,
 } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -178,6 +179,50 @@ describe("getSlackInstallUrl", () => {
       "Bearer tok-install",
     );
     expect(result.url).toContain("slack.com/oauth/v2/authorize");
+  });
+});
+
+describe("fetchProjectStats", () => {
+  it("GET /v1/projects/:id/stats returns stats shape with bearer token", async () => {
+    const mockStats = {
+      total_runs: 10,
+      pass_rate_30: 0.8,
+      failing_streak: 0,
+      last_failure_at: "2026-06-01T12:00:00Z",
+      drift_runs_7d: 2,
+      recent: [
+        { id: "r1", verdict: "pass", kind: "ci", created_at: "2026-06-01T12:00:00Z" },
+      ],
+    };
+    const calls = stubFetch(mockStats);
+    const result = await fetchProjectStats("proj-stats", async () => "tok-stats");
+    expect(calls[0].url).toContain("/v1/projects/proj-stats/stats");
+    expect(calls[0].opts.method).toBeUndefined(); // GET
+    expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer tok-stats",
+    );
+    expect(result.total_runs).toBe(10);
+    expect(result.pass_rate_30).toBe(0.8);
+    expect(result.failing_streak).toBe(0);
+    expect(result.drift_runs_7d).toBe(2);
+    expect(result.recent).toHaveLength(1);
+    expect(result.recent[0].verdict).toBe("pass");
+  });
+
+  it("handles null pass_rate_30 when no CI runs", async () => {
+    const mockStats = {
+      total_runs: 0,
+      pass_rate_30: null,
+      failing_streak: 0,
+      last_failure_at: null,
+      drift_runs_7d: 0,
+      recent: [],
+    };
+    stubFetch(mockStats);
+    const result = await fetchProjectStats("proj-empty", async () => "tok-empty");
+    expect(result.pass_rate_30).toBeNull();
+    expect(result.last_failure_at).toBeNull();
+    expect(result.recent).toHaveLength(0);
   });
 });
 

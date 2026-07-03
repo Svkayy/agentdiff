@@ -331,6 +331,16 @@ function FindingRow({ finding }: { finding: Finding }) {
       {finding.cause_path && (
         <div className="mt-sm font-mono text-micro text-neutral-faint">{finding.cause_path}</div>
       )}
+      {finding.cause_hunk && (
+        <div className="mt-sm overflow-x-auto rounded-sm border border-hairline bg-[#FAFAF8] px-md py-sm">
+          <pre className="font-mono text-micro text-ink-dark whitespace-pre">
+            {finding.cause_hunk}
+          </pre>
+        </div>
+      )}
+      {finding.explanation && (
+        <p className="mt-sm text-small text-neutral-muted">{finding.explanation}</p>
+      )}
     </div>
   );
 }
@@ -423,6 +433,10 @@ export function RunDetailPage() {
               <span className="text-ink-dark">{run.baseline_ref}</span>
               <span className="mx-xs">→</span>
               <span className="text-ink-dark">{run.candidate_ref}</span>
+              <span className="mx-sm text-neutral-faint">·</span>
+              <span>
+                n={run.baseline_samples} vs {run.candidate_samples} samples
+              </span>
             </div>
           </div>
 

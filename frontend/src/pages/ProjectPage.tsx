@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-react";
 import * as Tabs from "@radix-ui/react-tabs";
 import {
   fetchRuns,
+  fetchProjectStats,
   listKeys,
   putSlackConfig,
   getSlackStatus,
@@ -15,6 +16,7 @@ import {
   type ApiKey,
   type MintedKey,
   type SlackStatus,
+  type ProjectStats,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +50,139 @@ function KindBadge({ kind }: { kind: string }) {
     <span className="inline-flex items-center rounded-sm border border-hairline px-sm py-2xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
       CI
     </span>
+  );
+}
+
+// ── Stats bar ─────────────────────────────────────────────────────────────────
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function StatChip({
+  label,
+  value,
+  ember,
+}: {
+  label: string;
+  value: string;
+  ember?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2xs">
+      <span className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "font-mono text-small font-medium tabular-nums",
+          ember ? "text-ember" : "text-ink-dark",
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function VerdictDot({
+  verdict,
+  runId,
+  createdAt,
+}: {
+  verdict: string | null;
+  runId: string;
+  createdAt: string;
+}) {
+  const color =
+    verdict === "pass"
+      ? "bg-verdict-pass"
+      : verdict === "warn"
+        ? "bg-verdict-warn"
+        : verdict === "fail"
+          ? "bg-ember"
+          : "bg-hairline";
+  return (
+    <a
+      href={`/runs/${runId}`}
+      title={`${verdict ?? "—"} · ${new Date(createdAt).toLocaleDateString()}`}
+      className={cn(
+        "inline-block h-4 w-4 flex-shrink-0 rounded-sm transition-opacity hover:opacity-70",
+        color,
+      )}
+    />
+  );
+}
+
+function StatsBar({ projectId }: { projectId: string }) {
+  const { getToken } = useAuth();
+  const [stats, setStats] = useState<ProjectStats | null>(null);
+
+  useEffect(() => {
+    fetchProjectStats(projectId, getToken)
+      .then(setStats)
+      .catch(() => {
+        /* hide on error */
+      });
+  }, [projectId, getToken]);
+
+  if (!stats) {
+    // Loading skeleton
+    return (
+      <div className="mb-xl flex flex-wrap gap-xl">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-10 w-24 animate-pulse rounded-sm border border-hairline bg-hairline" />
+        ))}
+      </div>
+    );
+  }
+
+  const passRateStr =
+    stats.pass_rate_30 !== null
+      ? `${Math.round(stats.pass_rate_30 * 100)}%`
+      : "—";
+
+  return (
+    <div className="mb-xl space-y-lg">
+      {/* Chips row */}
+      <div className="flex flex-wrap gap-xl rounded-md border border-hairline bg-white px-lg py-md">
+        <StatChip label="Pass rate (30)" value={passRateStr} />
+        <StatChip
+          label="Failing streak"
+          value={stats.failing_streak > 0 ? String(stats.failing_streak) : "0"}
+          ember={stats.failing_streak > 0}
+        />
+        <StatChip
+          label="Last failure"
+          value={stats.last_failure_at ? relativeTime(stats.last_failure_at) : "—"}
+        />
+        <StatChip label="Drift alerts 7d" value={String(stats.drift_runs_7d)} />
+      </div>
+
+      {/* Verdict strip */}
+      {stats.recent.length > 0 && (
+        <div className="flex items-center gap-xs">
+          <span className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+            Recent
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {[...stats.recent].reverse().map((r) => (
+              <VerdictDot
+                key={r.id}
+                verdict={r.verdict}
+                runId={r.id}
+                createdAt={r.created_at}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -807,6 +942,7 @@ export function ProjectPage() {
         </Tabs.List>
 
         <Tabs.Content value="runs">
+          <StatsBar projectId={projectId} />
           <RunsTab projectId={projectId} />
         </Tabs.Content>
         <Tabs.Content value="setup">

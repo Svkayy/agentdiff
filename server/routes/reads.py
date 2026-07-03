@@ -7,21 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server import crypto
 from server.db import get_session
-from server.deps import get_user_ctx
+from server.deps import get_user_ctx, own_project
 from server.models import Finding, Org, Project, Run, SlackConfig, User
 
 router = APIRouter()
 
 
-async def _own_project(session: AsyncSession, org: Org, project_id: uuid.UUID) -> Project:
-    project = (
-        await session.execute(
-            select(Project).where(Project.id == project_id, Project.org_id == org.id)
-        )
-    ).scalar_one_or_none()
-    if project is None:
-        raise HTTPException(status_code=404, detail="project not found")
-    return project
+# Backward-compat alias so existing call-sites stay unchanged.
+_own_project = own_project
 
 
 @router.get("/v1/projects")

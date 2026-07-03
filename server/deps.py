@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import Depends, Header, HTTPException
@@ -11,6 +12,18 @@ from server.db import get_session
 from server.models import ApiKey, Org, Project, User
 
 logger = logging.getLogger("agentdiff.deps")
+
+
+async def own_project(session: AsyncSession, org: Org, project_id: uuid.UUID) -> Project:
+    """Return the project if it belongs to the org; raise 404 otherwise."""
+    project = (
+        await session.execute(
+            select(Project).where(Project.id == project_id, Project.org_id == org.id)
+        )
+    ).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    return project
 
 
 async def get_project_from_api_key(

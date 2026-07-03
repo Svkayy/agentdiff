@@ -40,6 +40,9 @@ async def get_user_ctx(
     try:
         pub = clerk.load_jwks_pubkey(settings.clerk_jwks_url)
         claims = clerk.verify_token(token, pub, settings.clerk_issuer)
+    # Intentionally broad: converts any invalid/untrusted-token error (bad
+    # signature, bad issuer, missing claim) into a 401 so callers never see a
+    # 500 on malformed tokens. Do not narrow this to a specific exception type.
     except Exception as exc:
         raise HTTPException(status_code=401, detail="invalid clerk token") from exc
 

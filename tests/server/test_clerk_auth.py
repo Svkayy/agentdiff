@@ -2,6 +2,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import HTTPException
 
 from server import clerk
 from server.deps import get_user_ctx
@@ -37,6 +38,19 @@ def test_verify_token_bad_issuer():
     token = jwt.encode({"sub": "u", "iss": "https://evil"}, priv, algorithm="RS256")
     with pytest.raises(ValueError):
         clerk.verify_token(token, jwks_pubkey=pub, issuer="https://clerk.test")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_user_ctx_missing_header_raises_401(session):
+    # No Authorization header (None) must raise 401.
+    with pytest.raises(HTTPException) as exc_info:
+        await get_user_ctx(None, session)
+    assert exc_info.value.status_code == 401
+
+    # A non-Bearer value must also raise 401.
+    with pytest.raises(HTTPException) as exc_info:
+        await get_user_ctx("garbage", session)
+    assert exc_info.value.status_code == 401
 
 
 @pytest.mark.asyncio(loop_scope="session")

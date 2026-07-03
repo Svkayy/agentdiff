@@ -1,9 +1,10 @@
+from arq import ArqRedis
 from arq.connections import RedisSettings
 
 from server.config import get_settings
 
 
-def make_enqueue(pool):
+def make_enqueue(pool: ArqRedis):
     async def enqueue(run_id: str):
         return await pool.enqueue_job("process_run", run_id)
 

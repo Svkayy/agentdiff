@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: agentdiff
       POSTGRES_PASSWORD: agentdiff
@@ -13,6 +14,7 @@ services:
       retries: 10
   redis:
     image: redis:7
+    restart: unless-stopped
     ports: ["6379:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -21,6 +23,7 @@ services:
       retries: 10
   api:
     build: { context: ., dockerfile: server/Dockerfile }
+    restart: unless-stopped
     environment:
       AGENTDIFF_DATABASE_URL: postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff
       AGENTDIFF_REDIS_URL: redis://redis:6379
@@ -33,6 +36,7 @@ services:
     ports: ["8000:8000"]
   worker:
     build: { context: ., dockerfile: server/Dockerfile }
+    restart: unless-stopped
     command: arq server.worker.WorkerSettings
     environment:
       AGENTDIFF_DATABASE_URL: postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff
@@ -43,5 +47,6 @@ services:
       redis: { condition: service_healthy }
   dashboard:
     build: { context: ., dockerfile: frontend/Dockerfile }
+    restart: unless-stopped
     ports: ["5173:80"]
     depends_on: [api]

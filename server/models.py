@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -46,6 +46,7 @@ class Project(Base):
     api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     slack_config: Mapped["SlackConfig | None"] = relationship(back_populates="project", uselist=False, cascade="all, delete-orphan")
     runs: Mapped[list["Run"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    live_trajectories: Mapped[list["LiveTrajectory"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):
@@ -78,6 +79,7 @@ class Run(Base):
     baseline_ref: Mapped[str] = mapped_column(String(255))
     candidate_ref: Mapped[str] = mapped_column(String(255))
     tier: Mapped[str] = mapped_column(String(16))
+    kind: Mapped[str] = mapped_column(String(16), default="ci", server_default="ci")
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
     attribution: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="pending")
@@ -113,3 +115,16 @@ class Finding(Base):
     cause_hunk: Mapped[str | None] = mapped_column(Text, nullable=True)
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     run: Mapped[Run] = relationship(back_populates="findings")
+
+
+class LiveTrajectory(Base):
+    __tablename__ = "live_trajectories"
+    __table_args__ = (
+        Index("ix_live_trajectories_project_id", "project_id"),
+        Index("ix_live_trajectories_captured_at", "captured_at"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"))
+    payload: Mapped[dict] = mapped_column(JSONB)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    project: Mapped[Project] = relationship(back_populates="live_trajectories")

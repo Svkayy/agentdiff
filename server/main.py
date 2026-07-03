@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from server.config import get_settings
-from server.routes import ingest, manage, reads
+from server.routes import ingest, manage, reads, traffic
 from server.worker import make_enqueue
 
 logger = logging.getLogger("agentdiff.api")
@@ -91,6 +91,7 @@ app.add_middleware(                             # outermost (registered last)
 app.include_router(ingest.router)
 app.include_router(reads.router)
 app.include_router(manage.router)
+app.include_router(traffic.router)
 
 
 @app.get("/health")

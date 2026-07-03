@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     # Rate limiting: POST /v1/runs per project per minute.
     rate_limit_runs_per_minute: int = 60
 
+    # Rate limiting: POST /v1/traffic per project per minute.
+    rate_limit_traffic_per_minute: int = 600
+
+    # Drift detection settings.
+    drift_window_minutes: int = 60
+    drift_min_samples: int = 10
+    drift_check_interval_minutes: int = 5
+
     # CORS: comma-separated allowed origins.
     cors_origins: str = "http://localhost:5173"
 

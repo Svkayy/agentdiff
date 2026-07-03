@@ -5,7 +5,7 @@ from arq.connections import RedisSettings
 from fastapi import FastAPI
 
 from server.config import get_settings
-from server.routes import ingest
+from server.routes import ingest, reads
 from server.worker import make_enqueue
 
 
@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AgentDiff Hosted", lifespan=lifespan)
 app.state.enqueue = None
 app.include_router(ingest.router)
+app.include_router(reads.router)
 
 
 @app.get("/health")

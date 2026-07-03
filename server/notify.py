@@ -150,7 +150,7 @@ async def _enrich_payload(
             ctx_text = (
                 f"*{_slack_escape(project_name)}* · {kind_label} · "
                 f"`{_slack_escape(baseline)}` → `{_slack_escape(candidate)}` · "
-                f"{window_str} window · n={nb} vs {nc}"
+                f"{window_str} window · n={nb} vs {nc} samples"
             )
         else:
             # Count trajectories from DB for CI runs
@@ -167,7 +167,7 @@ async def _enrich_payload(
             ctx_text = (
                 f"*{_slack_escape(project_name)}* · {kind_label} · "
                 f"`{_slack_escape(baseline)}` → `{_slack_escape(candidate)}` · "
-                f"n={nb} vs {nc}"
+                f"n={nb} vs {nc} samples"
             )
 
         # Insert context block after header (position 1)

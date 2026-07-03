@@ -122,8 +122,9 @@ function VerdictDot({
 function StatsBar({ projectId }: { projectId: string }) {
   const { getToken } = useAuth();
   const [stats, setStats] = useState<ProjectStats | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetchProjectStats(projectId, getToken)
       .then(setStats)
       .catch(() => {
@@ -131,8 +132,16 @@ function StatsBar({ projectId }: { projectId: string }) {
       });
   }, [projectId, getToken]);
 
+  useEffect(() => {
+    load();
+    intervalRef.current = setInterval(() => void load(), 15_000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [load]);
+
   if (!stats) {
-    // Loading skeleton
+    // Loading skeleton — shown only on first load (stats is null until first fetch resolves)
     return (
       <div className="mb-xl flex flex-wrap gap-xl">
         {[0, 1, 2, 3].map((i) => (

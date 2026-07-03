@@ -142,7 +142,7 @@ async def test_enriched_payload_context_block(session, monkeypatch):
     assert "CI" in ctx_text, f"Kind badge missing: {ctx_text!r}"
     assert "main" in ctx_text, f"baseline_ref missing: {ctx_text!r}"
     assert "feat/abc" in ctx_text, f"candidate_ref missing: {ctx_text!r}"
-    assert "n=8 vs 8" in ctx_text, f"Sample counts missing: {ctx_text!r}"
+    assert "n=8 vs 8 samples" in ctx_text, f"Sample counts missing: {ctx_text!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -345,7 +345,7 @@ async def test_drift_extra_context_window_line(session, monkeypatch):
 
     assert "LIVE DRIFT" in ctx_text, f"Kind badge missing: {ctx_text!r}"
     assert "24h" in ctx_text, f"Window duration missing: {ctx_text!r}"
-    assert "n=15 vs 12" in ctx_text, f"Sample counts missing: {ctx_text!r}"
+    assert "n=15 vs 12 samples" in ctx_text, f"Sample counts missing: {ctx_text!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -425,18 +425,18 @@ async def test_recovery_posted_after_fail(session, monkeypatch):
 
     await session.refresh(run)
 
-    if run.verdict == "pass":
-        # Find recovery post (the one with green color)
-        recovery_posts = [
-            m for m in captured
-            if m.get("attachments") and m["attachments"][0].get("color") == "#3FB27F"
-        ]
-        assert recovery_posts, (
-            f"Expected a recovery post (green color). Got {len(captured)} posts. "
-            f"Verdicts: {[m.get('text','') for m in captured]}"
-        )
-        header_text = recovery_posts[0]["attachments"][0]["blocks"][0]["text"]["text"]
-        assert "recovered" in header_text.lower(), f"'recovered' not in header: {header_text!r}"
+    assert run.verdict == "pass", f"Expected verdict='pass', got {run.verdict!r}"
+    # Find recovery post (the one with green color)
+    recovery_posts = [
+        m for m in captured
+        if m.get("attachments") and m["attachments"][0].get("color") == "#3FB27F"
+    ]
+    assert recovery_posts, (
+        f"Expected a recovery post (green color). Got {len(captured)} posts. "
+        f"Verdicts: {[m.get('text','') for m in captured]}"
+    )
+    header_text = recovery_posts[0]["attachments"][0]["blocks"][0]["text"]["text"]
+    assert "recovered" in header_text.lower(), f"'recovered' not in header: {header_text!r}"
 
 
 @pytest.mark.asyncio(loop_scope="session")

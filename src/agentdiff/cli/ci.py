@@ -4,8 +4,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from collector import uploader as _uploader
-
 import click
 from pydantic import ValidationError
 from rich.console import Console
@@ -282,6 +280,7 @@ def ci_run_cmd(
     _api_url = os.environ.get("AGENTDIFF_API_URL")
     _api_key = os.environ.get("AGENTDIFF_API_KEY")
     if _api_url and _api_key:
+        from collector import uploader as _uploader   # lazy: only needed for hosted upload
         _payload = _uploader.build_payload(
             idempotency_key=os.environ.get("GITHUB_SHA", meta["timestamp"]),
             baseline_ref=baseline_label,

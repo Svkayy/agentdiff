@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     rate_limit_traffic_per_minute: int = 600
 
     # Drift detection settings.
-    drift_window_minutes: int = 60
+    drift_window_minutes: int = 1440  # 24h windows compare day-over-day behavior; at typical agent traffic a 60-min window rarely reaches min_samples and makes drift appear broken
     drift_min_samples: int = 10
     drift_check_interval_minutes: int = 5
 

@@ -73,7 +73,7 @@ class LiveCollector:
 
             activator.install(callback=self.record)
             log.info("LiveCollector: ambient capture installed")
-        except Exception as exc:  # noqa: BLE001
+        except ImportError as exc:
             log.debug("LiveCollector.install(): ambient capture unavailable — %s", exc)
 
     # ------------------------------------------------------------------

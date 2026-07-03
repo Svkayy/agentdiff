@@ -5,6 +5,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -132,7 +133,7 @@ async def check_drift_for_project(
 
     drift_run = Run(
         project_id=project_id,
-        idempotency_key=f"drift-{project_id}-{int(now.timestamp())}",
+        idempotency_key=f"drift-{project_id}-{int(now.timestamp())}-{uuid4().hex[:8]}",
         baseline_ref=baseline_ref,
         candidate_ref=candidate_ref,
         tier="live",

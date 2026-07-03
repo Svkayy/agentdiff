@@ -197,9 +197,8 @@ async def test_check_drift_slack_posted_on_warn_fail(session, drift_project):
             run_id = await check_drift_for_project(
                 session, project.id, window_minutes=W, min_samples=10
             )
-    # If drift was detected (warn/fail), Slack client should have been called
-    if run_id is not None:
-        mock_slack.post_payload.assert_called_once()
+    assert run_id is not None, "Expected drift to be detected (warn/fail)"
+    mock_slack.post_payload.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +227,53 @@ async def test_check_drift_no_run_when_under_min_samples(session, drift_project)
         session, project.id, window_minutes=W, min_samples=10
     )
     assert run_id is None
+
+
+# ---------------------------------------------------------------------------
+# Candidate-only under min_samples → None, no run created
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_check_drift_no_run_when_candidate_under_min_samples(session, drift_project):
+    """Baseline has ≥min_samples but candidate has <min_samples → returns None, no drift run."""
+    project, _ = drift_project
+    W = 60
+
+    # Baseline: ≥min_samples rows in [-2W, -W)
+    for _ in range(12):
+        session.add(
+            LiveTrajectory(
+                project_id=project.id,
+                payload=_payload("baseline", agent_fires=True),
+                captured_at=_at(W + 10),  # well within [-2W, -W)
+            )
+        )
+    # Candidate: only 3 rows in [-W, now) — below min_samples=10
+    for _ in range(3):
+        session.add(
+            LiveTrajectory(
+                project_id=project.id,
+                payload=_payload("candidate", agent_fires=False),
+                captured_at=_at(W - 10),  # well within [-W, now)
+            )
+        )
+    await session.commit()
+
+    before_count = (
+        await session.execute(select(Run).where(Run.project_id == project.id, Run.kind == "drift"))
+    ).scalars().all()
+
+    run_id = await check_drift_for_project(
+        session, project.id, window_minutes=W, min_samples=10
+    )
+
+    assert run_id is None, "Expected None when candidate window is below min_samples"
+
+    after_count = (
+        await session.execute(select(Run).where(Run.project_id == project.id, Run.kind == "drift"))
+    ).scalars().all()
+    assert len(after_count) == len(before_count), "No drift run should have been created"
 
 
 # ---------------------------------------------------------------------------

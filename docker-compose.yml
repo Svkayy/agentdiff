@@ -19,3 +19,29 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  api:
+    build: { context: ., dockerfile: server/Dockerfile }
+    environment:
+      AGENTDIFF_DATABASE_URL: postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff
+      AGENTDIFF_REDIS_URL: redis://redis:6379
+      AGENTDIFF_SECRET_ENCRYPTION_KEY: ${AGENTDIFF_SECRET_ENCRYPTION_KEY}
+      AGENTDIFF_CLERK_JWKS_URL: ${AGENTDIFF_CLERK_JWKS_URL}
+      AGENTDIFF_CLERK_ISSUER: ${AGENTDIFF_CLERK_ISSUER}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports: ["8000:8000"]
+  worker:
+    build: { context: ., dockerfile: server/Dockerfile }
+    command: arq server.worker.WorkerSettings
+    environment:
+      AGENTDIFF_DATABASE_URL: postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff
+      AGENTDIFF_REDIS_URL: redis://redis:6379
+      AGENTDIFF_SECRET_ENCRYPTION_KEY: ${AGENTDIFF_SECRET_ENCRYPTION_KEY}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  dashboard:
+    build: { context: ., dockerfile: frontend/Dockerfile }
+    ports: ["5173:80"]
+    depends_on: [api]

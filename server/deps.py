@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import Depends, Header, HTTPException
@@ -8,6 +9,8 @@ from server import clerk, security
 from server.config import get_settings
 from server.db import get_session
 from server.models import ApiKey, Org, Project, User
+
+logger = logging.getLogger("agentdiff.deps")
 
 
 async def get_project_from_api_key(
@@ -23,9 +26,17 @@ async def get_project_from_api_key(
     rows = (await session.execute(select(ApiKey).where(ApiKey.prefix == prefix))).scalars().all()
     for key in rows:
         if key.revoked_at is None and security.verify_api_key(full, key.key_hash):
-            key.last_used_at = datetime.now(timezone.utc)
-            await session.commit()
-            return (await session.execute(select(Project).where(Project.id == key.project_id))).scalar_one()
+            try:
+                key.last_used_at = datetime.now(timezone.utc)
+                await session.commit()
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to update last_used_at for api key prefix=%s", prefix)
+            project = (
+                await session.execute(select(Project).where(Project.id == key.project_id))
+            ).scalar_one_or_none()
+            if project is None:
+                raise HTTPException(status_code=401, detail="project not found")
+            return project
     raise HTTPException(status_code=401, detail="invalid api key")
 
 

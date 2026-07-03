@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -43,8 +43,9 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     org: Mapped[Org] = relationship(back_populates="projects")
-    api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="project")
-    slack_config: Mapped["SlackConfig | None"] = relationship(back_populates="project", uselist=False)
+    api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    slack_config: Mapped["SlackConfig | None"] = relationship(back_populates="project", uselist=False, cascade="all, delete-orphan")
+    runs: Mapped[list["Run"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):
@@ -83,7 +84,7 @@ class Run(Base):
     verdict: Mapped[str | None] = mapped_column(String(16), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    project: Mapped[Project] = relationship()
+    project: Mapped[Project] = relationship(back_populates="runs")
     trajectories: Mapped[list["Trajectory"]] = relationship(back_populates="run", cascade="all, delete-orphan")
     findings: Mapped[list["Finding"]] = relationship(back_populates="run", cascade="all, delete-orphan")
 

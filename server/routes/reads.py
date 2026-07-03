@@ -47,6 +47,8 @@ async def list_runs(
             "verdict": r.verdict,
             "baseline_ref": r.baseline_ref,
             "candidate_ref": r.candidate_ref,
+            "kind": r.kind,
+            "created_at": r.created_at.isoformat(),
         }
         for r in rows
     ]
@@ -73,6 +75,11 @@ async def get_run(
         "id": str(run.id),
         "status": run.status,
         "verdict": run.verdict,
+        "kind": run.kind,
+        "created_at": run.created_at.isoformat(),
+        "baseline_ref": run.baseline_ref,
+        "candidate_ref": run.candidate_ref,
+        "config": run.config,
         "error": run.error,
         "findings": [
             {

@@ -40,6 +40,9 @@ async def test_lists_only_own_org_runs(session):
             r = await c.get(f"/v1/projects/{pA.id}/runs")
             assert r.status_code == 200
             assert len(r.json()) == 1
+            run_item = r.json()[0]
+            assert "kind" in run_item
+            assert "created_at" in run_item
             # Cross-org project -> 404
             r2 = await c.get(f"/v1/projects/{pB.id}/runs")
             assert r2.status_code == 404
@@ -100,6 +103,11 @@ async def test_get_run_with_findings(session):
             body = r.json()
             assert body["id"] == str(runD.id)
             assert "findings" in body
+            assert "kind" in body
+            assert "created_at" in body
+            assert "baseline_ref" in body
+            assert "candidate_ref" in body
+            assert "config" in body
     finally:
         app.dependency_overrides.clear()
 

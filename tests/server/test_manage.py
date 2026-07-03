@@ -145,6 +145,10 @@ async def test_mint_key_reveal_once_and_list(session):
             assert our["prefix"] == prefix
             assert "key" not in our
             assert "key_hash" not in our
+            # Active key must expose revoked_at=None (not a boolean "revoked" field).
+            assert "revoked_at" in our
+            assert our["revoked_at"] is None
+            assert "revoked" not in our
     finally:
         app.dependency_overrides.clear()
 
@@ -223,6 +227,14 @@ async def test_revoke_key_idempotent_and_blocks_ingest(session):
             # Revoke again → still 204 (idempotent).
             del_r2 = await c.delete(f"/v1/keys/{key_id}")
             assert del_r2.status_code == 204
+
+            # List endpoint must show revoked_at as a non-None ISO string.
+            list_r = await c.get(f"/v1/projects/{proj.id}/keys")
+            assert list_r.status_code == 200
+            revoked_key = next((k for k in list_r.json() if k["id"] == key_id), None)
+            assert revoked_key is not None
+            assert revoked_key["revoked_at"] is not None
+            assert isinstance(revoked_key["revoked_at"], str)
     finally:
         app.dependency_overrides.clear()
 

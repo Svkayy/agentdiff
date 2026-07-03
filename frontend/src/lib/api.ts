@@ -71,8 +71,16 @@ export interface MintedKey {
 }
 
 export interface Me {
-  id: string;
-  email: string;
+  user: {
+    id: string;
+    email: string;
+    clerk_user_id: string;
+  };
+  org: {
+    id: string;
+    name: string;
+    clerk_org_id: string;
+  };
 }
 
 // ── Read endpoints ────────────────────────────────────────────────────────────

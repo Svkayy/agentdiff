@@ -100,7 +100,7 @@ async def list_keys(
         {
             "id": str(k.id),
             "prefix": k.prefix,
-            "revoked": k.revoked_at is not None,
+            "revoked_at": k.revoked_at.isoformat() if k.revoked_at else None,
             "created_at": k.created_at.isoformat(),
             "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
         }

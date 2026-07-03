@@ -74,10 +74,16 @@ describe("fetchProjects", () => {
 
 describe("fetchMe", () => {
   it("GET /v1/me with bearer token", async () => {
-    const calls = stubFetch({ id: "u1", email: "x@x.com" });
-    await fetchMe(async () => "tok2");
+    const calls = stubFetch({
+      user: { id: "u1", email: "x@x.com", clerk_user_id: "cu_1" },
+      org: { id: "o1", name: "My Org", clerk_org_id: "co_1" },
+    });
+    const result = await fetchMe(async () => "tok2");
     expect(calls[0].url).toContain("/v1/me");
     expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe("Bearer tok2");
+    expect(result.user.id).toBe("u1");
+    expect(result.user.email).toBe("x@x.com");
+    expect(result.org.name).toBe("My Org");
   });
 });
 
@@ -94,11 +100,11 @@ describe("createProject", () => {
 
 describe("mintKey", () => {
   it("POST /v1/projects/:id/keys", async () => {
-    const calls = stubFetch({ id: "k1", key: "agd_secret", prefix: "agd_" });
+    const calls = stubFetch({ id: "k1", key: "adk_secret", prefix: "adk_" });
     const result = await mintKey("proj-5", async () => "tok4");
     expect(calls[0].url).toContain("/v1/projects/proj-5/keys");
     expect(calls[0].opts.method).toBe("POST");
-    expect(result).toMatchObject({ prefix: "agd_" });
+    expect(result).toMatchObject({ prefix: "adk_" });
   });
 });
 
@@ -126,7 +132,7 @@ describe("putSlackConfig", () => {
 
 describe("listKeys", () => {
   it("GET /v1/projects/:id/keys with bearer token", async () => {
-    const calls = stubFetch([{ id: "k1", prefix: "agd_" }]);
+    const calls = stubFetch([{ id: "k1", prefix: "adk_" }]);
     await listKeys("proj-4", async () => "tok7");
     expect(calls[0].url).toContain("/v1/projects/proj-4/keys");
     expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe("Bearer tok7");

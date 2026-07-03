@@ -282,7 +282,7 @@ def ci_run_cmd(
     if _api_url and _api_key:
         from collector import uploader as _uploader   # lazy: only needed for hosted upload
         _payload = _uploader.build_payload(
-            idempotency_key=os.environ.get("GITHUB_SHA", meta["timestamp"]),
+            idempotency_key=os.environ.get("GITHUB_SHA") or str(meta["timestamp"]),
             baseline_ref=baseline_label,
             candidate_ref=candidate,
             tier=tier,

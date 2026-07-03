@@ -42,15 +42,37 @@ async def maybe_post_slack(session, run, finding_dicts: list[dict], verdict: str
             findings=[IncidentFinding.model_validate(fd) for fd in finding_dicts],
         )
         payload = render_slack_payload(summary)
+
+        # ── Bot-first path ────────────────────────────────────────────────────
+        # If the bot token is set, try chat.postMessage (bot appears as a channel
+        # member and is @mentionable). This is the common/public-channel case.
+        bot_ok = False
+        if cfg.bot_token_encrypted:
+            try:
+                token = crypto.decrypt(cfg.bot_token_encrypted)
+                result = SlackClient(token).post_payload(cfg.channel_id, payload)
+                if result.ok:
+                    bot_ok = True
+                else:
+                    log.info(
+                        "slack bot post not ok for run %s: %s", run.id, result.error
+                    )
+            except Exception as exc:
+                log.info(
+                    "slack bot post raised for run %s: %s", run.id, type(exc).__name__
+                )
+
+        if bot_ok:
+            return
+
+        # ── Webhook fallback ──────────────────────────────────────────────────
+        # Used when: (a) bot post failed (e.g. not_in_channel on private channel),
+        # or (b) only a webhook is configured (legacy/manual).
         if cfg.webhook_url_encrypted:
-            # Webhook-first path (OAuth flow): POST directly to the webhook URL.
             webhook_url = crypto.decrypt(cfg.webhook_url_encrypted)
             resp = webhook_post_fn(webhook_url, payload, 10)
             if not resp.is_success:
                 raise RuntimeError(f"webhook returned HTTP {resp.status_code}")
-        else:
-            # Fallback: bot-token + chat.postMessage path.
-            token = crypto.decrypt(cfg.bot_token_encrypted)
-            SlackClient(token).post_payload(cfg.channel_id, payload)
+
     except Exception as exc:  # degrade — never let a Slack failure fail the run
         log.warning("slack delivery failed for run %s: %s", run.id, type(exc).__name__)

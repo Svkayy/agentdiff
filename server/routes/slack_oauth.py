@@ -33,6 +33,19 @@ def _default_exchange(url: str, data: dict, timeout: int) -> httpx.Response:
 exchange_fn: Callable[[str, dict, int], httpx.Response] = _default_exchange
 
 
+def _default_join(bot_token: str, channel_id: str) -> dict:
+    resp = httpx.post(
+        "https://slack.com/api/conversations.join",
+        headers={"Authorization": f"Bearer {bot_token}"},
+        json={"channel": channel_id},
+        timeout=10,
+    )
+    return resp.json()
+
+
+join_fn: Callable[[str, str], dict] = _default_join
+
+
 # ── Install endpoint ──────────────────────────────────────────────────────────
 
 
@@ -54,7 +67,7 @@ async def slack_install(
     params = urlencode(
         {
             "client_id": settings.slack_client_id,
-            "scope": "incoming-webhook,chat:write",
+            "scope": "incoming-webhook,chat:write,channels:join",
             "redirect_uri": settings.slack_redirect_url,
             "state": state,
         }
@@ -147,6 +160,20 @@ async def slack_callback(
         cfg.enabled = True
 
     await session.commit()
+
+    # Best-effort: join the channel as a bot member (public channels only).
+    # Private channels → Slack returns method_not_supported_for_channel_type; we log + continue.
+    # The webhook fallback covers channels the bot could not join.
+    try:
+        join_result = join_fn(access_token, channel_id)
+        if not join_result.get("ok"):
+            log.info(
+                "Slack conversations.join skipped for channel %s: %s",
+                channel_id,
+                join_result.get("error"),
+            )
+    except Exception as exc:
+        log.info("Slack conversations.join raised for channel %s: %s", channel_id, type(exc).__name__)
 
     return RedirectResponse(
         url=f"{settings.dashboard_url}/projects/{project_id}?slack=connected",

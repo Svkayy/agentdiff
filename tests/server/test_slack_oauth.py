@@ -50,6 +50,7 @@ async def test_install_returns_authorize_url(session, monkeypatch):
             assert "slack.com/oauth/v2/authorize" in url
             assert "test-client-id" in url
             assert "incoming-webhook" in url
+            assert "channels%3Ajoin" in url or "channels:join" in url
             # state round-trips to the project id
             from urllib.parse import urlparse, parse_qs
             parsed = urlparse(url)
@@ -151,8 +152,16 @@ async def test_callback_happy_path(session, monkeypatch):
     # Build a valid state.
     state = crypto.encrypt(json.dumps({"project_id": str(project.id)}))
 
-    # Monkeypatch the exchange function.
+    # Monkeypatch the exchange function and join_fn.
     monkeypatch.setattr(slack_oauth, "exchange_fn", _make_exchange_fn(ok=True))
+
+    join_calls: list[tuple[str, str]] = []
+
+    def fake_join(bot_token: str, channel_id: str) -> dict:
+        join_calls.append((bot_token, channel_id))
+        return {"ok": True}
+
+    monkeypatch.setattr(slack_oauth, "join_fn", fake_join)
 
     # Callback is unauthenticated — no user_ctx override.
     app.dependency_overrides[get_session] = lambda: session
@@ -167,6 +176,11 @@ async def test_callback_happy_path(session, monkeypatch):
             assert r.status_code == 307
             assert r.headers["location"].startswith("http://localhost:5173/projects/")
             assert "slack=connected" in r.headers["location"]
+
+        # join_fn must be called exactly once with the channel_id.
+        assert len(join_calls) == 1
+        _tok, joined_channel = join_calls[0]
+        assert joined_channel == "C99"
 
         # SlackConfig row should exist.
         cfg = (
@@ -348,6 +362,103 @@ async def test_status_via_manual_when_no_webhook(session, monkeypatch):
             data = r.json()
             assert data["connected"] is True
             assert data["via"] == "manual"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+# ── 6. join_fn failure does NOT break callback ────────────────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_callback_join_ok_false_still_connected(session, monkeypatch):
+    """join_fn returns ok=false (private channel) → callback still 307 slack=connected."""
+    monkeypatch.setenv("AGENTDIFF_SLACK_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("AGENTDIFF_SLACK_CLIENT_SECRET", "test-secret")
+    monkeypatch.setenv("AGENTDIFF_DASHBOARD_URL", "http://localhost:5173")
+    from server.config import get_settings
+    get_settings.cache_clear()
+
+    org = Org(name="join-fail-org")
+    project = Project(org=org, name="join-fail-proj")
+    session.add(project)
+    await session.commit()
+
+    state = crypto.encrypt(json.dumps({"project_id": str(project.id)}))
+    monkeypatch.setattr(slack_oauth, "exchange_fn", _make_exchange_fn(ok=True, channel_id="C77"))
+
+    def join_ok_false(bot_token: str, channel_id: str) -> dict:
+        return {"ok": False, "error": "method_not_supported_for_channel_type"}
+
+    monkeypatch.setattr(slack_oauth, "join_fn", join_ok_false)
+
+    app.dependency_overrides[get_session] = lambda: session
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.get(
+                f"/v1/slack/callback?code=test-code&state={state}",
+                follow_redirects=False,
+            )
+            assert r.status_code == 307
+            assert "slack=connected" in r.headers["location"]
+
+        # Config must still be written.
+        cfg = (
+            await session.execute(
+                select(SlackConfig).where(SlackConfig.project_id == project.id)
+            )
+        ).scalar_one_or_none()
+        assert cfg is not None
+        assert cfg.channel_id == "C77"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_callback_join_raises_still_connected(session, monkeypatch):
+    """join_fn raises → callback still 307 slack=connected, config still written."""
+    monkeypatch.setenv("AGENTDIFF_SLACK_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("AGENTDIFF_SLACK_CLIENT_SECRET", "test-secret")
+    monkeypatch.setenv("AGENTDIFF_DASHBOARD_URL", "http://localhost:5173")
+    from server.config import get_settings
+    get_settings.cache_clear()
+
+    org = Org(name="join-raise-org")
+    project = Project(org=org, name="join-raise-proj")
+    session.add(project)
+    await session.commit()
+
+    state = crypto.encrypt(json.dumps({"project_id": str(project.id)}))
+    monkeypatch.setattr(slack_oauth, "exchange_fn", _make_exchange_fn(ok=True, channel_id="C88"))
+
+    def join_raises(bot_token: str, channel_id: str) -> dict:
+        raise RuntimeError("network error")
+
+    monkeypatch.setattr(slack_oauth, "join_fn", join_raises)
+
+    app.dependency_overrides[get_session] = lambda: session
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.get(
+                f"/v1/slack/callback?code=test-code&state={state}",
+                follow_redirects=False,
+            )
+            assert r.status_code == 307
+            assert "slack=connected" in r.headers["location"]
+
+        # Config must still be written.
+        cfg = (
+            await session.execute(
+                select(SlackConfig).where(SlackConfig.project_id == project.id)
+            )
+        ).scalar_one_or_none()
+        assert cfg is not None
+        assert cfg.channel_id == "C88"
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

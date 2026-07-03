@@ -10,6 +10,8 @@ def _fernet(key_string: str | None = None) -> MultiFernet | Fernet:
     """
     raw = key_string if key_string is not None else get_settings().secret_encryption_key
     keys = [k.strip() for k in raw.split(",") if k.strip()]
+    if not keys:
+        raise ValueError("AGENTDIFF_SECRET_ENCRYPTION_KEY must be set")
     if len(keys) == 1:
         return Fernet(keys[0].encode())
     return MultiFernet([Fernet(k.encode()) for k in keys])

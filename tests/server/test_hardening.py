@@ -1,6 +1,8 @@
 """Tests for WP1 Tier-2 backend hardening (items 1-7)."""
 from __future__ import annotations
 
+import uuid
+
 import pytest
 import pytest_asyncio
 from cryptography.fernet import Fernet
@@ -34,7 +36,7 @@ async def _project_and_key(session):
 
 def _base_payload(**overrides):
     p = {
-        "idempotency_key": "harden-1",
+        "idempotency_key": str(uuid.uuid4()),
         "baseline_ref": "origin/main",
         "candidate_ref": "working",
         "tier": "hermetic",
@@ -64,9 +66,18 @@ async def test_body_size_413(session, _project_and_key):
             headers={
                 "Authorization": f"Bearer {full}",
                 "Content-Length": str(100 * 1024 * 1024),  # 100 MB
+                "Origin": "http://localhost:5173",
             },
         )
     assert r.status_code == 413
+    # CORS must be outermost: even a 413 from BodySizeMiddleware must carry
+    # CORS and RequestID headers so a cross-origin dashboard can read the error.
+    assert "access-control-allow-origin" in r.headers, (
+        "413 response missing CORS header — middleware ordering is wrong"
+    )
+    assert "x-request-id" in r.headers, (
+        "413 response missing X-Request-ID header — middleware ordering is wrong"
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")

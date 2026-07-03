@@ -72,18 +72,21 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# Register middleware (outermost last — Starlette wraps in reverse order).
+# Register middleware (Starlette wraps in reverse registration order, so the
+# LAST add_middleware call becomes the OUTERMOST layer).
+# Desired execution order: CORS → RequestID → BodySize → routes.
+# Therefore register in the opposite order: BodySize first, CORS last.
 settings = get_settings()
 
-app.add_middleware(
+app.add_middleware(BodySizeMiddleware)          # innermost
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(                             # outermost (registered last)
     CORSMiddleware,
     allow_origins=settings.cors_origins.split(","),
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
 )
-app.add_middleware(RequestIDMiddleware)
-app.add_middleware(BodySizeMiddleware)
 
 app.include_router(ingest.router)
 app.include_router(reads.router)

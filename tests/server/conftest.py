@@ -1,3 +1,9 @@
+import os
+
+from cryptography.fernet import Fernet
+
+os.environ.setdefault("AGENTDIFF_SECRET_ENCRYPTION_KEY", Fernet.generate_key().decode())
+
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 

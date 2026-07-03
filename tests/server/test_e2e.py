@@ -175,5 +175,7 @@ async def test_ingest_to_findings(session):
         await session.execute(select(Finding).where(Finding.run_id == run_id))
     ).scalars().all()
     assert len(findings) >= 1, "expected at least one Finding row persisted"
+    assert any(f.metric == "invocation_rate" for f in findings)
+    assert all(f.impact_summary for f in findings)
 
 

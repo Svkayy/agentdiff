@@ -13,7 +13,7 @@ from server.db import async_session
 from server.drift import check_drift_for_project
 from server.engine_runner import process_run_sync
 from server.models import Finding, LiveTrajectory, Run, Trajectory
-from server.notify import maybe_post_slack
+from server.notify import maybe_post_slack, post_recovery
 
 log = logging.getLogger("agentdiff.worker")
 
@@ -75,6 +75,24 @@ async def process_run(ctx, run_id: str) -> None:
         await session.commit()
 
         await maybe_post_slack(session, run, finding_dicts, verdict)
+
+        # A5 — Recovery notification: CI pass after previous CI warn/fail
+        if verdict == "pass" and run.kind == "ci":
+            prev_run = (
+                await session.execute(
+                    select(Run)
+                    .where(
+                        Run.project_id == run.project_id,
+                        Run.status == "done",
+                        Run.kind == "ci",
+                        Run.created_at < run.created_at,
+                    )
+                    .order_by(Run.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if prev_run is not None and prev_run.verdict in {"warn", "fail"}:
+                await post_recovery(session, run)
 
 
 async def check_drift_all(ctx) -> None:

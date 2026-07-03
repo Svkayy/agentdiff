@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from typing import Any, Callable
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from agentdiff.incident.findings import IncidentFinding, IncidentSummary
 from agentdiff.incident.renderers import render_slack_payload
 from agentdiff.incident.slack import SlackClient
 
 from server import crypto
-from server.models import SlackConfig
+from server.config import get_settings
+from server.models import Project, SlackConfig, Trajectory
 
 log = logging.getLogger("agentdiff.notify")
 
@@ -26,26 +27,59 @@ def _default_webhook_post(url: str, json: dict, timeout: int) -> httpx.Response:
 webhook_post_fn: Callable[[str, dict, int], httpx.Response] = _default_webhook_post
 
 
-async def maybe_post_slack(session, run, finding_dicts: list[dict], verdict: str) -> None:
-    if verdict not in {"warn", "fail"}:
-        return
-    cfg = (
-        await session.execute(
-            select(SlackConfig).where(SlackConfig.project_id == run.project_id)
-        )
-    ).scalar_one_or_none()
+# ── Slack mrkdwn escape (minimal: only & < >) ────────────────────────────────
+
+
+def _slack_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+# ── Truncate hunk to max 12 lines / 900 chars ────────────────────────────────
+
+
+def _truncate_hunk(hunk: str, max_lines: int = 12, max_chars: int = 900) -> str:
+    lines = hunk.splitlines()
+    truncated_lines = False
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        truncated_lines = True
+    result = "\n".join(lines)
+    truncated_chars = False
+    if len(result) > max_chars:
+        result = result[:max_chars]
+        truncated_chars = True
+    if truncated_lines or truncated_chars:
+        result += "…"
+    return result
+
+
+# ── Section block helper ──────────────────────────────────────────────────────
+
+
+def _section(text: str) -> dict[str, Any]:
+    return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+
+
+# ── Shared delivery mechanics ─────────────────────────────────────────────────
+
+
+async def _deliver(session_or_cfg: Any, run: Any, payload: dict) -> None:
+    """Bot-first, webhook-fallback delivery. Any failure is logged and swallowed."""
+    # session_or_cfg may be a SQLAlchemy session (we query it) or a SlackConfig directly.
+    if hasattr(session_or_cfg, "execute"):
+        session = session_or_cfg
+        cfg: SlackConfig | None = (
+            await session.execute(
+                select(SlackConfig).where(SlackConfig.project_id == run.project_id)
+            )
+        ).scalar_one_or_none()
+    else:
+        cfg = session_or_cfg
+
     if cfg is None or not cfg.enabled:
         return
-    try:
-        summary = IncidentSummary(
-            verdict=verdict,
-            findings=[IncidentFinding.model_validate(fd) for fd in finding_dicts],
-        )
-        payload = render_slack_payload(summary)
 
-        # ── Bot-first path ────────────────────────────────────────────────────
-        # If the bot token is set, try chat.postMessage (bot appears as a channel
-        # member and is @mentionable). This is the common/public-channel case.
+    try:
         bot_ok = False
         if cfg.bot_token_encrypted:
             try:
@@ -65,9 +99,6 @@ async def maybe_post_slack(session, run, finding_dicts: list[dict], verdict: str
         if bot_ok:
             return
 
-        # ── Webhook fallback ──────────────────────────────────────────────────
-        # Used when: (a) bot post failed (e.g. not_in_channel on private channel),
-        # or (b) only a webhook is configured (legacy/manual).
         if cfg.webhook_url_encrypted:
             webhook_url = crypto.decrypt(cfg.webhook_url_encrypted)
             resp = webhook_post_fn(webhook_url, payload, 10)
@@ -76,3 +107,212 @@ async def maybe_post_slack(session, run, finding_dicts: list[dict], verdict: str
 
     except Exception as exc:  # degrade — never let a Slack failure fail the run
         log.warning("slack delivery failed for run %s: %s", run.id, type(exc).__name__)
+
+
+# ── Payload enrichment ────────────────────────────────────────────────────────
+
+
+async def _enrich_payload(
+    session: Any,
+    run: Any,
+    payload: dict,
+    finding_dicts: list[dict],
+    *,
+    extra_context: dict | None = None,
+) -> None:
+    """Mutate payload["attachments"][0]["blocks"] in-place with context, cause detail,
+    and deep-link button. All errors are silently swallowed (degrade preserved)."""
+    try:
+        blocks: list[dict] = payload["attachments"][0]["blocks"]
+
+        # A1 — Context block (insert after header, index 0)
+        project = (
+            await session.execute(
+                select(Project).where(Project.id == run.project_id)
+            )
+        ).scalar_one_or_none()
+        project_name = project.name if project else str(run.project_id)
+
+        kind_label = "LIVE DRIFT" if run.kind == "drift" else "CI"
+        baseline = run.baseline_ref or "?"
+        candidate = run.candidate_ref or "?"
+
+        if extra_context and run.kind == "drift":
+            # A4 — drift: sample counts come from extra_context
+            nb = extra_context.get("baseline_samples", 0)
+            nc = extra_context.get("candidate_samples", 0)
+            wm = extra_context.get("window_minutes", 0)
+            hours = wm / 60
+            if hours == int(hours):
+                window_str = f"{int(hours)}h"
+            else:
+                window_str = f"{hours:.1f}h"
+            ctx_text = (
+                f"*{_slack_escape(project_name)}* · {kind_label} · "
+                f"`{_slack_escape(baseline)}` → `{_slack_escape(candidate)}` · "
+                f"{window_str} window · n={nb} vs {nc}"
+            )
+        else:
+            # Count trajectories from DB for CI runs
+            side_counts = (
+                await session.execute(
+                    select(Trajectory.side, func.count(Trajectory.id))
+                    .where(Trajectory.run_id == run.id)
+                    .group_by(Trajectory.side)
+                )
+            ).all()
+            counts = {row[0]: row[1] for row in side_counts}
+            nb = counts.get("baseline", 0)
+            nc = counts.get("candidate", 0)
+            ctx_text = (
+                f"*{_slack_escape(project_name)}* · {kind_label} · "
+                f"`{_slack_escape(baseline)}` → `{_slack_escape(candidate)}` · "
+                f"n={nb} vs {nc}"
+            )
+
+        # Insert context block after header (position 1)
+        ctx_block = {"type": "context", "elements": [{"type": "mrkdwn", "text": ctx_text}]}
+        if blocks and blocks[0].get("type") == "header":
+            blocks.insert(1, ctx_block)
+        else:
+            blocks.insert(0, ctx_block)
+
+        # A2 — Cause detail for top finding
+        if finding_dicts:
+            top = finding_dicts[0]
+            cause_hunk = top.get("cause_hunk")
+            explanation = top.get("explanation")
+            if cause_hunk:
+                truncated = _truncate_hunk(cause_hunk)
+                blocks.append(_section(f"```{_slack_escape(truncated)}```"))
+            if explanation:
+                blocks.append(_section(f"> {_slack_escape(explanation)}"))
+
+        # A3 — Deep link button
+        run_url = f"{get_settings().dashboard_url}/runs/{run.id}"
+        view_button: dict[str, Any] = {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "View in AgentDiff"},
+            "url": run_url,
+        }
+        # Check if there's already an actions block; if so append into it
+        actions_idx = next(
+            (i for i, b in enumerate(blocks) if b.get("type") == "actions"), None
+        )
+        if actions_idx is not None:
+            existing_elements = blocks[actions_idx].get("elements", [])
+            existing_elements.append(view_button)
+            blocks[actions_idx]["elements"] = existing_elements
+        else:
+            blocks.append({"type": "actions", "elements": [view_button]})
+
+    except Exception as exc:
+        log.debug("slack enrichment failed for run %s: %s", run.id, exc)
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+
+async def maybe_post_slack(
+    session: Any,
+    run: Any,
+    finding_dicts: list[dict],
+    verdict: str,
+    *,
+    extra_context: dict | None = None,
+) -> None:
+    if verdict not in {"warn", "fail"}:
+        return
+    cfg = (
+        await session.execute(
+            select(SlackConfig).where(SlackConfig.project_id == run.project_id)
+        )
+    ).scalar_one_or_none()
+    if cfg is None or not cfg.enabled:
+        return
+    try:
+        summary = IncidentSummary(
+            verdict=verdict,
+            findings=[IncidentFinding.model_validate(fd) for fd in finding_dicts],
+        )
+        payload = render_slack_payload(summary)
+
+        # Enrich the payload server-side
+        await _enrich_payload(
+            session, run, payload, finding_dicts, extra_context=extra_context
+        )
+
+        await _deliver(cfg, run, payload)
+
+    except Exception as exc:  # degrade — never let a Slack failure fail the run
+        log.warning("slack delivery failed for run %s: %s", run.id, type(exc).__name__)
+
+
+async def post_recovery(session: Any, run: Any) -> None:
+    """Post a green recovery notification when a CI run passes after a prior fail/warn."""
+    cfg = (
+        await session.execute(
+            select(SlackConfig).where(SlackConfig.project_id == run.project_id)
+        )
+    ).scalar_one_or_none()
+    if cfg is None or not cfg.enabled:
+        return
+
+    try:
+        project = (
+            await session.execute(
+                select(Project).where(Project.id == run.project_id)
+            )
+        ).scalar_one_or_none()
+        project_name = project.name if project else str(run.project_id)
+
+        baseline = run.baseline_ref or "?"
+        candidate = run.candidate_ref or "?"
+        run_url = f"{get_settings().dashboard_url}/runs/{run.id}"
+
+        payload: dict[str, Any] = {
+            "text": f"AgentDiff: {project_name} recovered",
+            "attachments": [
+                {
+                    "color": "#3FB27F",
+                    "blocks": [
+                        {
+                            "type": "header",
+                            "text": {
+                                "type": "plain_text",
+                                "text": f"\U0001f7e2 AgentDiff: {project_name} recovered",
+                            },
+                        },
+                        {
+                            "type": "context",
+                            "elements": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": (
+                                        f"CI · "
+                                        f"`{_slack_escape(baseline)}` → `{_slack_escape(candidate)}`"
+                                    ),
+                                }
+                            ],
+                        },
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {"type": "plain_text", "text": "View in AgentDiff"},
+                                    "url": run_url,
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ],
+        }
+
+        await _deliver(cfg, run, payload)
+
+    except Exception as exc:
+        log.warning(
+            "slack recovery notification failed for run %s: %s", run.id, type(exc).__name__
+        )

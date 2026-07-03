@@ -151,7 +151,17 @@ async def check_drift_for_project(
 
     await session.commit()
 
-    await maybe_post_slack(session, drift_run, finding_dicts, verdict)
+    await maybe_post_slack(
+        session,
+        drift_run,
+        finding_dicts,
+        verdict,
+        extra_context={
+            "window_minutes": W,
+            "baseline_samples": len(baseline_rows),
+            "candidate_samples": len(candidate_rows),
+        },
+    )
 
     log.info(
         "project %s: drift run %s created with verdict=%s findings=%d",

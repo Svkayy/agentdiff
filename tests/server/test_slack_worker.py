@@ -94,3 +94,37 @@ async def test_slack_failure_is_swallowed(session, monkeypatch):
     monkeypatch.setattr(notify, "SlackClient", lambda token, **k: _FailingSlack(token))
     # Must not raise.
     await notify.maybe_post_slack(session, run, [], "fail")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_malformed_finding_dict_is_swallowed(session, monkeypatch):
+    org = Org(name="A")
+    project = Project(org=org, name="p")
+    session.add(
+        SlackConfig(
+            project=project,
+            channel_id="C1",
+            bot_token_encrypted=crypto.encrypt("xoxb-t"),
+            enabled=True,
+        )
+    )
+    run = Run(
+        project=project,
+        idempotency_key="i3",
+        baseline_ref="m",
+        candidate_ref="w",
+        tier="hermetic",
+        config={},
+        status="done",
+        verdict="fail",
+    )
+    session.add(run)
+    await session.commit()
+
+    rec = _RecordingSlack("x")
+    monkeypatch.setattr(notify, "SlackClient", lambda token, **k: rec)
+
+    # A malformed finding dict should trigger ValidationError inside the try block,
+    # be swallowed, and never reach the SlackClient post.
+    await notify.maybe_post_slack(session, run, [{"bogus": "not a valid finding"}], "fail")
+    assert rec.posted == [], "SlackClient should not be reached when finding validation fails"

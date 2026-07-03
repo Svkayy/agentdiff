@@ -25,12 +25,12 @@ async def maybe_post_slack(session, run, finding_dicts: list[dict], verdict: str
     ).scalar_one_or_none()
     if cfg is None or not cfg.enabled:
         return
-    summary = IncidentSummary(
-        verdict=verdict,
-        findings=[IncidentFinding.model_validate(fd) for fd in finding_dicts],
-    )
-    payload = render_slack_payload(summary)
     try:
+        summary = IncidentSummary(
+            verdict=verdict,
+            findings=[IncidentFinding.model_validate(fd) for fd in finding_dicts],
+        )
+        payload = render_slack_payload(summary)
         token = crypto.decrypt(cfg.bot_token_encrypted)
         SlackClient(token).post_payload(cfg.channel_id, payload)
     except Exception as exc:  # degrade — never let a Slack failure fail the run

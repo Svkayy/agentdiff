@@ -2,16 +2,20 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
-from arq import ArqRedis
+from arq import ArqRedis, cron
 from arq.connections import RedisSettings
 from sqlalchemy import select
 
 from server.config import get_settings
 from server.db import async_session
+from server.drift import check_drift_for_project
 from server.engine_runner import process_run_sync
-from server.models import Finding, Run, Trajectory
+from server.models import Finding, LiveTrajectory, Run, Trajectory
 from server.notify import maybe_post_slack
+
+log = logging.getLogger("agentdiff.worker")
 
 
 def make_enqueue(pool: ArqRedis):
@@ -73,6 +77,38 @@ async def process_run(ctx, run_id: str) -> None:
         await maybe_post_slack(session, run, finding_dicts, verdict)
 
 
+async def check_drift_all(ctx) -> None:
+    """Cron job: run drift detection for every project with recent live traffic."""
+    from datetime import timedelta, timezone
+    from datetime import datetime
+
+    factory = _session_factory(ctx)
+    two_weeks_ago = datetime.now(timezone.utc) - timedelta(minutes=2 * get_settings().drift_window_minutes)
+
+    async with factory() as session:
+        # Find all project_ids that have any LiveTrajectory in the last 2W
+        rows = (
+            await session.execute(
+                select(LiveTrajectory.project_id)
+                .where(LiveTrajectory.captured_at >= two_weeks_ago)
+                .distinct()
+            )
+        ).scalars().all()
+
+    project_ids = list(rows)
+    log.info("drift sweep: checking %d projects", len(project_ids))
+
+    for project_id in project_ids:
+        try:
+            async with factory() as session:
+                run_id = await check_drift_for_project(session, project_id)
+                if run_id:
+                    log.info("drift run created: %s for project %s", run_id, project_id)
+        except Exception as exc:  # noqa: BLE001
+            log.error("drift check failed for project %s: %s", project_id, exc)
+
+
 class WorkerSettings:
     functions = [process_run]
+    cron_jobs = [cron(check_drift_all, minute=set(range(0, 60, 5)), run_at_startup=False)]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)

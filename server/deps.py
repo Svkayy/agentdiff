@@ -16,6 +16,8 @@ async def get_project_from_api_key(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
     full = authorization.removeprefix("Bearer ").strip()
+    if not full.startswith("adk_"):
+        raise HTTPException(status_code=401, detail="invalid api key")
     prefix = full[:12]
     rows = (await session.execute(select(ApiKey).where(ApiKey.prefix == prefix))).scalars().all()
     for key in rows:

@@ -13,8 +13,8 @@ install is required: to observe an agent's behavior, AgentDiff must run where
 the agent runs.
 
 We are pivoting toward a **multi-tenant hosted SaaS**: teams sign up, log in
-(email + password — not Slack), connect a project, and see behavioral
-regression results in a hosted dashboard. Slack is wired in later purely as a
+via a managed auth provider (Clerk — not Slack), connect a project, and see
+behavioral regression results in a hosted dashboard. Slack is wired in as a
 reporting/notification channel, not as auth.
 
 ### Data-plane decision (settled)
@@ -50,18 +50,21 @@ The thinnest vertical that proves the whole hosted model end to end:
 
 > A CI collector captures a run and POSTs it to a containerized ingestion API,
 > which authenticates the tenant by API key, stores it in Postgres, enqueues a
-> job, and an engine worker runs compare + attribution and writes findings. The
-> authed dashboard then displays the run and its findings.
+> job, and an engine worker runs compare + attribution, writes findings, and
+> posts a Slack notification when the project has Slack configured. The
+> Clerk-authed dashboard then displays the run and its findings.
 
 Multi-tenant isolation is built in from day 1 so it is not a rewrite later.
 
 ### Explicitly deferred to later slices
 
-- Slack per-tenant reporting (reuses existing `incident/` renderers — cheap next add)
 - Generic in-app / production collector + live production monitoring
 - Billing
-- GitHub OAuth login
 - Horizontal scale-out beyond a single worker
+
+(Slack notifications and managed auth, previously deferred, are now in this
+slice per the decisions below. Social logins like GitHub are Clerk config, not
+in-house code, so they are no longer a deferred item.)
 
 ## Backend topology (settled)
 
@@ -79,8 +82,8 @@ unchanged. Ingestion never runs the engine inline; it enqueues.
   │  capture/)     │   trajectories      │  │   api    │      └─────┬─────┘  │
   └────────────────┘                     │  └────┬─────┘            │        │
                                          │       │            ┌─────▼─────┐  │
-  ┌────────────────┐   session login     │       ▼            │  arq      │  │
-  │ React dashboard│ ◀── authed API ───▶ │  ┌──────────┐◀─────│  worker   │  │
+  ┌────────────────┐   Clerk login       │       ▼            │  arq      │  │
+  │ React dashboard│ ◀── JWT-authed API ─▶│  ┌──────────┐◀────│  worker   │  │
   │ (existing UI)  │   runs, findings    │  │ Postgres │      │ (engine)  │  │
   └────────────────┘                     │  └──────────┘      └───────────┘  │
                                          └──────────────────────────────────┘
@@ -91,22 +94,25 @@ unchanged. Ingestion never runs the engine inline; it enqueues.
 - **CI collector** (`collector/`) — thin client. Reuses `capture/` + trajectory
   serialization; adds an uploader that POSTs a run with a project API key. Slots
   into the existing Action / `ci run` flow. Does not ship the heavy engine.
-- **API** (`server/app/`, FastAPI) — ingestion endpoints, API-key auth for
-  ingest, session auth for the dashboard, dashboard reads. Enqueues engine jobs.
+- **API** (`server/app/`, FastAPI) — ingestion endpoints (in-house API-key
+  auth), dashboard reads (Clerk JWT auth), and a per-project Slack config
+  endpoint. Enqueues engine jobs; never runs the engine inline.
 - **Worker** (`server/worker/`, arq) — consumes jobs from Redis; runs
   `compare_all` -> `attribute_range` -> `build_incident_summary` (all existing);
-  writes findings; updates run status.
+  writes findings; updates run status; posts a Slack notification when the
+  project has Slack configured (reuses `incident/` renderers + Slack client).
 - **Storage** — Postgres, SQLAlchemy 2.0 async + Alembic migrations.
-- **Dashboard** (`frontend/`) — existing Vite/React, now an authed SPA hitting
-  the API instead of reading a static JSON file.
+- **Dashboard** (`frontend/`) — existing Vite/React, now a Clerk-authed SPA
+  hitting the API instead of reading a static JSON file.
 
 ## Data model (tenant boundary = project)
 
 ```
-orgs         (id, name, created_at)
-users        (id, org_id, email, password_hash, created_at)
-projects     (id, org_id, name, created_at)                    -- tenant boundary
-api_keys     (id, project_id, key_hash, prefix, revoked_at, last_used_at)
+orgs          (id, clerk_org_id, name, created_at)
+users         (id, org_id, clerk_user_id, email, created_at)   -- no passwords; Clerk owns credentials
+projects      (id, org_id, name, created_at)                   -- tenant boundary
+api_keys      (id, project_id, key_hash, prefix, revoked_at, last_used_at)  -- collector ingest auth (in-house)
+slack_configs (id, project_id, channel_id, bot_token_encrypted, enabled)   -- per-project; token encrypted at rest
 runs         (id, project_id, idempotency_key, baseline_ref, candidate_ref, tier,
               config JSONB,   -- structure config the collector sends with the run
               status[pending|processing|done|failed], verdict, error, created_at)
@@ -127,17 +133,25 @@ key maps to exactly one project.
    file). The API creates `run(status=pending)`, persists the config on the run,
    and stores trajectories.
 2. The API enqueues `process_run(run_id)` on Redis and returns `202` with the run id.
-3. The worker loads the run's trajectories + project config, runs the engine,
-   writes `findings`, and sets `run.status=done`, `verdict`.
-4. A dashboard user logs in (session cookie), lists projects -> runs -> run
-   detail (findings, behavioral deltas, attribution) via the authed API.
+3. The worker loads the run's trajectories + config, runs the engine, writes
+   `findings`, and sets `run.status=done`, `verdict`.
+4. If the project has Slack configured and the verdict is warn/fail, the worker
+   renders the incident brief (existing `incident/` renderers) and posts it via
+   the Slack client. Delivery failure degrades: it never fails the run.
+5. A dashboard user logs in via Clerk, lists projects -> runs -> run detail
+   (findings, behavioral deltas, attribution) via the JWT-authed API.
 
 ## Auth and tenancy
 
-- **Ingest:** per-project API key, hashed at rest (argon2), shown once on
-  creation, sent as `Authorization: Bearer adk_...`.
-- **Dashboard users:** email + password (argon2), httponly + secure session
-  cookie. GitHub OAuth is a clean later add.
+- **Ingest (machine-to-machine, in-house):** per-project API key, hashed at rest
+  (argon2), shown once on creation, sent as `Authorization: Bearer adk_...`.
+  This stays in-house — it is not a human login.
+- **Dashboard users (managed — Clerk):** login/signup via Clerk's React
+  components. Clerk issues a JWT; FastAPI verifies it against Clerk's JWKS on
+  each request. We store no passwords or sessions. Clerk Organizations map to
+  our `orgs` (via `clerk_org_id`) and Clerk users to our `users` (via
+  `clerk_user_id`), synced on first login or via a Clerk webhook. Social logins
+  (GitHub, Google) are Clerk config, not code.
 - **Isolation:** every read filters by the caller's org/project. Covered by an
   explicit test: tenant A must not read tenant B's run by id.
 
@@ -151,13 +165,17 @@ Same principle as the CI design: failures are visible, never silent.
 - Worker engine exception -> `run.status=failed` with the error stored and shown
   in the dashboard; arq retries with backoff. A failed run is never invisible.
 - DB/Redis unavailable -> API `503`; collector buffers and retries with backoff.
+- Slack delivery failure -> logged; the run is unaffected and the dashboard
+  remains the source of truth.
 
 ## Testing
 
 - Reuse the existing engine tests untouched (210+ passing).
-- API route tests (httpx `AsyncClient`); auth tests (key hash/verify, session);
-  worker task test (enqueue -> process -> findings written) against a real
-  Postgres test db + fakeredis.
+- API route tests (httpx `AsyncClient`); auth tests (ingest API-key hash/verify;
+  Clerk JWT verification against a mock JWKS with signed test tokens); worker
+  task test (enqueue -> process -> findings written) against a real Postgres test
+  db + fakeredis; worker Slack test (brief posts on a configured failing run and
+  degrades on a Slack error).
 - One end-to-end test: ingest -> enqueue -> worker -> read-back proves the skeleton.
 - One security test: cross-tenant isolation (A cannot read B).
 
@@ -171,15 +189,18 @@ server/models/     SQLAlchemy models
 server/schemas/    Pydantic API schemas
 server/worker/     arq tasks
 server/migrations/ Alembic
-frontend/          dashboard, now authed SPA
+frontend/          dashboard, now Clerk-authed SPA
 docker-compose.yml + server/Dockerfile + frontend/Dockerfile
 ```
 
 ## Confirmed technology decisions
 
 - Worker: **arq** (async, Redis-backed, lightweight) over Celery.
-- Dashboard login: **email + password with server-side sessions** for this
-  slice; GitHub OAuth deferred.
+- Dashboard auth: **Clerk** (managed). FastAPI verifies Clerk JWTs via JWKS;
+  Clerk Organizations map to our orgs. Ingest stays on in-house project API keys.
+- Notifications: **Slack** via the existing `incident/` renderers + Slack client,
+  fired from the worker on run completion; per-project config, bot token
+  encrypted at rest.
 - API: FastAPI + Pydantic; DB: Postgres + SQLAlchemy 2.0 async + Alembic;
   queue/cache: Redis; containerization: Docker + docker-compose.
 
@@ -188,6 +209,8 @@ docker-compose.yml + server/Dockerfile + frontend/Dockerfile
 - `docker-compose up` brings up all five services healthy.
 - A CI collector run POSTs to the API and returns `202`.
 - The worker processes the run and writes findings; run status reaches `done`.
-- A logged-in dashboard user sees the run and its findings, scoped to their
+- When a project has Slack configured, a failing run posts an incident brief to
+  the channel; a Slack failure does not fail the run.
+- A Clerk-authed dashboard user sees the run and its findings, scoped to their
   project only.
 - Full test suite green, including the end-to-end and cross-tenant isolation tests.

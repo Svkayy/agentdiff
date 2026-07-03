@@ -134,18 +134,57 @@ to the run detail in the dashboard.
 
 ## 5. Configure Slack notifications
 
-In the dashboard, open your project and go to the **Slack** tab:
+AgentDiff supports a one-click **Add to Slack** OAuth flow. The platform owner
+registers **one** Slack app; each user then connects their workspace in two
+clicks without touching a bot token.
 
-1. Paste your Slack bot token (`xoxb-...`). The token is encrypted at rest
-   using your `AGENTDIFF_SECRET_ENCRYPTION_KEY` before being stored.
-2. Paste the Slack channel ID (e.g. `C0123456789`).
-3. Click **Save**.
+### 5a. Platform owner: register the Slack app (one-time)
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**.
+2. Under **OAuth & Permissions** → **Redirect URLs**, add:
+   ```
+   https://<your-api-domain>/v1/slack/callback
+   ```
+   > For local dev, Slack requires HTTPS. Use an ngrok or cloudflared tunnel
+   > pointing to port 8000, e.g. `ngrok http 8000`, then set the redirect URL
+   > to `https://<id>.ngrok.io/v1/slack/callback`.
+3. Under **OAuth & Permissions** → **Bot Token Scopes**, add:
+   - `incoming-webhook`
+   - `chat:write`
+4. Install the app to your workspace (needed to activate the scopes).
+5. Copy the **Client ID** and **Client Secret** from **Basic Information**.
+6. Set these environment variables on the API service:
+
+   ```env
+   AGENTDIFF_SLACK_CLIENT_ID=<client-id>
+   AGENTDIFF_SLACK_CLIENT_SECRET=<client-secret>
+   AGENTDIFF_SLACK_REDIRECT_URL=https://<your-api-domain>/v1/slack/callback
+   AGENTDIFF_DASHBOARD_URL=https://<your-dashboard-domain>
+   ```
+
+### 5b. End users: connect Slack
+
+1. Open your project in the dashboard → **Slack** tab.
+2. Click **Add to Slack**.
+3. Pick a channel in Slack's native consent screen (works for public and private channels).
+4. You're redirected back with a success banner. Done.
 
 Slack briefs are sent for every `warn` or `fail` verdict — both from CI runs
 uploaded via `AGENTDIFF_API_KEY` and from automated drift detection. `pass`
-verdicts are silent.
+verdicts are silent. Delivery uses the incoming-webhook URL from the OAuth flow
+(preferred) with a fallback to the bot-token `chat.postMessage` path.
 
-To configure via API directly:
+### 5c. Manual / advanced setup (fallback)
+
+If `AGENTDIFF_SLACK_CLIENT_ID` is not set, users can still connect manually via
+the **Advanced: manual setup** disclosure in the Slack tab:
+
+1. Create a Slack app with the `chat:write` scope, install it, copy the bot token.
+2. Invite the bot to the target channel: `/invite @your-bot`.
+3. Copy the channel ID (right-click channel → **View channel details**).
+4. Paste both into the manual form and click **Save**.
+
+Or via API:
 
 ```bash
 curl -X PUT http://localhost:8000/v1/projects/<project_id>/slack \

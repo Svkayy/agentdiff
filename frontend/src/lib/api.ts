@@ -20,6 +20,8 @@ async function authed(
     },
   });
   if (!res.ok) throw new Error(`API ${res.status}`);
+  // 204 No Content has no body.
+  if (res.status === 204) return undefined;
   return res.json();
 }
 
@@ -137,4 +139,30 @@ export function putSlackConfig(
     method: "PUT",
     body: JSON.stringify({ channel_id: channelId, bot_token: botToken }),
   }) as Promise<{ status: string }>;
+}
+
+// ── Slack OAuth ───────────────────────────────────────────────────────────────
+
+export interface SlackStatus {
+  connected: boolean;
+  channel_id: string | null;
+  via: "oauth" | "manual" | null;
+}
+
+export interface SlackInstallUrl {
+  url: string;
+}
+
+export function getSlackStatus(projectId: string, getToken: GetToken): Promise<SlackStatus> {
+  return authed(`/v1/projects/${projectId}/slack`, getToken) as Promise<SlackStatus>;
+}
+
+export function getSlackInstallUrl(projectId: string, getToken: GetToken): Promise<SlackInstallUrl> {
+  return authed(`/v1/slack/install?project_id=${projectId}`, getToken) as Promise<SlackInstallUrl>;
+}
+
+export function disconnectSlack(projectId: string, getToken: GetToken): Promise<void> {
+  return authed(`/v1/projects/${projectId}/slack`, getToken, {
+    method: "DELETE",
+  }) as Promise<void>;
 }

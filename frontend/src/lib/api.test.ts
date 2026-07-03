@@ -9,6 +9,9 @@ import {
   revokeKey,
   putSlackConfig,
   listKeys,
+  getSlackStatus,
+  getSlackInstallUrl,
+  disconnectSlack,
 } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -145,5 +148,52 @@ describe("null-token guard for new fns", () => {
     vi.stubGlobal("fetch", mockFetch);
     await expect(createProject("x", async () => null)).rejects.toThrow("Not authenticated");
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+// ── Slack OAuth API functions ─────────────────────────────────────────────────
+
+describe("getSlackStatus", () => {
+  it("GET /v1/projects/:id/slack with bearer token", async () => {
+    const calls = stubFetch({ connected: true, channel_id: "C123", via: "oauth" });
+    const result = await getSlackStatus("proj-s1", async () => "tok-status");
+    expect(calls[0].url).toContain("/v1/projects/proj-s1/slack");
+    expect(calls[0].opts.method).toBeUndefined(); // defaults to GET
+    expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer tok-status",
+    );
+    expect(result.connected).toBe(true);
+    expect(result.channel_id).toBe("C123");
+    expect(result.via).toBe("oauth");
+  });
+});
+
+describe("getSlackInstallUrl", () => {
+  it("GET /v1/slack/install?project_id=... with bearer token, returns url", async () => {
+    const calls = stubFetch({ url: "https://slack.com/oauth/v2/authorize?client_id=x" });
+    const result = await getSlackInstallUrl("proj-s2", async () => "tok-install");
+    expect(calls[0].url).toContain("/v1/slack/install");
+    expect(calls[0].url).toContain("project_id=proj-s2");
+    expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer tok-install",
+    );
+    expect(result.url).toContain("slack.com/oauth/v2/authorize");
+  });
+});
+
+describe("disconnectSlack", () => {
+  it("DELETE /v1/projects/:id/slack with bearer token", async () => {
+    // Simulate 204 No Content
+    const calls: { url: string; opts: RequestInit }[] = [];
+    vi.stubGlobal("fetch", async (url: string, opts: RequestInit) => {
+      calls.push({ url, opts });
+      return { ok: true, status: 204, json: async () => undefined } as unknown as Response;
+    });
+    await disconnectSlack("proj-s3", async () => "tok-disconnect");
+    expect(calls[0].url).toContain("/v1/projects/proj-s3/slack");
+    expect(calls[0].opts.method).toBe("DELETE");
+    expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer tok-disconnect",
+    );
   });
 });

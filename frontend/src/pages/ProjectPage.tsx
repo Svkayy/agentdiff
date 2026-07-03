@@ -6,11 +6,15 @@ import {
   fetchRuns,
   listKeys,
   putSlackConfig,
+  getSlackStatus,
+  getSlackInstallUrl,
+  disconnectSlack,
   mintKey,
   revokeKey,
   type Run,
   type ApiKey,
   type MintedKey,
+  type SlackStatus,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -481,22 +485,104 @@ AGENTDIFF_API_KEY=<your-key>`;
 
 function SlackTab({ projectId }: { projectId: string }) {
   const { getToken } = useAuth();
+
+  // OAuth status
+  const [status, setStatus] = useState<SlackStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  // Banners from callback redirect param
+  const [oauthBanner, setOauthBanner] = useState<"connected" | "error" | null>(null);
+
+  // Install flow
+  const [installing, setInstalling] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+
+  // Disconnect flow
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
+  // Manual form (advanced)
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [channelId, setChannelId] = useState("");
   const [botToken, setBotToken] = useState("");
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [manualSuccess, setManualSuccess] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  // On mount: read ?slack=connected|error from URL, then strip it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const slackParam = params.get("slack");
+    if (slackParam === "connected" || slackParam === "error") {
+      setOauthBanner(slackParam as "connected" | "error");
+      params.delete("slack");
+      const newSearch = params.toString();
+      const newUrl =
+        window.location.pathname + (newSearch ? `?${newSearch}` : "") + window.location.hash;
+      history.replaceState(null, "", newUrl);
+    }
+  }, []);
+
+  const loadStatus = async () => {
+    setStatusLoading(true);
+    try {
+      const s = await getSlackStatus(projectId, getToken);
+      setStatus(s);
+    } catch {
+      setStatus(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadStatus();
+  }, [projectId]);
+
+  async function handleAddToSlack() {
+    setInstalling(true);
+    setInstallError(null);
+    try {
+      const { url } = await getSlackInstallUrl(projectId, getToken);
+      window.location.href = url;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed";
+      if (msg.includes("503")) {
+        setInstallError(
+          "Slack OAuth isn't configured on this server — use manual setup below.",
+        );
+        setAdvancedOpen(true);
+      } else {
+        setInstallError(msg);
+      }
+      setInstalling(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    setDisconnecting(true);
+    try {
+      await disconnectSlack(projectId, getToken);
+      setConfirmDisconnect(false);
+      await loadStatus();
+    } catch {
+      // swallow — idempotent
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  async function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setError(null);
-    setSuccess(false);
+    setManualError(null);
+    setManualSuccess(false);
     try {
       await putSlackConfig(projectId, channelId, botToken, getToken);
-      setSuccess(true);
+      setManualSuccess(true);
+      await loadStatus();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save Slack config");
+      setManualError(e instanceof Error ? e.message : "Failed to save Slack config");
     } finally {
       setSaving(false);
     }
@@ -504,6 +590,7 @@ function SlackTab({ projectId }: { projectId: string }) {
 
   return (
     <div className="max-w-lg space-y-lg">
+      {/* Header */}
       <div>
         <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
           Notifications
@@ -515,61 +602,168 @@ function SlackTab({ projectId }: { projectId: string }) {
         </p>
       </div>
 
-      <div className="rounded-md border border-hairline bg-white p-lg text-small text-neutral-muted">
-        <p className="mb-sm font-medium text-ink-dark">How to create the Slack app:</p>
-        <ol className="list-inside list-decimal space-y-xs text-small">
-          <li>Go to api.slack.com/apps → Create New App → From scratch</li>
-          <li>OAuth &amp; Permissions → Add Bot Token Scope: <code className="font-mono">chat:write</code></li>
-          <li>Install to workspace → copy the Bot User OAuth Token</li>
-          <li>Invite the bot to your channel: <code className="font-mono">/invite @your-bot</code></li>
-          <li>Copy the channel ID from the channel URL or right-click menu</li>
-        </ol>
+      {/* Banners from OAuth redirect */}
+      {oauthBanner === "connected" && (
+        <div className="rounded-sm border border-verdict-pass/30 bg-verdict-pass/5 px-md py-sm text-small text-verdict-pass">
+          Slack connected successfully.
+        </div>
+      )}
+      {oauthBanner === "error" && (
+        <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
+          Slack connection failed. Please try again.
+        </div>
+      )}
+
+      {/* Status card */}
+      <div className="rounded-md border border-hairline bg-white p-lg">
+        {statusLoading ? (
+          <div className="h-10 animate-pulse rounded-sm border border-hairline bg-hairline" />
+        ) : status?.connected ? (
+          <div className="flex items-center justify-between gap-md">
+            <div>
+              <div className="mb-2xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+                Connected
+              </div>
+              <div className="flex items-center gap-sm">
+                <span className="font-mono text-small text-ink-dark">
+                  {status.channel_id ?? "—"}
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-sm border px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
+                    status.via === "oauth"
+                      ? "border-verdict-pass/30 text-verdict-pass"
+                      : "border-hairline text-neutral-faint",
+                  )}
+                >
+                  {status.via ?? "—"}
+                </span>
+              </div>
+            </div>
+            {!confirmDisconnect ? (
+              <button
+                onClick={() => setConfirmDisconnect(true)}
+                className="rounded-sm border border-hairline px-md py-sm text-small font-medium text-neutral-muted transition-colors hover:border-ember hover:text-ember"
+              >
+                Disconnect
+              </button>
+            ) : (
+              <div className="flex items-center gap-sm">
+                <span className="text-small text-neutral-muted">Confirm?</span>
+                <button
+                  onClick={() => setConfirmDisconnect(false)}
+                  className="rounded-sm border border-hairline px-sm py-2xs text-small text-ink-dark"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void handleDisconnect()}
+                  disabled={disconnecting}
+                  className="rounded-sm bg-ember px-sm py-2xs text-small font-medium text-white disabled:opacity-40"
+                >
+                  {disconnecting ? "Removing…" : "Remove"}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-md">
+            <p className="text-small text-neutral-muted">
+              Click <strong>Add to Slack</strong> to connect your workspace. You'll pick a
+              channel in Slack's native consent screen — no manual token setup required.
+            </p>
+            {installError && (
+              <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
+                {installError}
+              </div>
+            )}
+            <button
+              onClick={() => void handleAddToSlack()}
+              disabled={installing}
+              className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity disabled:opacity-40"
+            >
+              {installing ? "Redirecting…" : "Add to Slack"}
+            </button>
+          </div>
+        )}
       </div>
 
-      {success && (
-        <div className="rounded-sm border border-verdict-pass/30 bg-verdict-pass/5 px-md py-sm text-small text-verdict-pass">
-          Slack configuration saved.
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-md">
-        <div>
-          <label className="mb-xs block font-mono text-micro uppercase tracking-widest text-neutral-faint">
-            Channel ID
-          </label>
-          <input
-            value={channelId}
-            onChange={(e) => setChannelId(e.target.value)}
-            placeholder="C0123ABC456"
-            className="w-full rounded-sm border border-hairline bg-shell-bg px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
-          />
-        </div>
-        <div>
-          <label className="mb-xs block font-mono text-micro uppercase tracking-widest text-neutral-faint">
-            Bot token
-          </label>
-          <input
-            type="password"
-            value={botToken}
-            onChange={(e) => setBotToken(e.target.value)}
-            placeholder="xoxb-…"
-            className="w-full rounded-sm border border-hairline bg-shell-bg px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
-          />
-        </div>
+      {/* Advanced: manual setup disclosure */}
+      <div>
         <button
-          type="submit"
-          disabled={saving || !channelId.trim() || !botToken.trim()}
-          className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity disabled:opacity-40"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          className="flex items-center gap-xs font-mono text-micro uppercase tracking-widest text-neutral-faint transition-colors hover:text-neutral-muted"
         >
-          {saving ? "Saving…" : "Save"}
+          <span>{advancedOpen ? "▾" : "▸"}</span>
+          Advanced: manual setup
         </button>
-      </form>
+
+        {advancedOpen && (
+          <div className="mt-md space-y-md">
+            <div className="rounded-md border border-hairline bg-white p-lg text-small text-neutral-muted">
+              <p className="mb-sm font-medium text-ink-dark">How to create the Slack app:</p>
+              <ol className="list-inside list-decimal space-y-xs text-small">
+                <li>Go to api.slack.com/apps → Create New App → From scratch</li>
+                <li>
+                  OAuth &amp; Permissions → Add Bot Token Scope:{" "}
+                  <code className="font-mono">chat:write</code>
+                </li>
+                <li>Install to workspace → copy the Bot User OAuth Token</li>
+                <li>
+                  Invite the bot to your channel:{" "}
+                  <code className="font-mono">/invite @your-bot</code>
+                </li>
+                <li>Copy the channel ID from the channel URL or right-click menu</li>
+              </ol>
+            </div>
+
+            {manualSuccess && (
+              <div className="rounded-sm border border-verdict-pass/30 bg-verdict-pass/5 px-md py-sm text-small text-verdict-pass">
+                Slack configuration saved.
+              </div>
+            )}
+
+            {manualError && (
+              <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
+                {manualError}
+              </div>
+            )}
+
+            <form onSubmit={(e) => void handleManualSubmit(e)} className="space-y-md">
+              <div>
+                <label className="mb-xs block font-mono text-micro uppercase tracking-widest text-neutral-faint">
+                  Channel ID
+                </label>
+                <input
+                  value={channelId}
+                  onChange={(e) => setChannelId(e.target.value)}
+                  placeholder="C0123ABC456"
+                  className="w-full rounded-sm border border-hairline bg-shell-bg px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-xs block font-mono text-micro uppercase tracking-widest text-neutral-faint">
+                  Bot token
+                </label>
+                <input
+                  type="password"
+                  value={botToken}
+                  onChange={(e) => setBotToken(e.target.value)}
+                  placeholder="xoxb-…"
+                  className="w-full rounded-sm border border-hairline bg-shell-bg px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={saving || !channelId.trim() || !botToken.trim()}
+                className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity disabled:opacity-40"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

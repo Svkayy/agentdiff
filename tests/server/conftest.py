@@ -6,6 +6,7 @@ from server.db import Base
 import server.models  # noqa: F401  (registers all tables on Base.metadata)
 
 TEST_DB_URL = "postgresql+asyncpg://agentdiff:agentdiff@localhost:5432/agentdiff_test"
+assert "_test" in TEST_DB_URL, "refusing schema reset on a non-test database"
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

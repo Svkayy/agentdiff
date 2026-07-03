@@ -77,7 +77,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
-exclude = ["tests*", "benchmarks*", "docs*", "examples*", "frontend*", "landing*", "dist*"]
+include = ["agentdiff*", "server*", "collector*"]
 
 [tool.setuptools.package-data]
 agentdiff = ["dashboard_assets/*.html"]

@@ -12,6 +12,7 @@ import {
   disconnectSlack,
   mintKey,
   revokeKey,
+  ApiError,
   type Run,
   type ApiKey,
   type MintedKey,
@@ -320,9 +321,9 @@ function RunsTab({ projectId }: { projectId: string }) {
                 {r.status}
               </td>
               <td className="px-md py-sm font-mono text-micro text-neutral-muted">
-                <span className="text-ink-dark">{r.baseline_ref.slice(0, 7)}</span>
+                <span className="text-ink-dark">{(r.baseline_ref ?? "?").slice(0, 7)}</span>
                 <span className="mx-xs text-neutral-faint">→</span>
-                <span className="text-ink-dark">{r.candidate_ref.slice(0, 7)}</span>
+                <span className="text-ink-dark">{(r.candidate_ref ?? "?").slice(0, 7)}</span>
               </td>
               <td className="px-md py-sm font-mono text-micro text-neutral-faint">
                 {new Date(r.created_at).toLocaleString()}
@@ -925,7 +926,52 @@ function SlackTab({ projectId }: { projectId: string }) {
 export function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const projectId = id ?? "";
+  const { getToken } = useAuth();
   const [tab, setTab] = useState("runs");
+  const [projectNotFound, setProjectNotFound] = useState(false);
+
+  // Validate the project exists and belongs to this org by checking runs.
+  // On 404/403, show the not-found card instead of tabs.
+  useEffect(() => {
+    if (!projectId) { setProjectNotFound(true); return; }
+    setProjectNotFound(false);
+    // We don't have a /v1/projects/:id endpoint, so validate via runs list.
+    fetchRuns(projectId, getToken).catch((e: unknown) => {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
+        setProjectNotFound(true);
+      }
+    });
+  }, [projectId, getToken]);
+
+  if (projectNotFound) {
+    return (
+      <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
+        <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
+          <Link to="/" className="transition-colors hover:text-ink-dark">Projects</Link>
+          <span>/</span>
+          <span className="text-ink-dark">{projectId.slice(0, 8)}…</span>
+        </div>
+        <div className="rounded-md border border-hairline bg-white p-2xl text-center">
+          <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+            Project not found
+          </div>
+          <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">
+            This project doesn&apos;t exist
+          </h2>
+          <p className="mb-lg max-w-md mx-auto text-small text-neutral-muted">
+            Project <code className="font-mono text-ink-dark">{projectId.slice(0, 8)}…</code>{" "}
+            was not found in your organisation, or it was deleted.
+          </p>
+          <Link
+            to="/"
+            className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
+          >
+            Back to Projects
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">

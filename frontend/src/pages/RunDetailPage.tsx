@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { motion } from "framer-motion";
-import { fetchRun, type RunDetail, type Finding } from "@/lib/api";
+import { fetchRun, ApiError, type RunDetail, type Finding } from "@/lib/api";
 import { useSkipEntrance } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { GraphNode, StatisticalEvidence } from "@/types";
@@ -133,13 +133,16 @@ function GraphNodeRect({ node, index, skip }: { node: PositionedNode; index: num
 
 function AgentGraph({ run }: { run: RunDetail }) {
   const skip = useSkipEntrance();
-  const nodes = layoutGraph(run.graph.nodes);
+  // Guard: graph may be absent on legacy/failed runs that pre-date graph storage.
+  const graphNodes = run.graph?.nodes ?? [];
+  const graphEdges = run.graph?.edges ?? [];
+  const nodes = layoutGraph(graphNodes);
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const graphH = Math.max(
     170,
     (nodes.length ? Math.max(...nodes.map((node) => node.y)) : 0) + NODE_H + 28,
   );
-  const stoppedCount = run.graph.nodes.filter((n) => n.stopped).length;
+  const stoppedCount = graphNodes.filter((n) => n.stopped).length;
 
   return (
     <motion.figure
@@ -153,13 +156,15 @@ function AgentGraph({ run }: { run: RunDetail }) {
           agentdiff compare · {run.baseline_ref?.slice(0, 7)} → {run.candidate_ref?.slice(0, 7)}
         </span>
         <span className="font-mono text-[11px] tabular-nums" style={{ color: MUTED }}>
-          {run.graph.nodes.length} nodes · {run.graph.edges.length} edges
+          {graphNodes.length} nodes · {graphEdges.length} edges
         </span>
       </div>
       <div className="dot-grid-light overflow-x-auto p-5">
         {nodes.length === 0 ? (
           <div className="py-xl text-center text-small text-neutral-muted">
-            No processed graph data for this run.
+            {run.status === "failed"
+              ? "Graph unavailable — run failed before comparison completed."
+              : "No agent activity recorded for this run."}
           </div>
         ) : (
           <svg
@@ -168,7 +173,7 @@ function AgentGraph({ run }: { run: RunDetail }) {
             aria-label="Processed AgentDiff graph"
             className="min-w-[620px] w-full"
           >
-            {run.graph.edges.map((edge, index) => {
+            {graphEdges.map((edge, index) => {
               const source = byId.get(edge.source);
               const target = byId.get(edge.target);
               if (!source || !target) return null;
@@ -195,7 +200,7 @@ function AgentGraph({ run }: { run: RunDetail }) {
       </div>
       {stoppedCount > 0 && (
         <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-hairline px-5 py-3 font-mono text-[11px]">
-          {run.graph.nodes.filter((n) => n.stopped).map((node) => (
+          {graphNodes.filter((n) => n.stopped).map((node) => (
             <span key={node.id} style={{ color: EMBER }}>{node.label}: stopped</span>
           ))}
         </figcaption>
@@ -308,6 +313,32 @@ function DriftCallout() {
   );
 }
 
+// ── Not-found card ────────────────────────────────────────────────────────────
+
+function NotFoundCard({ runId }: { runId: string }) {
+  return (
+    <div className="rounded-md border border-hairline bg-white p-2xl text-center">
+      <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        Run not found
+      </div>
+      <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">
+        This run isn&apos;t in your project
+      </h2>
+      <p className="mb-lg max-w-md mx-auto text-small text-neutral-muted">
+        Run <code className="font-mono text-ink-dark">{runId.slice(0, 8)}…</code>{" "}
+        doesn&apos;t belong to your current project, or it was deleted. Check that you&apos;re
+        logged into the correct organisation.
+      </p>
+      <Link
+        to="/"
+        className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
+      >
+        Back to Projects
+      </Link>
+    </div>
+  );
+}
+
 // ── RunDetailPage ─────────────────────────────────────────────────────────────
 
 export function RunDetailPage() {
@@ -316,17 +347,23 @@ export function RunDetailPage() {
   const { getToken } = useAuth();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setNotFound(false);
     fetchRun(runId, getToken)
       .then((data) => {
         setRun(data);
         setError(null);
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : "Failed to load run");
+        if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
+          setNotFound(true);
+        } else {
+          setError(e instanceof Error ? e.message : "Failed to load run");
+        }
       })
       .finally(() => setLoading(false));
   }, [runId, getToken]);
@@ -355,7 +392,10 @@ export function RunDetailPage() {
         </div>
       )}
 
-      {error && (
+      {/* Graceful not-found: 404/403 → clear card with back-link, never blank */}
+      {!loading && notFound && <NotFoundCard runId={runId} />}
+
+      {!loading && error && (
         <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
           {error}
         </div>
@@ -386,6 +426,18 @@ export function RunDetailPage() {
             </div>
           </div>
 
+          {/* Failed run banner — show engine error prominently before graph */}
+          {run.status === "failed" && run.error && (
+            <div className="mb-2xl rounded-md border border-ember/30 bg-ember/5 p-lg">
+              <div className="mb-xs font-mono text-micro font-bold uppercase tracking-widest text-ember">
+                Run failed
+              </div>
+              <pre className="whitespace-pre-wrap font-mono text-micro text-ember">
+                {run.error}
+              </pre>
+            </div>
+          )}
+
           {/* Drift callout for drift runs with no cause_path */}
           {run.kind === "drift" &&
             run.findings.every((f) => !f.cause_path) &&
@@ -409,15 +461,15 @@ export function RunDetailPage() {
               </div>
             ) : (
               <div className="space-y-md">
-                {run.findings.map((f) => (
-                  <FindingRow key={f.test_case_id + f.title} finding={f} />
+                {run.findings.map((f, i) => (
+                  <FindingRow key={`${f.test_case_id}-${f.metric}-${i}`} finding={f} />
                 ))}
               </div>
             )}
           </div>
 
-          {/* Error from run engine */}
-          {run.error && (
+          {/* Engine error on non-failed runs (e.g. partial error) */}
+          {run.status !== "failed" && run.error && (
             <div className="mt-2xl rounded-sm border border-ember/30 bg-ember/5 px-md py-sm">
               <div className="mb-xs font-mono text-micro uppercase tracking-widest text-ember">
                 Run error

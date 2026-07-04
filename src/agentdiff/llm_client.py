@@ -4,10 +4,13 @@ Critical invariant: these calls must never be captured. They run after sampling
 has exited its Tracer, so no Tracer is active and the shims pass through. The
 constructor asserts this to catch accidental nesting.
 """
+import logging
 import os
 from typing import Any, Literal
 
 from agentdiff.capture.tracer import get_active_tracer
+
+log = logging.getLogger("agentdiff.llm")
 
 Provider = Literal["anthropic", "openai"]
 
@@ -48,7 +51,7 @@ class LLMClient:
                 return self._complete_anthropic(system, prompt, max_tokens)
             return self._complete_openai(system, prompt, max_tokens)
         except Exception as e:  # noqa: BLE001 — eval/explainer must degrade gracefully
-            print(f"[agentdiff] LLMClient.complete failed: {type(e).__name__}: {e}")
+            log.warning("LLMClient.complete failed: %s: %s", type(e).__name__, e)
             return ""
 
     # -- providers ----------------------------------------------------------
@@ -57,7 +60,8 @@ class LLMClient:
         if self._client is None:
             import anthropic
             self._client = anthropic.Anthropic(
-                api_key=self._api_key or os.environ.get("ANTHROPIC_API_KEY")
+                api_key=self._api_key or os.environ.get("ANTHROPIC_API_KEY"),
+                timeout=15.0,
             )
         resp = self._client.messages.create(
             model=self.model,
@@ -73,6 +77,7 @@ class LLMClient:
             self._client = openai.OpenAI(
                 api_key=self._api_key or os.environ.get("OPENAI_API_KEY"),
                 base_url=os.environ.get("OPENAI_BASE_URL"),
+                timeout=15.0,
             )
         resp = self._client.chat.completions.create(
             model=self.model,

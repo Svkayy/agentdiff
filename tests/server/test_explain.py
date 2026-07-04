@@ -152,6 +152,52 @@ async def test_raising_client_swallowed_others_still_processed(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_failure_does_not_consume_cap(monkeypatch):
+    """A raising _explain_one must NOT decrement the success cap.
+
+    Scenario: 4 findings, first raises, next three succeed.
+    All three successes should be written (cap=3 counts only successes).
+    """
+    call_count = 0
+    success_count = 0
+
+    def fake_explain_one(finding_dict, client, *, is_drift):
+        nonlocal call_count, success_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("first call fails")
+        finding_dict["explanation"] = "LLM explanation."
+        success_count += 1
+
+    monkeypatch.setattr(explain_mod, "_explain_one", fake_explain_one)
+
+    def fake_make_client(api_key, model=None):
+        return _RaisingClient()
+
+    monkeypatch.setattr(explain_mod, "_make_client", fake_make_client)
+
+    from server import config as cfg_mod
+
+    class _HasKey:
+        anthropic_api_key = "sk-ant-fake"
+        llm_model = ""
+
+    monkeypatch.setattr(cfg_mod, "get_settings", lambda: _HasKey())
+
+    # 4 fail-verdict findings: first call raises, next three succeed
+    findings = [_finding(), _finding(), _finding(), _finding()]
+
+    await explain_mod.explain_findings(findings, run=_RunCI())
+
+    # All three successful calls must have written their explanation
+    assert findings[1]["explanation"] == "LLM explanation."
+    assert findings[2]["explanation"] == "LLM explanation."
+    assert findings[3]["explanation"] == "LLM explanation."
+    # Cap was not exhausted by the failure → exactly 3 successes
+    assert success_count == 3
+
+
+@pytest.mark.asyncio
 async def test_drift_narrative_path(monkeypatch):
     """Drift findings (no cause_path) are still explained with drift context."""
     fake = _FakeClient("Drift explanation.")

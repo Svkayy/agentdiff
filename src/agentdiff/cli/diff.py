@@ -62,6 +62,7 @@ def diff_cmd(
     comparison = compare_engine.compare_all(baseline_set, candidate_set, structure)
 
     if baseline:
+        # When ANTHROPIC_API_KEY is set, LLM explanations auto-enable via AUTO_LLM_EXPLAINER default.
         attribution = attribute(
             comparison,
             structure,

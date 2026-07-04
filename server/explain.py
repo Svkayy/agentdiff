@@ -104,7 +104,13 @@ async def explain_findings(
         if not fd.get("cause_path") and not is_drift:
             continue
         try:
-            await asyncio.to_thread(_explain_one, fd, client, is_drift=is_drift)
+            await asyncio.wait_for(
+                asyncio.to_thread(_explain_one, fd, client, is_drift=is_drift),
+                timeout=20,
+            )
+        except TimeoutError as exc:  # belt-and-suspenders over SDK's 15s timeout
+            log.debug("explain_findings: finding explanation timed out (swallowed): %s", exc)
         except Exception as exc:  # noqa: BLE001
             log.debug("explain_findings: finding explanation failed (swallowed): %s", exc)
-        processed += 1
+        else:
+            processed += 1

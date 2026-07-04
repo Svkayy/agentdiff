@@ -172,6 +172,9 @@ Then diff the two captures and open the dashboard:
 agentdiff diff before after --serve
 ```
 
+> **Auto-LLM explanations:** when `ANTHROPIC_API_KEY` is set and `--baseline` is
+> provided, LLM explanations are generated automatically for the top findings.
+
 You get the before/after agent graph with any agent that stopped firing lit up.
 Structure is auto-inferred, so agents show real names without `agentdiff init`.
 

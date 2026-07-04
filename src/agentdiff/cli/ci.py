@@ -286,10 +286,10 @@ def ci_run_cmd(
             baseline_ref=baseline_label,
             candidate_ref=candidate,
             tier=tier,
-            config=structure.model_dump() if hasattr(structure, "model_dump") else {},
-            attribution=attribution.model_dump() if attribution is not None else None,
-            baseline_trajs=[t.model_dump() for t in baseline_set.trajectories],
-            candidate_trajs=[t.model_dump() for t in candidate_set.trajectories],
+            config=structure.model_dump(mode="json") if hasattr(structure, "model_dump") else {},
+            attribution=attribution.model_dump(mode="json") if attribution is not None else None,
+            baseline_trajs=[t.model_dump(mode="json") for t in baseline_set.trajectories],
+            candidate_trajs=[t.model_dump(mode="json") for t in candidate_set.trajectories],
         )
         try:
             _uploader.upload(_api_url, _api_key, _payload)

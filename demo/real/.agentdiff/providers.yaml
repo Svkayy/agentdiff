@@ -1,0 +1,5 @@
+providers:
+  - name: anthropic
+    url_pattern: "^http://127\\.0\\.0\\.1:\\d+/v1/messages"
+  - name: anthropic
+    url_pattern: "^http://localhost:\\d+/v1/messages"

@@ -81,7 +81,7 @@ def test_empty_input_is_warn_not_pass():
 def test_renderers_share_same_summary():
     summary = build_incident_summary(_comparison())
 
-    assert "AgentDiff CI Gate: FAIL" in render_pr_check(summary)
+    assert "AgentDiff CI Gate: CHANGE" in render_pr_check(summary)
     assert "Postmortem Draft" in render_postmortem(summary)
     blocks = render_slack_blocks(summary, detail_url="https://example.com/report")
     assert blocks[0]["type"] == "header"
@@ -136,7 +136,7 @@ def test_github_upserts_existing_pr_comment():
     result = GitHubClient("ghs_test", request_fn=fake_request).upsert_pr_comment(
         repository="o/r",
         pr_number=1,
-        body="# AgentDiff CI Gate: FAIL\n",
+        body="# AgentDiff CI Gate: CHANGE\n",
     )
 
     assert result.ok is True
@@ -234,7 +234,7 @@ def test_slack_headline_counts_multiple_findings():
     )
     summary = build_incident_summary(comparison)
     blocks = render_slack_blocks(summary)
-    assert "2 behavioral regressions" in blocks[0]["text"]["text"]
+    assert "2 behavioral changes detected" in blocks[0]["text"]["text"]
     listed = [b for b in blocks if b["type"] == "section" and "Also affected" in b["text"]["text"]]
     assert len(listed) == 1
 
@@ -253,7 +253,7 @@ def test_slack_post_payload_merges_channel_and_fallback():
     assert result.ok is True
     assert calls[0]["channel"] == "C123"
     assert calls[0]["attachments"][0]["color"] == "#FF4D2E"
-    assert calls[0]["text"].startswith("AgentDiff FAIL")
+    assert calls[0]["text"].startswith("AgentDiff CHANGE")
 
 
 def test_pr_check_and_postmortem_include_context():

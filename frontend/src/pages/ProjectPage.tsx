@@ -22,21 +22,29 @@ import { cn } from "@/lib/utils";
 
 // ── Verdict badge ──────────────────────────────────────────────────────────────
 
+/** Maps engine verdict values (pass/warn/fail) to user-facing monitoring labels. */
+export function verdictLabel(verdict: string | null): string {
+  if (verdict === "pass") return "STABLE";
+  if (verdict === "warn") return "NOTICE";
+  if (verdict === "fail") return "CHANGE";
+  return verdict ?? "—";
+}
+
 function VerdictBadge({ verdict }: { verdict: string | null }) {
   const styles: Record<string, string> = {
     pass: "bg-verdict-pass/10 text-verdict-pass border border-verdict-pass/30",
     warn: "bg-verdict-warn/10 text-verdict-warn border border-verdict-warn/30",
     fail: "bg-ember/10 text-ember border border-ember/30",
   };
-  const v = verdict ?? "—";
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-sm px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
         verdict ? styles[verdict] ?? "border border-hairline text-neutral-faint" : "text-neutral-faint",
       )}
+      title={verdict ?? undefined}
     >
-      {v}
+      {verdictLabel(verdict)}
     </span>
   );
 }
@@ -110,7 +118,7 @@ function VerdictDot({
   return (
     <a
       href={`/runs/${runId}`}
-      title={`${verdict ?? "—"} · ${new Date(createdAt).toLocaleDateString()}`}
+      title={`${verdictLabel(verdict)} · ${new Date(createdAt).toLocaleDateString()}`}
       className={cn(
         "inline-block h-4 w-4 flex-shrink-0 rounded-sm transition-opacity hover:opacity-70",
         color,
@@ -162,12 +170,12 @@ function StatsBar({ projectId }: { projectId: string }) {
       <div className="flex flex-wrap gap-xl rounded-md border border-hairline bg-white px-lg py-md">
         <StatChip label="Pass rate (30)" value={passRateStr} />
         <StatChip
-          label="Failing streak"
+          label="Alert streak"
           value={stats.failing_streak > 0 ? String(stats.failing_streak) : "0"}
           ember={stats.failing_streak > 0}
         />
         <StatChip
-          label="Last failure"
+          label="Last alert"
           value={stats.last_failure_at ? relativeTime(stats.last_failure_at) : "—"}
         />
         <StatChip label="Drift alerts 7d" value={String(stats.drift_runs_7d)} />

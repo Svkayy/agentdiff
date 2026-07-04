@@ -58,7 +58,7 @@ def test_ci_run_empty_inputs_writes_warn_artifacts(tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    assert "WARN" in (out / "agentdiff-ci.md").read_text(encoding="utf-8")
+    assert "NOTICE" in (out / "agentdiff-ci.md").read_text(encoding="utf-8")
     assert "0 inputs" in (out / "summary.json").read_text(encoding="utf-8")
 
 
@@ -103,7 +103,7 @@ def test_ci_run_live_writes_artifacts(tmp_path, monkeypatch):
     assert (out / "summary.json").exists()
     assert (out / "slack_blocks.json").exists()
     assert (out / "slack_payload.json").exists()
-    assert "AgentDiff CI Gate: PASS" in (out / "agentdiff-ci.md").read_text(encoding="utf-8")
+    assert "AgentDiff CI Gate: STABLE" in (out / "agentdiff-ci.md").read_text(encoding="utf-8")
 
 
 def test_ci_run_hermetic_requires_cassette(tmp_path):
@@ -146,4 +146,4 @@ def test_ci_run_writes_github_outputs(tmp_path, monkeypatch):
     outputs = gh_output.read_text(encoding="utf-8")
     assert "verdict=warn" in outputs
     assert f"artifact_dir={out}" in outputs
-    assert "AgentDiff CI Gate: WARN" in gh_summary.read_text(encoding="utf-8")
+    assert "AgentDiff CI Gate: NOTICE" in gh_summary.read_text(encoding="utf-8")

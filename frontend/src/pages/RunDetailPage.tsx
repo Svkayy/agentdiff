@@ -6,6 +6,7 @@ import { fetchRun, type RunDetail, type Finding } from "@/lib/api";
 import { useSkipEntrance } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { GraphNode, StatisticalEvidence } from "@/types";
+import { verdictLabel } from "./ProjectPage";
 
 // ── Design tokens (light plate — user-approved) ───────────────────────────────
 const EMBER = "#FF4D2E";
@@ -24,15 +25,15 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
     warn: "bg-verdict-warn/10 text-verdict-warn border border-verdict-warn/30",
     fail: "bg-ember/10 text-ember border border-ember/30",
   };
-  const v = verdict ?? "—";
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-sm px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
         verdict ? styles[verdict] ?? "border border-hairline text-neutral-faint" : "text-neutral-faint",
       )}
+      title={verdict ?? undefined}
     >
-      {v}
+      {verdictLabel(verdict)}
     </span>
   );
 }
@@ -259,8 +260,9 @@ function FindingRow({ finding }: { finding: Finding }) {
               ? "bg-verdict-warn/10 text-verdict-warn"
               : "bg-verdict-pass/10 text-verdict-pass",
           )}
+          title={finding.verdict}
         >
-          {finding.verdict}
+          {verdictLabel(finding.verdict)}
         </span>
         {finding.cause_rule && (
           <span className="rounded-sm border border-hairline px-sm py-2xs font-mono text-micro text-neutral-faint">

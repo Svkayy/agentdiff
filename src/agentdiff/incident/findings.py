@@ -32,6 +32,7 @@ class IncidentFinding(BaseModel):
     verdict: Verdict
     metric: str
     impact_summary: str
+    statistical_evidence: dict | None = None
     cause_path: str | None = None
     cause_rule: str | None = None
     cause_hunk: str | None = None
@@ -89,6 +90,10 @@ def build_incident_summary(
                         f"{delta.agent_name} fired {delta.baseline_rate:.0%} on baseline "
                         f"and {delta.candidate_rate:.0%} on candidate "
                         f"({delta.delta:+.0%})."
+                    ),
+                    statistical_evidence=(
+                        delta.stats.model_dump(mode="json")
+                        if delta.stats is not None else None
                     ),
                     cause_path=primary.target_path if primary is not None else None,
                     cause_rule=primary.rule if primary is not None else None,

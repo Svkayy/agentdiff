@@ -60,6 +60,18 @@ export interface RunQuality {
 }
 
 // ── Behavioral comparison (compare.ComparisonResult) ───────────────────────
+export interface StatisticalEvidence {
+  test: string;
+  p_value: number | null;
+  significant: boolean;
+  alpha: number;
+  effect_size: number | null;
+  effect_label: string;
+  confidence_interval: [number, number] | null;
+  baseline_n: number;
+  candidate_n: number;
+}
+
 export interface AgentInvocationDelta {
   agent_name: string;
   function: string;
@@ -72,6 +84,7 @@ export interface AgentInvocationDelta {
   candidate_total: number;
   p_value: number | null;
   significant: boolean;
+  stats?: StatisticalEvidence | null;
   verdict: Verdict;
 }
 
@@ -82,6 +95,7 @@ export interface ToolUsageDelta {
   delta: number;
   p_value: number | null;
   significant: boolean;
+  stats?: StatisticalEvidence | null;
   verdict: Verdict;
 }
 

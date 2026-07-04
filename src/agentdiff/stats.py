@@ -8,6 +8,7 @@ import math
 from collections.abc import Sequence
 
 _ALPHA = 0.05
+_Z_95 = 1.959963984540054
 
 
 def _normal_sf(z: float) -> float:
@@ -37,6 +38,43 @@ def two_proportion_pvalue(
         return 1.0
     z = ((c_success / c_n) - (b_success / b_n)) / se
     return _two_sided_p_from_z(z)
+
+
+def proportion_delta_ci(
+    b_success: int,
+    b_n: int,
+    c_success: int,
+    c_n: int,
+    *,
+    z: float = _Z_95,
+) -> tuple[float, float] | None:
+    """Wald 95% CI for the candidate-baseline rate difference.
+
+    The comparison engine already uses a two-proportion z-test for the p-value;
+    this exposes the paired confidence interval so reports can show the modeled
+    uncertainty, not just the binary significant/not-significant label.
+    """
+    if b_n <= 0 or c_n <= 0:
+        return None
+    b_rate = b_success / b_n
+    c_rate = c_success / c_n
+    delta = c_rate - b_rate
+    se = math.sqrt(
+        (b_rate * (1.0 - b_rate) / b_n)
+        + (c_rate * (1.0 - c_rate) / c_n)
+    )
+    lo = max(-1.0, delta - z * se)
+    hi = min(1.0, delta + z * se)
+    return lo, hi
+
+
+def cohens_h(b_success: int, b_n: int, c_success: int, c_n: int) -> float | None:
+    """Signed Cohen's h for the candidate-baseline proportion change."""
+    if b_n <= 0 or c_n <= 0:
+        return None
+    b_rate = b_success / b_n
+    c_rate = c_success / c_n
+    return 2.0 * math.asin(math.sqrt(c_rate)) - 2.0 * math.asin(math.sqrt(b_rate))
 
 
 def mann_whitney_pvalue(baseline: Sequence[float], candidate: Sequence[float]) -> float:
@@ -82,6 +120,22 @@ def mann_whitney_pvalue(baseline: Sequence[float], candidate: Sequence[float]) -
     z = (u1 - mu)
     z = (z + 0.5 if z < 0 else z - 0.5) / sigma
     return _two_sided_p_from_z(z)
+
+
+def cliffs_delta(baseline: Sequence[float], candidate: Sequence[float]) -> float | None:
+    """Signed Cliff's delta: positive means candidate values are usually higher."""
+    n1, n2 = len(baseline), len(candidate)
+    if n1 == 0 or n2 == 0:
+        return None
+    greater = 0
+    lesser = 0
+    for c in candidate:
+        for b in baseline:
+            if c > b:
+                greater += 1
+            elif c < b:
+                lesser += 1
+    return (greater - lesser) / (n1 * n2)
 
 
 def is_significant(p_value: float, alpha: float = _ALPHA) -> bool:

@@ -39,6 +39,25 @@ class CompareThresholds(BaseModel):
 # Result models
 # ---------------------------------------------------------------------------
 
+class StatisticalEvidence(BaseModel):
+    """Modeled evidence behind a behavioral delta.
+
+    Kept alongside the legacy ``p_value`` / ``significant`` fields so older
+    consumers remain compatible while newer dashboards can show the actual
+    statistical model, effect size, and uncertainty interval.
+    """
+
+    test: str
+    p_value: float | None = None
+    significant: bool = False
+    alpha: float = 0.05
+    effect_size: float | None = None
+    effect_label: str
+    confidence_interval: tuple[float, float] | None = None
+    baseline_n: int
+    candidate_n: int
+
+
 class AgentInvocationDelta(BaseModel):
     agent_name: str
     function: str
@@ -51,6 +70,7 @@ class AgentInvocationDelta(BaseModel):
     candidate_total: int
     p_value: float | None = None
     significant: bool = False
+    stats: StatisticalEvidence | None = None
     verdict: Verdict
 
 
@@ -61,6 +81,7 @@ class ToolUsageDelta(BaseModel):
     delta: float
     p_value: float | None = None
     significant: bool = False
+    stats: StatisticalEvidence | None = None
     verdict: Verdict
 
 
@@ -216,6 +237,16 @@ def compare_test_case(
         delta = c - b
         p = stats.two_proportion_pvalue(b_count, n_b, c_count, n_c)
         significant = stats.is_significant(p)
+        modeled = StatisticalEvidence(
+            test="two_proportion_z",
+            p_value=p,
+            significant=significant,
+            effect_size=stats.cohens_h(b_count, n_b, c_count, n_c),
+            effect_label="cohens_h",
+            confidence_interval=stats.proportion_delta_ci(b_count, n_b, c_count, n_c),
+            baseline_n=n_b,
+            candidate_n=n_c,
+        )
         agent_deltas.append(
             AgentInvocationDelta(
                 agent_name=agent.name,
@@ -229,6 +260,7 @@ def compare_test_case(
                 candidate_total=n_c,
                 p_value=p,
                 significant=significant,
+                stats=modeled,
                 verdict=_apply_significance(_rate_verdict(delta, thresholds), significant),
             )
         )
@@ -240,10 +272,20 @@ def compare_test_case(
         b = b_tools.get(name, 0.0)
         c = c_tools.get(name, 0.0)
         delta = c - b
-        p = stats.mann_whitney_pvalue(
-            _tool_count_vector(name, baseline), _tool_count_vector(name, candidate)
-        )
+        b_vector = _tool_count_vector(name, baseline)
+        c_vector = _tool_count_vector(name, candidate)
+        p = stats.mann_whitney_pvalue(b_vector, c_vector)
         significant = stats.is_significant(p)
+        modeled = StatisticalEvidence(
+            test="mann_whitney_u",
+            p_value=p,
+            significant=significant,
+            effect_size=stats.cliffs_delta(b_vector, c_vector),
+            effect_label="cliffs_delta",
+            confidence_interval=None,
+            baseline_n=len(b_vector),
+            candidate_n=len(c_vector),
+        )
         tool_deltas.append(
             ToolUsageDelta(
                 tool_name=name,
@@ -252,6 +294,7 @@ def compare_test_case(
                 delta=delta,
                 p_value=p,
                 significant=significant,
+                stats=modeled,
                 verdict=_apply_significance(_tool_verdict(delta, thresholds), significant),
             )
         )

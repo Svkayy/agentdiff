@@ -1,6 +1,11 @@
 """Unit tests for the significance tests in agentdiff/stats.py."""
 from agentdiff.stats import (
-    is_significant, mann_whitney_pvalue, two_proportion_pvalue,
+    cliffs_delta,
+    cohens_h,
+    is_significant,
+    mann_whitney_pvalue,
+    proportion_delta_ci,
+    two_proportion_pvalue,
 )
 
 
@@ -26,6 +31,16 @@ def test_two_proportion_empty():
     assert two_proportion_pvalue(0, 0, 1, 5) == 1.0
 
 
+def test_proportion_effect_and_interval_are_signed_candidate_minus_baseline():
+    ci = proportion_delta_ci(20, 20, 0, 20)
+    assert ci is not None
+    assert ci[0] <= -1.0
+    assert ci[1] < 0.0
+    h = cohens_h(20, 20, 0, 20)
+    assert h is not None
+    assert h < 0.0
+
+
 def test_mann_whitney_identical_not_significant():
     assert mann_whitney_pvalue([1, 1, 1, 1], [1, 1, 1, 1]) == 1.0
 
@@ -43,3 +58,9 @@ def test_mann_whitney_small_n_not_significant():
 
 def test_mann_whitney_empty():
     assert mann_whitney_pvalue([], [1, 2, 3]) == 1.0
+
+
+def test_cliffs_delta_signed_candidate_minus_baseline():
+    assert cliffs_delta([2, 2], [1, 1]) == -1.0
+    assert cliffs_delta([1, 1], [2, 2]) == 1.0
+    assert cliffs_delta([], [1]) is None

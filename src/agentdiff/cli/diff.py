@@ -70,7 +70,6 @@ def diff_cmd(
             repo_root=root,
             baseline_ref=baseline,
             candidate_ref=None,
-            llm_client=None,
         )
     else:
         attribution = attribute_observed(

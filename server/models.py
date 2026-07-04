@@ -111,6 +111,7 @@ class Finding(Base):
     verdict: Mapped[str] = mapped_column(String(16))
     metric: Mapped[str] = mapped_column(String(64))
     impact_summary: Mapped[str] = mapped_column(Text)
+    statistical_evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     cause_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     cause_rule: Mapped[str | None] = mapped_column(String(64), nullable=True)
     cause_hunk: Mapped[str | None] = mapped_column(Text, nullable=True)

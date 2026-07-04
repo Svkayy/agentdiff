@@ -1,3 +1,10 @@
+import type {
+  AgentGraph,
+  Attribution,
+  Comparison,
+  StatisticalEvidence,
+} from "@/types";
+
 const API_URL = import.meta.env.VITE_AGENTDIFF_API_URL ?? "http://localhost:8000";
 
 export type GetToken = () => Promise<string | null>;
@@ -48,6 +55,13 @@ export interface RunDetail extends Run {
   findings: Finding[];
   baseline_samples: number;
   candidate_samples: number;
+  graph: AgentGraph;
+  comparison: Comparison;
+  attribution: Attribution | null;
+  trajectories: {
+    baseline: Record<string, unknown>[];
+    candidate: Record<string, unknown>[];
+  };
 }
 
 export interface Finding {
@@ -56,6 +70,7 @@ export interface Finding {
   verdict: string;
   metric: string;
   impact_summary: string;
+  statistical_evidence: StatisticalEvidence | null;
   cause_path: string | null;
   cause_rule: string | null;
   cause_hunk: string | null;

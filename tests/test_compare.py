@@ -61,6 +61,10 @@ def test_invocation_delta_fail_verdict():
     assert d.delta == -1.0
     assert d.significant is True
     assert d.p_value < 0.05
+    assert d.stats is not None
+    assert d.stats.test == "two_proportion_z"
+    assert d.stats.effect_label == "cohens_h"
+    assert d.stats.confidence_interval is not None
     assert d.verdict == "fail"
     assert cmp.overall_verdict == "fail"
 
@@ -94,6 +98,10 @@ def test_tool_averages_and_delta():
     assert tool_d.candidate_avg == 1.0
     assert tool_d.delta == -1.0
     assert tool_d.significant is True
+    assert tool_d.stats is not None
+    assert tool_d.stats.test == "mann_whitney_u"
+    assert tool_d.stats.effect_label == "cliffs_delta"
+    assert tool_d.stats.effect_size < 0
     assert tool_d.verdict == "fail"
 
 

@@ -234,7 +234,7 @@ def ci_run_cmd(
             candidate_trajectories=candidate_set.trajectories,
             repo_root=root,
             git_range=GitRange(base_ref=baseline_ref, head_ref=candidate_ref),
-            llm_client=None,
+            llm_client=attribution_engine.AUTO_LLM_EXPLAINER,
         )
 
     summary = build_incident_summary(

@@ -3,6 +3,9 @@ from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from agentdiff.capture.events import CallSite, CanonicalLLMCall, LLMRequestEvent
+from agentdiff.structure.structure_yaml import AgentEntry, StructureDoc
+from agentdiff.trajectory import Trajectory as EngineTrajectory
 from server.main import app
 from server.db import get_session
 from server.deps import get_user_ctx
@@ -13,6 +16,26 @@ async def _client(session, user_ctx):
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_user_ctx] = lambda: user_ctx
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://t")
+
+
+def _engine_payload(tc_id: str, tag: str, fires: bool) -> dict:
+    events = []
+    if fires:
+        events.append(
+            LLMRequestEvent(
+                call_id=uuid4(),
+                canonical=CanonicalLLMCall(provider="anthropic"),
+                captured_by="sdk_shim",
+                callsite=CallSite(file="agents.py", function="fact_checker", line=10),
+                inferred_agent="Fact Checker",
+            )
+        )
+    return EngineTrajectory(
+        test_case_id=tc_id,
+        version_tag=tag,
+        input={},
+        events=events,
+    ).model_dump(mode="json")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -363,5 +386,72 @@ async def test_get_run_findings_include_hunk_and_explanation(session):
             f = body["findings"][0]
             assert f["cause_hunk"] == "@@ -1,3 +1,3 @@\n-old line\n+new line"
             assert f["explanation"] == "The agent was removed."
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_run_returns_processed_graph_and_comparison(session):
+    """Run detail returns engine-computed graph/comparison, not guessed UI data."""
+    org = Org(name=f"graph-org-{uuid4()}")
+    project = Project(org=org, name=f"graph-proj-{uuid4()}")
+    structure = StructureDoc(
+        agents=[
+            AgentEntry(
+                name="Fact Checker",
+                function="fact_checker",
+                file="agents.py",
+                line=10,
+            )
+        ]
+    )
+    run = Run(
+        project=project,
+        idempotency_key=f"graph-{uuid4()}",
+        baseline_ref="main",
+        candidate_ref="feat",
+        tier="hermetic",
+        kind="ci",
+        config=structure.model_dump(),
+        status="done",
+        verdict="fail",
+    )
+    session.add(run)
+    await session.flush()
+
+    for _ in range(8):
+        session.add(
+            Trajectory(
+                run_id=run.id,
+                side="baseline",
+                test_case_id="tc1",
+                payload=_engine_payload("tc1", "baseline", True),
+            )
+        )
+    for _ in range(8):
+        session.add(
+            Trajectory(
+                run_id=run.id,
+                side="candidate",
+                test_case_id="tc1",
+                payload=_engine_payload("tc1", "candidate", False),
+            )
+        )
+    await session.commit()
+
+    user = User(org=org, clerk_user_id=f"ugraph-{uuid4()}", email="graph@g.com")
+    session.add(user)
+    await session.commit()
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.get(f"/v1/runs/{run.id}")
+            assert r.status_code == 200
+            body = r.json()
+            node = next(n for n in body["graph"]["nodes"] if n["id"] == "agent:Fact Checker")
+            assert node["stopped"] is True
+            delta = body["comparison"]["test_case_comparisons"][0]["agent_invocation_deltas"][0]
+            assert delta["stats"]["test"] == "two_proportion_z"
+            assert delta["stats"]["confidence_interval"] is not None
     finally:
         app.dependency_overrides.clear()

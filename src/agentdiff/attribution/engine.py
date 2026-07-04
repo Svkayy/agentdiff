@@ -16,6 +16,8 @@ from agentdiff.compare import ComparisonResult
 from agentdiff.structure.structure_yaml import StructureDoc
 from agentdiff.trajectory import Trajectory
 
+AUTO_LLM_EXPLAINER = "auto"
+
 
 class BehavioralAttribution(BaseModel):
     test_case_id: str
@@ -41,7 +43,7 @@ def attribute(
     repo_root: Path,
     baseline_ref: str,
     candidate_ref: str | None,
-    llm_client=None,
+    llm_client=AUTO_LLM_EXPLAINER,
 ) -> AttributionResult:
     """Attribute every non-passing agent invocation delta to a changed file.
 
@@ -65,7 +67,7 @@ def attribute_range(
     candidate_trajectories: list[Trajectory],
     repo_root: Path,
     git_range: GitRange,
-    llm_client=None,
+    llm_client=AUTO_LLM_EXPLAINER,
 ) -> AttributionResult:
     """Attribute behavioral deltas across a git range.
 
@@ -115,10 +117,16 @@ def attribute_range(
                     ba.alternatives = attrs[1:]
 
             if ba.primary is not None and llm_client is not None:
-                from agentdiff.attribution.explainer import explain
-                ba.explanation = explain(
-                    llm_client, ba.agent_name, ba.delta_summary, ba.verdict, ba.primary
-                )
+                from agentdiff.attribution.explainer import explain, explain_default
+
+                if llm_client == AUTO_LLM_EXPLAINER:
+                    ba.explanation = explain_default(
+                        ba.agent_name, ba.delta_summary, ba.verdict, ba.primary
+                    )
+                else:
+                    ba.explanation = explain(
+                        llm_client, ba.agent_name, ba.delta_summary, ba.verdict, ba.primary
+                    )
 
             results.append(ba)
 

@@ -254,7 +254,56 @@ def test_attribute_range_matches_legacy_attribute_for_working_tree(tmp_path):
         candidate_trajectories=candidate,
         repo_root=project,
         git_range=GitRange(base_ref="HEAD", head_ref=None),
+        llm_client=None,
     )
 
     assert result.attributions[0].primary is not None
     assert result.attributions[0].primary.target_path == "agent.py"
+
+
+@pytestmark_git
+def test_default_explainer_adds_fallback_explanation(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "agent.py").write_text(
+        "PROMPT = 'baseline'\n"
+        "def research_agent(query):\n"
+        "    return PROMPT\n"
+    )
+    _git(["init"], project)
+    _git(["config", "user.email", "t@t.com"], project)
+    _git(["config", "user.name", "t"], project)
+    _git(["add", "-A"], project)
+    _git(["commit", "-m", "baseline"], project)
+    (project / "agent.py").write_text(
+        "PROMPT = 'candidate'\n"
+        "def research_agent(query):\n"
+        "    return PROMPT\n"
+    )
+
+    structure = StructureDoc(
+        agents=[AgentEntry(name="Research", function="research_agent", file="agent.py", line=2)],
+    )
+    baseline = [_agent_traj("baseline", "baseline") for _ in range(20)]
+    candidate = [_agent_traj("candidate", "candidate") for _ in range(14)]
+    candidate += [_agent_traj("candidate", "candidate", fires=False) for _ in range(6)]
+    comparison = compare_all(
+        TrajectorySet(version_tag="baseline", trajectories=baseline),
+        TrajectorySet(version_tag="candidate", trajectories=candidate),
+        structure,
+        ["tc1"],
+    )
+
+    result = attribution_engine.attribute_range(
+        comparison=comparison,
+        structure=structure,
+        baseline_trajectories=baseline,
+        candidate_trajectories=candidate,
+        repo_root=project,
+        git_range=GitRange(base_ref="HEAD", head_ref=None),
+    )
+
+    assert result.attributions[0].explanation
+    assert "AgentDiff attributed" in result.attributions[0].explanation

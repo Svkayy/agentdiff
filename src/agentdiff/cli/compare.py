@@ -177,7 +177,7 @@ def compare_cmd(
             repo_root=root,
             baseline_ref=baseline_ref,
             candidate_ref=candidate_ref,
-            llm_client=llm_client,
+            llm_client=llm_client or attribution_engine.AUTO_LLM_EXPLAINER,
         )
     else:
         console.print("[dim]Skipping attribution for working-tree smoke comparison.[/dim]")

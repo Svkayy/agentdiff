@@ -6,6 +6,9 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentdiff.compare import compare_all
+from agentdiff.graph_model import build as build_graph
+from agentdiff.structure.structure_yaml import StructureDoc
 from server import crypto
 from server.db import get_session
 from server.deps import get_user_ctx, own_project
@@ -73,15 +76,14 @@ async def get_run(
         await session.execute(select(Finding).where(Finding.run_id == run.id))
     ).scalars().all()
 
-    # B3(i) — trajectory counts by side
-    side_counts = (
-        await session.execute(
-            select(Trajectory.side, func.count(Trajectory.id))
-            .where(Trajectory.run_id == run.id)
-            .group_by(Trajectory.side)
-        )
-    ).all()
-    counts = {row[0]: row[1] for row in side_counts}
+    trajectory_rows = (
+        await session.execute(select(Trajectory).where(Trajectory.run_id == run.id))
+    ).scalars().all()
+    counts = {
+        "baseline": sum(1 for row in trajectory_rows if row.side == "baseline"),
+        "candidate": sum(1 for row in trajectory_rows if row.side == "candidate"),
+    }
+    processed = _processed_run_payload(run, trajectory_rows)
 
     return {
         "id": str(run.id),
@@ -102,6 +104,7 @@ async def get_run(
                 "verdict": f.verdict,
                 "metric": f.metric,
                 "impact_summary": f.impact_summary,
+                "statistical_evidence": f.statistical_evidence,
                 "cause_path": f.cause_path,
                 "cause_rule": f.cause_rule,
                 "cause_hunk": f.cause_hunk,
@@ -109,6 +112,42 @@ async def get_run(
             }
             for f in findings
         ],
+        **processed,
+    }
+
+
+def _processed_run_payload(run: Run, trajectory_rows: list[Trajectory]) -> dict:
+    """Build honest dashboard data from stored trajectories and run artifacts."""
+    from agentdiff.trajectory import Trajectory as EngineTrajectory, TrajectorySet
+
+    def _side(side: str) -> TrajectorySet:
+        trajectories = []
+        for row in trajectory_rows:
+            if row.side != side:
+                continue
+            try:
+                trajectories.append(EngineTrajectory.model_validate(row.payload))
+            except Exception:  # noqa: BLE001 - old rows may not contain full payloads
+                continue
+        return TrajectorySet(version_tag=side, trajectories=trajectories)
+
+    baseline = _side("baseline")
+    candidate = _side("candidate")
+    try:
+        structure = StructureDoc.model_validate(run.config or {})
+    except Exception:  # noqa: BLE001 - keep old failed runs readable
+        structure = StructureDoc()
+    test_case_ids = sorted({row.test_case_id for row in trajectory_rows})
+    comparison = compare_all(baseline, candidate, structure, test_case_ids)
+    graph = build_graph(comparison, run.attribution, baseline, candidate)
+    return {
+        "comparison": comparison.model_dump(mode="json"),
+        "graph": graph.model_dump(mode="json"),
+        "attribution": run.attribution,
+        "trajectories": {
+            "baseline": [t.model_dump(mode="json") for t in baseline.trajectories],
+            "candidate": [t.model_dump(mode="json") for t in candidate.trajectories],
+        },
     }
 
 

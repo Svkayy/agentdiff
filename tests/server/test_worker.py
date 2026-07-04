@@ -136,6 +136,10 @@ async def test_process_run_writes_findings(session):
     assert all(
         f.impact_summary for f in findings
     ), "impact_summary must be populated"
+    assert any(
+        f.statistical_evidence and f.statistical_evidence["test"] == "two_proportion_z"
+        for f in findings
+    ), "statistical evidence must be persisted with findings"
 
 
 # ---------------------------------------------------------------------------

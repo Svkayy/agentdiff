@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { fetchRun, type RunDetail, type Finding } from "@/lib/api";
 import { useSkipEntrance } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import type { GraphNode, StatisticalEvidence } from "@/types";
 
 // ── Design tokens (light plate — user-approved) ───────────────────────────────
 const EMBER = "#FF4D2E";
@@ -48,211 +49,96 @@ function KindBadge({ kind }: { kind: string }) {
   );
 }
 
-// ── Light agent graph ─────────────────────────────────────────────────────────
+// ── Real processed graph ─────────────────────────────────────────────────────
 
-interface AgentSpec {
-  name: string;
-  function?: string;
+const NODE_W = 154;
+const NODE_H = 48;
+const GRAPH_W = 620;
+const COL_AGENT_X = 64;
+const COL_TOOL_X = 402;
+const ROW_DY = 82;
+
+type PositionedNode = GraphNode & { x: number; y: number };
+
+function formatNodeRate(node: GraphNode): string {
+  if (node.kind === "agent") {
+    return `${Math.round(node.baseline_rate * 100)}% → ${Math.round(node.candidate_rate * 100)}%`;
+  }
+  return `${node.baseline_rate.toFixed(1)} → ${node.candidate_rate.toFixed(1)}`;
 }
 
-const NODE_W = 120;
-const NODE_H = 44;
-const PLATE_W = 320;
-
-function layoutNodes(agents: AgentSpec[]): Array<AgentSpec & { x: number; y: number }> {
-  // Simple vertical layout with orchestrator at top
-  const spacing = 72;
-  return agents.map((a, i) => ({
-    ...a,
-    x: (PLATE_W - NODE_W) / 2,
-    y: 16 + i * spacing,
-  }));
+function layoutGraph(nodes: GraphNode[]): PositionedNode[] {
+  const agents = nodes.filter((n) => n.kind === "agent");
+  const tools = nodes.filter((n) => n.kind !== "agent");
+  const place = (list: GraphNode[], x: number) =>
+    list.map((node, i) => ({ ...node, x, y: 28 + i * ROW_DY }));
+  return [...place(agents, COL_AGENT_X), ...place(tools, tools.length ? COL_TOOL_X : COL_AGENT_X)];
 }
 
-function edgePath(
-  ay: number,
-  by: number,
-  cx: number,
-): string {
-  const ax = cx;
-  const bx = cx;
-  const mid = (ay + NODE_H + by) / 2;
-  return `M ${ax} ${ay + NODE_H} C ${ax} ${mid}, ${bx} ${mid}, ${bx} ${by}`;
+function edgePath(source: PositionedNode, target: PositionedNode): string {
+  const sx = source.x + NODE_W;
+  const sy = source.y + NODE_H / 2;
+  const tx = target.x;
+  const ty = target.y + NODE_H / 2;
+  const mid = (sx + tx) / 2;
+  return `M ${sx} ${sy} C ${mid} ${sy}, ${mid} ${ty}, ${tx} ${ty}`;
 }
 
-function GraphPanel({
-  title,
-  verdict,
-  agents,
-  stoppedAgents,
-  side,
-  skip,
-}: {
-  title: string;
-  verdict: "PASS" | "FAIL" | null;
-  agents: Array<AgentSpec & { x: number; y: number }>;
-  stoppedAgents: Set<string>;
-  side: "baseline" | "candidate";
-  skip: boolean;
-}) {
-  const plateH = 16 + agents.length * 72 + 16;
-  const centerX = PLATE_W / 2;
+function GraphNodeRect({ node, index, skip }: { node: PositionedNode; index: number; skip: boolean }) {
+  const stopped = node.stopped;
+  const verdictColor =
+    stopped || node.verdict === "fail" ? EMBER : node.verdict === "warn" ? "#E8A33D" : PASS;
+  const label = node.label.length > 18 ? `${node.label.slice(0, 18)}…` : node.label;
 
   return (
-    <div className="flex-1 min-w-0">
-      <div className="flex items-baseline justify-between px-1 pb-2">
-        <span className="font-mono text-[11px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>
-          {title}
-        </span>
-        {verdict && (
-          <span
-            className="font-mono text-[11px] font-medium tabular-nums"
-            style={{ color: verdict === "FAIL" ? EMBER : PASS }}
-          >
-            {verdict}
-          </span>
-        )}
-      </div>
-      <svg
-        viewBox={`0 0 ${PLATE_W} ${plateH}`}
-        role="img"
-        aria-label={`${title} agent graph, verdict ${verdict ?? "pending"}`}
-        className="w-full"
+    <motion.g
+      initial={skip ? false : { opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.28, ease: "easeOut", delay: 0.12 + index * 0.04 }}
+    >
+      <rect
+        x={node.x}
+        y={node.y}
+        width={NODE_W}
+        height={NODE_H}
+        rx={6}
+        fill={NODE_FILL}
+        stroke={stopped ? EMBER : NODE_BORDER}
+        strokeWidth={stopped ? 1.5 : 1}
+      />
+      <circle cx={node.x + 15} cy={node.y + 17} r={3.5} fill={verdictColor} />
+      <text
+        x={node.x + 27}
+        y={node.y + 18}
+        fontSize={10}
+        fontFamily="'JetBrains Mono', monospace"
+        fill={stopped ? EMBER : TEXT}
+        fontWeight={stopped ? 700 : 500}
       >
-        {/* Edges between consecutive nodes */}
-        {agents.slice(1).map((n, i) => {
-          const prev = agents[i];
-          const stoppedEdge = side === "candidate" && stoppedAgents.has(n.name);
-          return (
-            <motion.path
-              key={`e-${n.name}`}
-              d={edgePath(prev.y, n.y, centerX)}
-              fill="none"
-              stroke={stoppedEdge ? EMBER : EDGE}
-              strokeWidth={1.25}
-              strokeDasharray={stoppedEdge ? "3 4" : undefined}
-              strokeOpacity={stoppedEdge ? 0.7 : 1}
-              initial={skip ? false : { pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: 0.32, ease: "easeOut", delay: 0.3 + i * 0.08 }}
-            />
-          );
-        })}
-
-        {/* Nodes */}
-        {agents.map((n, i) => {
-          const stopped = side === "candidate" && stoppedAgents.has(n.name);
-          return (
-            <motion.g
-              key={n.name}
-              initial={skip ? false : { opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.32, ease: "easeOut", delay: 0.15 + i * 0.08 }}
-            >
-              {stopped && (
-                <motion.rect
-                  x={n.x}
-                  y={n.y}
-                  width={NODE_W}
-                  height={NODE_H}
-                  rx={10}
-                  fill="none"
-                  stroke={EMBER}
-                  initial={skip ? false : { opacity: 0.9, scale: 1, strokeWidth: 1.5 }}
-                  animate={{ opacity: 0, scale: 1.28, strokeWidth: 0.5 }}
-                  transition={{ duration: 0.6, ease: "easeOut", delay: 0.9 }}
-                  style={{
-                    transformOrigin: `${n.x + NODE_W / 2}px ${n.y + NODE_H / 2}px`,
-                  }}
-                />
-              )}
-              <rect
-                x={n.x}
-                y={n.y}
-                width={NODE_W}
-                height={NODE_H}
-                rx={10}
-                fill={NODE_FILL}
-                stroke={stopped ? EMBER : NODE_BORDER}
-                strokeWidth={stopped ? 1.5 : 1}
-              />
-              <circle
-                cx={n.x + 14}
-                cy={n.y + NODE_H / 2}
-                r={3}
-                fill={stopped ? EMBER : PASS}
-              />
-              <text
-                x={n.x + 26}
-                y={n.y + 17}
-                fontSize={10}
-                fontFamily="'JetBrains Mono', monospace"
-                fill={TEXT}
-              >
-                {n.name.length > 14 ? n.name.slice(0, 14) + "…" : n.name}
-              </text>
-              <text
-                x={n.x + 26}
-                y={n.y + 31}
-                fontSize={9}
-                fontFamily="'JetBrains Mono', monospace"
-                fill={stopped ? EMBER : MUTED}
-              >
-                {stopped ? "stopped" : "active"}
-              </text>
-            </motion.g>
-          );
-        })}
-      </svg>
-    </div>
+        {label}
+      </text>
+      <text
+        x={node.x + 14}
+        y={node.y + 35}
+        fontSize={9}
+        fontFamily="'JetBrains Mono', monospace"
+        fill={MUTED}
+      >
+        {formatNodeRate(node)}
+      </text>
+    </motion.g>
   );
 }
 
-function AgentGraph({
-  run,
-  findings,
-}: {
-  run: RunDetail;
-  findings: Finding[];
-}) {
+function AgentGraph({ run }: { run: RunDetail }) {
   const skip = useSkipEntrance();
-
-  // Extract agents from run.config.agents if present
-  type AgentConfig = { name?: string; function?: string };
-  const configAgents = (
-    Array.isArray((run.config as Record<string, unknown>)?.agents)
-      ? ((run.config as Record<string, unknown>).agents as AgentConfig[])
-      : []
+  const nodes = layoutGraph(run.graph.nodes);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const graphH = Math.max(
+    170,
+    (nodes.length ? Math.max(...nodes.map((node) => node.y)) : 0) + NODE_H + 28,
   );
-
-  const agents: AgentSpec[] =
-    configAgents.length > 0
-      ? configAgents.map((a) => ({ name: a.name ?? "agent", function: a.function }))
-      : [
-          { name: "orchestrator" },
-          { name: "retriever" },
-          { name: "executor" },
-        ];
-
-  const laidOut = layoutNodes(agents);
-
-  // Which agents are "stopped" = have a failing finding whose title starts with agent name
-  const stoppedAgents = new Set<string>(
-    findings
-      .filter((f) => f.verdict === "fail")
-      .flatMap((f) =>
-        agents.map((a) => a.name).filter((name) => {
-          const t = f.title.toLowerCase();
-          const n = name.toLowerCase();
-          return t.startsWith(n) && (t.length === n.length || t[n.length] === " ");
-        }),
-      ),
-  );
-
-  const overallVerdict =
-    run.verdict === "pass" ? "PASS" : run.verdict === "fail" ? "FAIL" : null;
-
-  const plateH = 16 + agents.length * 72 + 16;
+  const stoppedCount = run.graph.nodes.filter((n) => n.stopped).length;
 
   return (
     <motion.figure
@@ -266,34 +152,50 @@ function AgentGraph({
           agentdiff compare · {run.baseline_ref?.slice(0, 7)} → {run.candidate_ref?.slice(0, 7)}
         </span>
         <span className="font-mono text-[11px] tabular-nums" style={{ color: MUTED }}>
-          {findings.length} finding{findings.length !== 1 ? "s" : ""}
+          {run.graph.nodes.length} nodes · {run.graph.edges.length} edges
         </span>
       </div>
-      <div className="dot-grid-light flex flex-col gap-6 p-5 sm:flex-row sm:gap-4" style={{ minHeight: plateH + 40 }}>
-        <GraphPanel
-          title={`baseline · ${run.baseline_ref?.slice(0, 7) ?? "—"}`}
-          verdict="PASS"
-          agents={laidOut}
-          stoppedAgents={new Set()}
-          side="baseline"
-          skip={skip}
-        />
-        <div aria-hidden="true" className="hidden w-px self-stretch bg-hairline sm:block" />
-        <GraphPanel
-          title={`candidate · ${run.candidate_ref?.slice(0, 7) ?? "—"}`}
-          verdict={overallVerdict}
-          agents={laidOut}
-          stoppedAgents={stoppedAgents}
-          side="candidate"
-          skip={skip}
-        />
+      <div className="dot-grid-light overflow-x-auto p-5">
+        {nodes.length === 0 ? (
+          <div className="py-xl text-center text-small text-neutral-muted">
+            No processed graph data for this run.
+          </div>
+        ) : (
+          <svg
+            viewBox={`0 0 ${GRAPH_W} ${graphH}`}
+            role="img"
+            aria-label="Processed AgentDiff graph"
+            className="min-w-[620px] w-full"
+          >
+            {run.graph.edges.map((edge, index) => {
+              const source = byId.get(edge.source);
+              const target = byId.get(edge.target);
+              if (!source || !target) return null;
+              const broken = source.stopped || target.stopped;
+              return (
+                <motion.path
+                  key={`${edge.source}-${edge.target}`}
+                  d={edgePath(source, target)}
+                  fill="none"
+                  stroke={broken ? EMBER : EDGE}
+                  strokeWidth={1.4}
+                  strokeDasharray={broken ? "4 5" : undefined}
+                  initial={skip ? false : { pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ duration: 0.32, ease: "easeOut", delay: 0.18 + index * 0.04 }}
+                />
+              );
+            })}
+            {nodes.map((node, index) => (
+              <GraphNodeRect key={node.id} node={node} index={index} skip={skip} />
+            ))}
+          </svg>
+        )}
       </div>
-      {stoppedAgents.size > 0 && (
+      {stoppedCount > 0 && (
         <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-hairline px-5 py-3 font-mono text-[11px]">
-          {Array.from(stoppedAgents).map((name) => (
-            <span key={name} style={{ color: EMBER }}>
-              {name}: stopped
-            </span>
+          {run.graph.nodes.filter((n) => n.stopped).map((node) => (
+            <span key={node.id} style={{ color: EMBER }}>{node.label}: stopped</span>
           ))}
         </figcaption>
       )}
@@ -302,6 +204,47 @@ function AgentGraph({
 }
 
 // ── Findings list ─────────────────────────────────────────────────────────────
+
+function fmtP(evidence: StatisticalEvidence): string {
+  const p = evidence.p_value;
+  if (p === null) return "p=—";
+  const raw = p < 0.001 ? "p<0.001" : `p=${p.toFixed(3)}`;
+  return evidence.significant ? `${raw}*` : raw;
+}
+
+function fmtEffect(evidence: StatisticalEvidence): string | null {
+  if (evidence.effect_size === null) return null;
+  const label =
+    evidence.effect_label === "cohens_h"
+      ? "h"
+      : evidence.effect_label === "cliffs_delta"
+        ? "Cliff"
+        : evidence.effect_label;
+  return `${label}=${evidence.effect_size.toFixed(2)}`;
+}
+
+function fmtCi(evidence: StatisticalEvidence): string | null {
+  if (!evidence.confidence_interval) return null;
+  const [lo, hi] = evidence.confidence_interval;
+  return `95% CI ${Math.round(lo * 100)}% to ${Math.round(hi * 100)}%`;
+}
+
+function StatisticalEvidenceBar({ evidence }: { evidence: StatisticalEvidence | null }) {
+  if (!evidence) return null;
+  const effect = fmtEffect(evidence);
+  const ci = fmtCi(evidence);
+  return (
+    <div className="mt-sm flex flex-wrap items-center gap-xs font-mono text-micro text-neutral-faint">
+      <span className="rounded-sm border border-hairline px-sm py-2xs">{evidence.test}</span>
+      <span className={evidence.significant ? "text-ink-dark" : undefined}>{fmtP(evidence)}</span>
+      {effect && <span>{effect}</span>}
+      {ci && <span>{ci}</span>}
+      <span>
+        n={evidence.baseline_n}/{evidence.candidate_n}
+      </span>
+    </div>
+  );
+}
 
 function FindingRow({ finding }: { finding: Finding }) {
   return (
@@ -328,6 +271,7 @@ function FindingRow({ finding }: { finding: Finding }) {
       </div>
       <h3 className="mb-xs font-display text-small font-bold text-ink-dark">{finding.title}</h3>
       <p className="mb-sm text-small text-neutral-muted">{finding.impact_summary}</p>
+      <StatisticalEvidenceBar evidence={finding.statistical_evidence} />
       {finding.cause_path && (
         <div className="mt-sm font-mono text-micro text-neutral-faint">{finding.cause_path}</div>
       )}
@@ -446,7 +390,7 @@ export function RunDetailPage() {
             run.findings.length > 0 && <DriftCallout />}
 
           {/* Agent graph hero */}
-          <AgentGraph run={run} findings={run.findings} />
+          <AgentGraph run={run} />
 
           {/* Findings */}
           <div>

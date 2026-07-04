@@ -154,8 +154,14 @@ async def check_drift_for_project(
     session.add(drift_run)
     await session.flush()  # get drift_run.id
 
+    # Strip aggregation-only fields that are not stored as DB columns.
+    _finding_db_keys = {
+        "test_case_id", "title", "verdict", "metric", "impact_summary",
+        "statistical_evidence", "cause_path", "cause_rule", "cause_hunk", "explanation",
+    }
     for fd in finding_dicts:
-        session.add(Finding(run_id=drift_run.id, **fd))
+        db_fd = {k: v for k, v in fd.items() if k in _finding_db_keys}
+        session.add(Finding(run_id=drift_run.id, **db_fd))
 
     await session.commit()
 

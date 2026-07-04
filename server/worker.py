@@ -71,8 +71,15 @@ async def process_run(ctx, run_id: str) -> None:
         from server.explain import explain_findings
         await explain_findings(finding_dicts, run=run)
 
+        # Strip aggregation-only fields that are not stored as DB columns;
+        # they live in statistical_evidence JSON for the reads endpoint.
+        _finding_db_keys = {
+            "test_case_id", "title", "verdict", "metric", "impact_summary",
+            "statistical_evidence", "cause_path", "cause_rule", "cause_hunk", "explanation",
+        }
         for fd in finding_dicts:
-            session.add(Finding(run_id=run.id, **fd))
+            db_fd = {k: v for k, v in fd.items() if k in _finding_db_keys}
+            session.add(Finding(run_id=run.id, **db_fd))
 
         run.status = "done"
         run.verdict = verdict

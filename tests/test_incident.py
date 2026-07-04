@@ -65,8 +65,12 @@ def test_incident_summary_merges_attribution_once():
     summary = build_incident_summary(_comparison(), attribution)
 
     assert summary.verdict == "fail"
+    # One test case → exactly one aggregated finding
+    assert len(summary.findings) == 1
     assert summary.findings[0].cause_path == "agents/fact_checker.py"
     assert "100%" in summary.findings[0].impact_summary
+    assert summary.findings[0].test_cases_affected == 1
+    assert summary.findings[0].test_cases_total == 1
 
 
 def test_empty_input_is_warn_not_pass():
@@ -223,7 +227,8 @@ def test_slack_payload_colors_by_verdict():
     assert warn_payload["attachments"][0]["color"] == "#E8A33D"
 
 
-def test_slack_headline_counts_multiple_findings():
+def test_slack_headline_same_agent_two_test_cases_aggregates_to_one():
+    """Same agent change across 2 test cases → ONE aggregated finding, not two."""
     comparison = _comparison()
     extra = comparison.test_case_comparisons[0].model_copy(
         update={"test_case_id": "tc2"}
@@ -233,6 +238,64 @@ def test_slack_headline_counts_multiple_findings():
         test_case_comparisons=[comparison.test_case_comparisons[0], extra],
     )
     summary = build_incident_summary(comparison)
+    # Aggregated: ONE finding covers both test cases
+    assert len(summary.findings) == 1
+    assert summary.findings[0].test_cases_affected == 2
+    assert summary.findings[0].test_cases_total == 2
+    assert "2 of 2 inputs" in summary.findings[0].impact_summary
+    # Headline names the single finding, not "2 behavioral changes"
+    blocks = render_slack_blocks(summary)
+    assert "Fact Checker invocation changed" in blocks[0]["text"]["text"]
+    # No "Also affected" section when there is only one aggregated finding
+    listed = [b for b in blocks if b["type"] == "section" and "Also affected" in b["text"]["text"]]
+    assert len(listed) == 0
+
+
+def test_slack_headline_counts_multiple_distinct_agent_findings():
+    """Two DIFFERENT agents changing → two findings → '2 behavioral changes detected'."""
+    from agentdiff.compare import AgentInvocationDelta, TestCaseComparison
+
+    comparison = ComparisonResult(
+        overall_verdict="fail",
+        test_case_comparisons=[
+            TestCaseComparison(
+                test_case_id="tc1",
+                overall_verdict="fail",
+                agent_invocation_deltas=[
+                    AgentInvocationDelta(
+                        agent_name="Fact Checker",
+                        function="fact_checker",
+                        baseline_rate=1.0,
+                        candidate_rate=0.0,
+                        delta=-1.0,
+                        baseline_count=5,
+                        candidate_count=0,
+                        baseline_total=5,
+                        candidate_total=5,
+                        p_value=0.01,
+                        significant=True,
+                        verdict="fail",
+                    ),
+                    AgentInvocationDelta(
+                        agent_name="Summarizer",
+                        function="summarizer",
+                        baseline_rate=1.0,
+                        candidate_rate=0.0,
+                        delta=-1.0,
+                        baseline_count=5,
+                        candidate_count=0,
+                        baseline_total=5,
+                        candidate_total=5,
+                        p_value=0.01,
+                        significant=True,
+                        verdict="fail",
+                    ),
+                ],
+            )
+        ],
+    )
+    summary = build_incident_summary(comparison)
+    assert len(summary.findings) == 2
     blocks = render_slack_blocks(summary)
     assert "2 behavioral changes detected" in blocks[0]["text"]["text"]
     listed = [b for b in blocks if b["type"] == "section" and "Also affected" in b["text"]["text"]]

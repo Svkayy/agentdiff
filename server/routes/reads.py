@@ -109,6 +109,15 @@ async def get_run(
                 "cause_rule": f.cause_rule,
                 "cause_hunk": f.cause_hunk,
                 "explanation": f.explanation,
+                # Aggregation context — populated when findings were built from
+                # build_incident_summary; falls back to 1/1 for legacy rows that
+                # pre-date aggregation.
+                "test_cases_affected": (
+                    (f.statistical_evidence or {}).get("test_cases_affected", 1)
+                ),
+                "test_cases_total": (
+                    (f.statistical_evidence or {}).get("test_cases_total", 1)
+                ),
             }
             for f in findings
         ],
@@ -117,7 +126,14 @@ async def get_run(
 
 
 def _processed_run_payload(run: Run, trajectory_rows: list[Trajectory]) -> dict:
-    """Build honest dashboard data from stored trajectories and run artifacts."""
+    """Build honest dashboard data from stored trajectories and run artifacts.
+
+    The graph is built with the full agent structure (from run.config) so ALL
+    agents render — not just the one(s) whose delta crossed a threshold.  If
+    trajectory payloads don't re-validate (old rows), we still return a valid
+    (possibly sparse) graph from whatever deltas the comparison yields plus the
+    structure fallback.
+    """
     from agentdiff.trajectory import Trajectory as EngineTrajectory, TrajectorySet
 
     def _side(side: str) -> TrajectorySet:
@@ -139,7 +155,9 @@ def _processed_run_payload(run: Run, trajectory_rows: list[Trajectory]) -> dict:
         structure = StructureDoc()
     test_case_ids = sorted({row.test_case_id for row in trajectory_rows})
     comparison = compare_all(baseline, candidate, structure, test_case_ids)
-    graph = build_graph(comparison, run.attribution, baseline, candidate)
+    # Pass structure so healthy agents (not in any delta) still appear as green
+    # nodes in the graph — the full system view, not just the changed agent.
+    graph = build_graph(comparison, run.attribution, baseline, candidate, structure)
     return {
         "comparison": comparison.model_dump(mode="json"),
         "graph": graph.model_dump(mode="json"),

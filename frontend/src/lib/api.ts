@@ -11,6 +11,17 @@ export type GetToken = () => Promise<string | null>;
 
 // ── Shared authenticated fetch ────────────────────────────────────────────────
 
+/** Error thrown when the API returns a non-2xx status. Carries the HTTP status code. */
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function authed(
   path: string,
   getToken: GetToken,
@@ -26,7 +37,7 @@ async function authed(
       ...(options?.headers ?? {}),
     },
   });
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `API ${res.status}`);
   // 204 No Content has no body.
   if (res.status === 204) return undefined;
   return res.json();
@@ -75,6 +86,9 @@ export interface Finding {
   cause_rule: string | null;
   cause_hunk: string | null;
   explanation: string | null;
+  // Aggregation context: how many test cases are represented in this finding.
+  test_cases_affected: number;
+  test_cases_total: number;
 }
 
 export interface ProjectStats {

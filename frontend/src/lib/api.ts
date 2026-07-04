@@ -66,7 +66,7 @@ export interface RunDetail extends Run {
   findings: Finding[];
   baseline_samples: number;
   candidate_samples: number;
-  graph: AgentGraph;
+  graph: AgentGraph | null;
   comparison: Comparison;
   attribution: Attribution | null;
   trajectories: {

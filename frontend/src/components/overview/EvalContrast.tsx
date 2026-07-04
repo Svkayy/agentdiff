@@ -1,3 +1,4 @@
+import { verdictLabel } from "@/pages/ProjectPage";
 import type { ReportData, Verdict } from "@/types";
 
 function VerdictBadge({ verdict, dim }: { verdict: Verdict; dim?: boolean }) {
@@ -5,20 +6,20 @@ function VerdictBadge({ verdict, dim }: { verdict: Verdict; dim?: boolean }) {
   if (verdict === "fail") {
     return (
       <span className={`${base} ${dim ? "bg-ember/8 text-ember/50" : "bg-ember/15 text-ember border border-ember/30"}`}>
-        FAIL
+        {verdictLabel(verdict)}
       </span>
     );
   }
   if (verdict === "warn") {
     return (
       <span className={`${base} ${dim ? "bg-verdict-warn/8 text-verdict-warn/50" : "bg-verdict-warn/15 text-verdict-warn border border-verdict-warn/30"}`}>
-        WARN
+        {verdictLabel(verdict)}
       </span>
     );
   }
   return (
     <span className={`${base} ${dim ? "bg-verdict-pass/8 text-verdict-pass/50" : "bg-verdict-pass/15 text-verdict-pass border border-verdict-pass/30"}`}>
-      PASS
+      {verdictLabel(verdict)}
     </span>
   );
 }
@@ -95,7 +96,7 @@ export function EvalContrast({ data }: { data: ReportData }) {
         <div className="border-t border-node-border px-lg py-md">
           <p className="text-micro text-neutral-faint">
             <span className="mr-xs inline-block h-2 w-2 rounded-full bg-ember align-middle" />
-            Highlighted rows: output eval passed while AgentDiff detected a behavioral regression.
+            Highlighted rows: output eval passed while AgentDiff detected a behavioral change.
           </p>
         </div>
       )}

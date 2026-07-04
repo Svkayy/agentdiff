@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentdiff.compare import compare_all
+from agentdiff.compare import ComparisonResult, compare_all
 from agentdiff.graph_model import build as build_graph
 from agentdiff.structure.structure_yaml import StructureDoc
 from server import crypto
@@ -154,10 +154,19 @@ def _processed_run_payload(run: Run, trajectory_rows: list[Trajectory]) -> dict:
     except Exception:  # noqa: BLE001 - keep old failed runs readable
         structure = StructureDoc()
     test_case_ids = sorted({row.test_case_id for row in trajectory_rows})
-    comparison = compare_all(baseline, candidate, structure, test_case_ids)
+    # compare/graph must never 500 a done run: a malformed-but-parseable
+    # trajectory could otherwise raise here and take down the whole endpoint.
+    # Degrade to an empty comparison + structure-only graph instead.
+    try:
+        comparison = compare_all(baseline, candidate, structure, test_case_ids)
+    except Exception:  # noqa: BLE001 - keep the run readable even if compare fails
+        comparison = ComparisonResult()
     # Pass structure so healthy agents (not in any delta) still appear as green
     # nodes in the graph — the full system view, not just the changed agent.
-    graph = build_graph(comparison, run.attribution, baseline, candidate, structure)
+    try:
+        graph = build_graph(comparison, run.attribution, baseline, candidate, structure)
+    except Exception:  # noqa: BLE001 - a graph should never break the run view
+        graph = build_graph(ComparisonResult(), None, baseline, candidate, structure)
     return {
         "comparison": comparison.model_dump(mode="json"),
         "graph": graph.model_dump(mode="json"),

@@ -928,22 +928,42 @@ export function ProjectPage() {
   const projectId = id ?? "";
   const { getToken } = useAuth();
   const [tab, setTab] = useState("runs");
-  const [projectNotFound, setProjectNotFound] = useState(false);
+  // Tri-state so the tab UI doesn't flash before the existence probe resolves.
+  const [probe, setProbe] = useState<"pending" | "found" | "notfound">("pending");
 
   // Validate the project exists and belongs to this org by checking runs.
   // On 404/403, show the not-found card instead of tabs.
   useEffect(() => {
-    if (!projectId) { setProjectNotFound(true); return; }
-    setProjectNotFound(false);
+    if (!projectId) { setProbe("notfound"); return; }
+    setProbe("pending");
     // We don't have a /v1/projects/:id endpoint, so validate via runs list.
-    fetchRuns(projectId, getToken).catch((e: unknown) => {
-      if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
-        setProjectNotFound(true);
-      }
-    });
+    fetchRuns(projectId, getToken)
+      .then(() => setProbe("found"))
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
+          setProbe("notfound");
+        } else {
+          // Transient/network error — don't hard-fail into not-found; let the
+          // tab contents surface their own error state.
+          setProbe("found");
+        }
+      });
   }, [projectId, getToken]);
 
-  if (projectNotFound) {
+  if (probe === "pending") {
+    return (
+      <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
+        <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
+          <Link to="/" className="transition-colors hover:text-ink-dark">Projects</Link>
+          <span>/</span>
+          <span className="text-ink-dark">{projectId.slice(0, 8)}…</span>
+        </div>
+        <div className="h-40 animate-pulse rounded-md border border-hairline bg-white/50" />
+      </div>
+    );
+  }
+
+  if (probe === "notfound") {
     return (
       <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
         <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">

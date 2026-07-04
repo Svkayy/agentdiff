@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     drift_min_samples: int = 10
     drift_check_interval_minutes: int = 5
 
+    # LLM explanation (optional — absent key leaves rule-based explanation intact).
+    # Maps to AGENTDIFF_ANTHROPIC_API_KEY in the environment.
+    anthropic_api_key: str = ""
+    # Model override; leave empty to use the LLMClient default (claude-3-5-haiku-20241022).
+    llm_model: str = ""
+
     # CORS: comma-separated allowed origins.
     cors_origins: str = "http://localhost:5173"
 

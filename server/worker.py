@@ -67,6 +67,10 @@ async def process_run(ctx, run_id: str) -> None:
             await session.commit()
             return
 
+        # LLM explanation (default-on when AGENTDIFF_ANTHROPIC_API_KEY is set)
+        from server.explain import explain_findings
+        await explain_findings(finding_dicts, run=run)
+
         for fd in finding_dicts:
             session.add(Finding(run_id=run.id, **fd))
 

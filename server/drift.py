@@ -121,12 +121,20 @@ async def check_drift_for_project(
     if verdict == "pass":
         return None
 
-    # Stamp the model-drift explanation on every finding
+    # Stamp the model-drift explanation on every finding (rule-based baseline)
     for fd in finding_dicts:
         fd["cause_path"] = None
         fd["cause_rule"] = None
         fd["cause_hunk"] = None
         fd["explanation"] = _DRIFT_EXPLANATION
+
+    # LLM explanation for drift (default-on when AGENTDIFF_ANTHROPIC_API_KEY is set)
+    # We need a temporary Run-like object so explain_findings can read .kind
+    class _DriftRunProxy:
+        kind = "drift"
+
+    from server.explain import explain_findings
+    await explain_findings(finding_dicts, run=_DriftRunProxy())
 
     baseline_ref = f"window[-{2*W}m,-{W}m)"
     candidate_ref = f"window[-{W}m,now)"

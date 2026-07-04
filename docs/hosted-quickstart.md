@@ -205,7 +205,26 @@ curl -X PUT http://localhost:8000/v1/projects/<project_id>/slack \
 
 ---
 
-## 6. Troubleshooting
+## 6. Enable LLM explanations (optional)
+
+When `AGENTDIFF_ANTHROPIC_API_KEY` is set, the worker augments each detected
+behavioral change with a 1-3 sentence natural-language explanation produced by
+`claude-3-5-haiku-20241022`. The explanation appears in the run detail page and
+in Slack briefs. If the key is absent, the deterministic rule-based explanation
+is used instead — LLM enhancement is purely additive and never required.
+
+```env
+AGENTDIFF_ANTHROPIC_API_KEY=sk-ant-...
+# Optional model override:
+# AGENTDIFF_LLM_MODEL=claude-3-5-haiku-20241022
+```
+
+The CLI also picks up `ANTHROPIC_API_KEY` from the environment automatically, so
+`agentdiff ci run` produces LLM explanations in CI without any extra flags.
+
+---
+
+## 7. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|

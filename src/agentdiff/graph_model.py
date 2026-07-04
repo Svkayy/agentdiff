@@ -21,9 +21,12 @@ resolve agent names differently (e.g. a renamed function, or a structure.yaml
 present on one side only), the comparison itself mislabels the agent. That is a
 compare/sampling concern upstream of this rendering layer.
 """
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 
 from agentdiff.compare import ComparisonResult, Verdict, severity, worst_verdict
+from agentdiff.structure.structure_yaml import StructureDoc
 from agentdiff.trajectory import TrajectorySet
 
 
@@ -83,12 +86,16 @@ def build(
     attribution: dict | None,
     baseline: TrajectorySet,
     candidate: TrajectorySet,
+    structure: StructureDoc | None = None,
 ) -> AgentGraph:
     """Build the before/after graph.
 
     ``comparison`` may be a ``ComparisonResult`` or its serialized dict (as
     returned by ``storage.read_artifact``). ``attribution`` is the serialized
     attribution dict, or ``None`` when attribution was skipped (e.g. no API key).
+    ``structure`` may be passed to seed ALL agents from the project structure so
+    that healthy (pass) agents still render as green nodes, not just the changed
+    agent(s) from the comparison deltas.
     """
     if comparison is None:
         comp = ComparisonResult()
@@ -97,7 +104,9 @@ def build(
     else:
         comp = ComparisonResult.model_validate(comparison)
 
-    # Agent nodes — aggregate each agent across test cases (one node per agent).
+    # Agent nodes — seed from structure first (all agents = full system view),
+    # then overlay delta data from comparison (changed agents get their real rates
+    # and verdict; unchanged agents keep 0 rates + pass verdict from seeding).
     # ``worst_sig`` tracks the worst verdict among the *significant* deltas so a
     # node's confirmed-ness follows its displayed verdict, not any sparse delta.
     # ``samples`` records the per-side sample count behind each delta so the
@@ -105,6 +114,19 @@ def build(
     agents: dict[str, GraphNode] = {}
     worst_sig: dict[str, Verdict] = {}
     samples: dict[str, list[int]] = {}
+
+    # Seed from structure when available so healthy agents appear as green nodes.
+    if structure is not None:
+        for agent_entry in structure.agents:
+            agents[agent_entry.name] = GraphNode(
+                id=f"agent:{agent_entry.name}",
+                label=agent_entry.name,
+                kind="agent",
+                baseline_rate=0.0,
+                candidate_rate=0.0,
+                verdict="pass",
+            )
+
     for tc in comp.test_case_comparisons:
         for d in tc.agent_invocation_deltas:
             samples.setdefault(d.agent_name, []).append(

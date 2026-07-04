@@ -60,6 +60,52 @@ def _section(text: str) -> dict[str, Any]:
     return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
 
 
+# ── Statistical evidence compact line ────────────────────────────────────────
+
+
+def _stat_line(evidence: dict | None) -> str | None:
+    """Render a compact stat summary, e.g. 'p<0.001 · 100%→0% · 95% CI [0%, 0%]'.
+
+    Returns None when there's nothing useful to show.
+    """
+    if not evidence:
+        return None
+
+    parts: list[str] = []
+
+    # p-value
+    p = evidence.get("p_value")
+    if p is not None:
+        if p < 0.001:
+            p_str = "p<0.001"
+        else:
+            p_str = f"p={p:.3f}"
+        if evidence.get("significant"):
+            p_str += "*"
+        parts.append(p_str)
+
+    # baseline_rate → candidate_rate as percents (from AgentInvocationDelta)
+    # These aren't stored in statistical_evidence directly, but the finding's
+    # impact_summary already shows them. Instead extract from evidence.baseline_n
+    # and candidate_n as raw invocation fractions are not in the stats object.
+    # We can render n= counts instead.
+    bn = evidence.get("baseline_n")
+    cn = evidence.get("candidate_n")
+    if bn is not None and cn is not None:
+        parts.append(f"n={bn}/{cn}")
+
+    # Confidence interval
+    ci = evidence.get("confidence_interval")
+    if ci and len(ci) == 2:
+        lo_pct = round(ci[0] * 100)
+        hi_pct = round(ci[1] * 100)
+        parts.append(f"95% CI [{lo_pct}%, {hi_pct}%]")
+
+    if not parts:
+        return None
+    return " · ".join(parts)
+
+
 # ── Shared delivery mechanics ─────────────────────────────────────────────────
 
 
@@ -187,6 +233,10 @@ async def _enrich_payload(
                 blocks.append(_section(f"```{_slack_escape(truncated)}```"))
             if explanation:
                 blocks.append(_section(f"> {_slack_escape(explanation)}"))
+            # P3 — Statistical evidence compact line
+            stat = _stat_line(top.get("statistical_evidence"))
+            if stat:
+                blocks.append(_section(_slack_escape(stat)))
 
         # A3 — Deep link button
         run_url = f"{get_settings().dashboard_url}/runs/{run.id}"

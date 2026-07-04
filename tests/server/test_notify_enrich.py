@@ -600,3 +600,52 @@ def test_hunk_no_truncation_for_short_hunk():
     result = notify._truncate_hunk(hunk)
     assert "…" not in result
     assert result == hunk
+
+
+# ---------------------------------------------------------------------------
+# P3 — Statistical evidence compact line
+# ---------------------------------------------------------------------------
+
+
+def test_stat_line_renders_from_seeded_evidence():
+    """_stat_line produces the expected compact string from a seeded evidence dict."""
+    evidence = {
+        "test": "fisher_exact",
+        "p_value": 0.0001,
+        "significant": True,
+        "alpha": 0.05,
+        "effect_size": 1.0,
+        "effect_label": "cohens_h",
+        "confidence_interval": [0.70, 1.00],
+        "baseline_n": 10,
+        "candidate_n": 10,
+    }
+    line = notify._stat_line(evidence)
+    assert line is not None, "Expected a stat line"
+    assert "p<0.001" in line, f"p-value missing from: {line!r}"
+    assert "n=10/10" in line, f"n counts missing from: {line!r}"
+    assert "95% CI" in line, f"CI missing from: {line!r}"
+
+
+def test_stat_line_p_equals_format():
+    """p≥0.001 is rendered as p=0.NNN not p<0.001."""
+    evidence = {
+        "test": "fisher_exact",
+        "p_value": 0.042,
+        "significant": True,
+        "alpha": 0.05,
+        "effect_size": None,
+        "effect_label": "cohens_h",
+        "confidence_interval": None,
+        "baseline_n": 5,
+        "candidate_n": 5,
+    }
+    line = notify._stat_line(evidence)
+    assert line is not None
+    assert "p=0.042" in line, f"Expected p=0.042 in: {line!r}"
+
+
+def test_stat_line_none_for_missing_evidence():
+    """_stat_line returns None when evidence is None or empty."""
+    assert notify._stat_line(None) is None
+    assert notify._stat_line({}) is None

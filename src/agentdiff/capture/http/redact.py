@@ -62,7 +62,7 @@ def redact_url(url: str) -> str:
 # Secret patterns
 # ---------------------------------------------------------------------------
 
-_MASK = "***REDACTED***"
+_MASK = "[REDACTED]"
 
 SECRET_PATTERNS: list[re.Pattern] = [
     # OpenAI-style API keys, e.g. sk-abcdefghijklmnopqrstuvwx0123456789
@@ -156,7 +156,7 @@ def redact_body(body: "bytes | str", cfg: "RedactionConfig") -> "bytes | str":
     return redact_text(body, cfg)
 
 
-def _hash_content(content) -> str:
+def hash_content(content) -> str:
     """Return a ``sha256:<hex>`` digest for arbitrary message/system content.
 
     Non-string content (e.g. Anthropic content-block lists) is stringified
@@ -167,14 +167,36 @@ def _hash_content(content) -> str:
     return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def redact_nested(value, cfg: "RedactionConfig"):
+    """Recursively redact every string found inside ``value``.
+
+    Handles arbitrarily nested combinations of ``dict``/``list``/``str`` —
+    e.g. Anthropic/OpenAI content-block lists (``[{"type": "text", "text":
+    "..."}]``) and nested ``tool_result`` blocks — while preserving the
+    original structure and keys. Non-string/list/dict leaves (numbers, bools,
+    ``None``) are returned unchanged. Shared by standard-mode message-content
+    redaction and tool-arg/tool-delta redaction so there is exactly one place
+    that walks nested capture payloads.
+    """
+    if isinstance(value, str):
+        return redact_text(value, cfg)
+    if isinstance(value, dict):
+        return {k: redact_nested(v, cfg) for k, v in value.items()}
+    if isinstance(value, list):
+        return [redact_nested(v, cfg) for v in value]
+    return value
+
+
 def _redact_message(message: dict, cfg: "RedactionConfig") -> dict:
     out = dict(message)
     content = out.get("content")
     if cfg.mode == "strict":
         if content is not None:
-            out["content"] = _hash_content(content)
+            out["content"] = hash_content(content)
     elif isinstance(content, str):
         out["content"] = redact_text(content, cfg)
+    elif isinstance(content, (list, dict)):
+        out["content"] = redact_nested(content, cfg)
     return out
 
 
@@ -183,13 +205,8 @@ def _redact_tool_use_blocks(blocks: list[dict], cfg: "RedactionConfig") -> list[
     for block in blocks:
         new_block = dict(block)
         args = new_block.get("args")
-        if isinstance(args, dict):
-            new_block["args"] = {
-                k: (redact_text(v, cfg) if isinstance(v, str) else v)
-                for k, v in args.items()
-            }
-        elif isinstance(args, str):
-            new_block["args"] = redact_text(args, cfg)
+        if isinstance(args, (dict, list, str)):
+            new_block["args"] = redact_nested(args, cfg)
         redacted.append(new_block)
     return redacted
 
@@ -211,14 +228,14 @@ def redact_canonical(call: "CanonicalLLMCall", cfg: "RedactionConfig") -> "Canon
 
     system = call.system
     if system is not None:
-        system = _hash_content(system) if cfg.mode == "strict" else redact_text(system, cfg)
+        system = hash_content(system) if cfg.mode == "strict" else redact_text(system, cfg)
 
     messages = [_redact_message(m, cfg) for m in call.messages]
 
     response_text = call.response_text
     if response_text is not None:
         response_text = (
-            _hash_content(response_text) if cfg.mode == "strict" else redact_text(response_text, cfg)
+            hash_content(response_text) if cfg.mode == "strict" else redact_text(response_text, cfg)
         )
 
     tool_use_blocks = _redact_tool_use_blocks(call.tool_use_blocks, cfg)

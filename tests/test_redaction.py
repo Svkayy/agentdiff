@@ -76,6 +76,16 @@ def test_redact_text_masks_each_pattern_standard(name, secret):
     assert "REDACTED" in out
 
 
+def test_redact_text_uses_exact_mask_token():
+    """Spec mandates the literal mask '[REDACTED]' — not a substring match,
+    not '***REDACTED***' or any other variant. Pin the exact token so it
+    can't silently drift.
+    """
+    secret = "sk-ant-api03-" + "q" * 40
+    out = redact_text(f"key={secret}", STANDARD)
+    assert out == "key=[REDACTED]"
+
+
 def test_redact_text_masks_pem_block():
     pem = (
         "prefix -----BEGIN PRIVATE KEY-----\n"
@@ -285,6 +295,86 @@ def test_redact_canonical_none_system_stays_none_in_strict():
     call = CanonicalLLMCall(provider="anthropic", system=None, messages=[])
     out = redact_canonical(call, STRICT)
     assert out.system is None
+
+
+# ---------------------------------------------------------------------------
+# redact_canonical — standard mode must also redact non-string (list/dict)
+# message content, e.g. Anthropic/OpenAI content-block lists and nested
+# tool_result blocks. (Critical finding 2.)
+# ---------------------------------------------------------------------------
+
+def test_redact_canonical_standard_masks_secret_in_content_block_list():
+    secret = "sk-ant-api03-" + "p" * 40
+    call = CanonicalLLMCall(
+        provider="anthropic",
+        system=None,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"my key is {secret}"},
+                    {"type": "text", "text": "no secret here"},
+                ],
+            }
+        ],
+    )
+    out = redact_canonical(call, STANDARD)
+    dumped = json.dumps(out.messages)
+    assert secret not in dumped
+    assert "[REDACTED]" in dumped
+    # Structure preserved: still a list of two content blocks, keys intact.
+    content = out.messages[0]["content"]
+    assert isinstance(content, list)
+    assert len(content) == 2
+    assert content[0]["type"] == "text"
+    assert content[1]["text"] == "no secret here"
+
+
+def test_redact_canonical_standard_masks_secret_in_nested_tool_result_dict():
+    secret = "AKIA" + "Z" * 16
+    call = CanonicalLLMCall(
+        provider="anthropic",
+        system=None,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "t1",
+                        "content": [
+                            {"type": "text", "text": f"result contains {secret}"},
+                        ],
+                    }
+                ],
+            }
+        ],
+    )
+    out = redact_canonical(call, STANDARD)
+    dumped = json.dumps(out.messages)
+    assert secret not in dumped
+    assert "[REDACTED]" in dumped
+    # Structure/keys preserved.
+    block = out.messages[0]["content"][0]
+    assert block["type"] == "tool_result"
+    assert block["tool_use_id"] == "t1"
+    assert isinstance(block["content"], list)
+
+
+def test_redact_canonical_standard_list_content_strict_mode_still_hashes():
+    """Strict mode already hashes whole content regardless of shape — must
+    keep working once standard mode gains list/dict recursion.
+    """
+    call = CanonicalLLMCall(
+        provider="anthropic",
+        system=None,
+        messages=[
+            {"role": "user", "content": [{"type": "text", "text": "secret-data"}]},
+        ],
+    )
+    out = redact_canonical(call, STRICT)
+    assert isinstance(out.messages[0]["content"], str)
+    assert out.messages[0]["content"].startswith("sha256:")
 
 
 # ---------------------------------------------------------------------------
@@ -582,3 +672,173 @@ def test_openai_sdk_shim_redacts_tool_args(tmp_path):
 
     raw = output.read_text()
     assert secret not in raw
+
+
+# ---------------------------------------------------------------------------
+# record_stream_chunks — streaming deltas must be redacted just like the
+# canonical request/response before being persisted. (Critical finding 1.)
+# ---------------------------------------------------------------------------
+
+class _FakeTracer:
+    def __init__(self):
+        self.events = []
+
+    def record(self, event):
+        self.events.append(event)
+
+
+def test_record_stream_chunks_masks_secret_in_text_delta_standard_mode():
+    from uuid import uuid4
+
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    from agentdiff.capture.http.streaming import record_stream_chunks
+
+    set_active_redaction_config(RedactionConfig(mode="standard"))
+    try:
+        secret = "sk-ant-api03-" + "s" * 40
+        sse_body = (
+            f'data: {{"type": "content_block_delta", "index": 0, '
+            f'"delta": {{"type": "text_delta", "text": "here is {secret}"}}}}\n\n'
+        ).encode()
+
+        tracer = _FakeTracer()
+        count = record_stream_chunks(tracer, call_id=uuid4(), provider="anthropic", body=sse_body)
+
+        assert count == 1
+        assert len(tracer.events) == 1
+        event = tracer.events[0]
+        assert secret not in (event.text_delta or "")
+        assert "[REDACTED]" in (event.text_delta or "")
+    finally:
+        set_active_redaction_config(None)
+
+
+def test_record_stream_chunks_hashes_text_delta_strict_mode():
+    from uuid import uuid4
+
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    from agentdiff.capture.http.streaming import record_stream_chunks
+
+    set_active_redaction_config(RedactionConfig(mode="strict"))
+    try:
+        sse_body = (
+            b'data: {"type": "content_block_delta", "index": 0, '
+            b'"delta": {"type": "text_delta", "text": "hello world"}}\n\n'
+        )
+
+        tracer = _FakeTracer()
+        record_stream_chunks(tracer, call_id=uuid4(), provider="anthropic", body=sse_body)
+
+        event = tracer.events[0]
+        assert event.text_delta is not None
+        assert event.text_delta.startswith("sha256:")
+    finally:
+        set_active_redaction_config(None)
+
+
+def test_record_stream_chunks_off_mode_passes_secret_through():
+    from uuid import uuid4
+
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    from agentdiff.capture.http.streaming import record_stream_chunks
+
+    set_active_redaction_config(RedactionConfig(mode="off"))
+    try:
+        secret = "sk-ant-api03-" + "t" * 40
+        sse_body = (
+            f'data: {{"type": "content_block_delta", "index": 0, '
+            f'"delta": {{"type": "text_delta", "text": "here is {secret}"}}}}\n\n'
+        ).encode()
+
+        tracer = _FakeTracer()
+        record_stream_chunks(tracer, call_id=uuid4(), provider="anthropic", body=sse_body)
+
+        event = tracer.events[0]
+        assert event.text_delta == f"here is {secret}"
+    finally:
+        set_active_redaction_config(None)
+
+
+def test_record_stream_chunks_masks_secret_in_tool_delta_dict():
+    from uuid import uuid4
+
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    from agentdiff.capture.http.streaming import record_stream_chunks
+
+    set_active_redaction_config(RedactionConfig(mode="standard"))
+    try:
+        secret = "AKIA" + "Q" * 16
+        chunk = {
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_1",
+                                "function": {
+                                    "name": "lookup",
+                                    "arguments": json.dumps({"token": secret}),
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        sse_body = f"data: {json.dumps(chunk)}\n\n".encode()
+
+        tracer = _FakeTracer()
+        record_stream_chunks(tracer, call_id=uuid4(), provider="openai", body=sse_body)
+
+        event = tracer.events[0]
+        assert event.tool_delta is not None
+        dumped = json.dumps(event.tool_delta)
+        assert secret not in dumped
+        assert "[REDACTED]" in dumped
+        # Structure preserved: still shaped like tool_calls with the same id/name.
+        assert event.tool_delta["tool_calls"][0]["id"] == "call_1"
+        assert event.tool_delta["tool_calls"][0]["function"]["name"] == "lookup"
+    finally:
+        set_active_redaction_config(None)
+
+
+def test_http_shim_streaming_response_redacts_secret_in_text_delta(tmp_path):
+    """End-to-end: an SSE streaming HTTP response containing a secret must
+    not leak the secret into a persisted StreamChunkEvent.
+    """
+    output = tmp_path / "traces.jsonl"
+    secret = "sk-ant-api03-" + "u" * 40
+    sse_body = (
+        f'data: {{"type": "content_block_delta", "index": 0, '
+        f'"delta": {{"type": "text_delta", "text": "here is {secret}"}}}}\n\n'
+        "data: [DONE]\n\n"
+    ).encode()
+
+    with respx.mock() as rmock:
+        rmock.post("https://api.anthropic.com/v1/messages").mock(
+            return_value=httpx.Response(
+                200, content=sse_body, headers={"content-type": "text/event-stream"}
+            )
+        )
+        with Tracer("tc_stream_redact", "baseline", {}, output):
+            client = httpx.Client()
+            client.post(
+                "https://api.anthropic.com/v1/messages",
+                json={
+                    "model": "claude-3-5-sonnet-20241022",
+                    "max_tokens": 100,
+                    "messages": [{"role": "user", "content": "Say hello"}],
+                    "stream": True,
+                },
+            )
+
+    raw = output.read_text()
+    assert secret not in raw
+
+    traj = _load_trajectory(output)
+    from agentdiff.capture.events import StreamChunkEvent
+
+    chunk_events = [e for e in traj.events if isinstance(e, StreamChunkEvent)]
+    assert chunk_events, "expected at least one StreamChunkEvent to be recorded"
+    assert all(secret not in (e.text_delta or "") for e in chunk_events)

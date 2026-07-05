@@ -107,6 +107,52 @@ def test_run_metric_delta_produces_finding():
     assert "8000.00" in latency_finding.impact_summary
 
 
+def test_run_metric_finding_averages_means_over_all_test_cases_not_just_failing():
+    # Two test cases both compute latency_ms: tc1 has a big FAIL shift, tc2 is
+    # a passing test case (verdict "pass", no shift). The displayed finding's
+    # baseline/candidate means must be the average across BOTH test cases —
+    # not just the failing one — while the worst verdict (fail) still gates.
+    comparison = ComparisonResult(
+        overall_verdict="fail",
+        test_case_comparisons=[
+            TestCaseComparison(
+                test_case_id="tc1",
+                overall_verdict="fail",
+                run_metric_deltas=[
+                    RunMetricDelta(
+                        metric="latency_ms", baseline_mean=500.0, candidate_mean=8000.0,
+                        delta=7500.0, p_value=0.01, adjusted_p_value=0.01,
+                        significant=True, low_power=False, verdict="fail",
+                    ),
+                ],
+            ),
+            TestCaseComparison(
+                test_case_id="tc2",
+                overall_verdict="pass",
+                run_metric_deltas=[
+                    RunMetricDelta(
+                        metric="latency_ms", baseline_mean=300.0, candidate_mean=300.0,
+                        delta=0.0, p_value=1.0, adjusted_p_value=1.0,
+                        significant=False, low_power=False, verdict="pass",
+                    ),
+                ],
+            ),
+        ],
+    )
+    summary = build_incident_summary(comparison)
+    latency_finding = next(f for f in summary.findings if f.metric == "latency_ms")
+
+    # Worst verdict across test cases still governs whether/how this gates.
+    assert latency_finding.verdict == "fail"
+
+    # Means must be pooled across BOTH test cases (500+300)/2=400, (8000+300)/2=4150 —
+    # not just the failing test case's 500.0/8000.0.
+    assert "400.00" in latency_finding.impact_summary
+    assert "4150.00" in latency_finding.impact_summary
+    assert "500.00" not in latency_finding.impact_summary
+    assert "8000.00" not in latency_finding.impact_summary
+
+
 def test_empty_input_is_warn_not_pass():
     summary = build_incident_summary(
         ComparisonResult(overall_verdict="pass", test_case_comparisons=[]),

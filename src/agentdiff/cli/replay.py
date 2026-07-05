@@ -26,7 +26,12 @@ console = Console()
     help="Directory to write the replay report to (defaults to a fresh "
     ".agentdiff/replay/<timestamp> directory).",
 )
-@click.option("--samples", type=int, default=None, help="Samples per test case (defaults to config).")
+@click.option(
+    "--samples",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Samples per test case (defaults to config). Must be >= 1.",
+)
 @click.option("--project", default=".", type=click.Path(exists=True, file_okay=False))
 @click.option("--test-cases", "test_cases_path", default=None, help="Path to test_cases.yaml.")
 def replay_cmd(
@@ -76,6 +81,9 @@ def replay_cmd(
         )
     except HermeticSampleError as exc:
         console.print(f"[red]{exc}[/red]")
+        raise SystemExit(1)
+    except Exception as exc:
+        console.print(f"[red]Replay sampling failed: {type(exc).__name__}: {exc}[/red]")
         raise SystemExit(1)
 
     console.print(f"\n[green]Replay trajectories written[/green] → {trajectories_path}")

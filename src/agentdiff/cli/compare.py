@@ -386,8 +386,16 @@ def run_hermetic_sample(
     # as an opaque "sample failure rate exceeded" message.
     written = storage.load_trajectory_set(output_path, version_tag)  # type: ignore[arg-type]
     for trajectory in written.trajectories:
-        if trajectory.error and "no cassette recording" in trajectory.error:
-            raise HermeticSampleError(_cassette_miss_message(trajectory.error))
+        # sampling._run_one_sample_with_retry wraps the final exception as
+        # f"{type(exc).__name__}: {exc}" (see sampling.py) before writing it
+        # to the trajectory's error field. Anchor on that exact, deterministic
+        # prefix rather than a bare substring match on "no cassette recording"
+        # — a runner's own error could legitimately contain that phrase
+        # without being a real cassette miss, and a bare substring match would
+        # misreport it with the misleading re-record suggestion.
+        if trajectory.error and trajectory.error.startswith("CassetteMissError:"):
+            detail = trajectory.error[len("CassetteMissError:") :].strip()
+            raise HermeticSampleError(_cassette_miss_message(detail))
 
 
 def _cassette_miss_message(detail: object) -> str:

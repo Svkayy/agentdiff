@@ -219,6 +219,9 @@ def ci_run_cmd(
             except HermeticSampleError as exc:
                 console.print(f"[red]{tag.capitalize()} sampling failed: {exc}[/red]")
                 raise SystemExit(1)
+            except Exception as exc:
+                console.print(f"[red]{tag.capitalize()} sampling failed: {type(exc).__name__}: {exc}[/red]")
+                raise SystemExit(1)
         else:
             try:
                 sampling.sample_for_side(

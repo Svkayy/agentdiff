@@ -139,6 +139,41 @@ def test_replay_cassette_miss_names_the_request(tmp_path):
     assert "agentdiff ci run --cassette-mode record" in output
 
 
+def test_replay_non_cassette_error_exits_clean(tmp_path, monkeypatch):
+    """A non-HermeticSampleError raised during replay sampling (e.g. a
+    sampling-internals bug) must exit 1 with a clean message, not an
+    unhandled traceback.
+    """
+    project = tmp_path / "proj"
+    project.mkdir()
+    _make_project(project)
+    cassette_path = project / ".agentdiff" / "cassettes" / "main.jsonl"
+    _record_cassette(project, cassette_path)
+    out = tmp_path / "replay-out"
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("kaboom: sampling internals exploded")
+
+    monkeypatch.setattr("agentdiff.sampling.sample_for_side", _boom)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "replay",
+            "--project",
+            str(project),
+            "--cassette",
+            str(cassette_path),
+            "--report-dir",
+            str(out),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "kaboom" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_replay_with_recorded_cassette_writes_report_dir(tmp_path):
     project = tmp_path / "proj"
     project.mkdir()
@@ -211,6 +246,90 @@ def test_replay_is_deterministic_across_invocations(tmp_path):
     traj1 = _normalize(out1 / "trajectories.jsonl")
     traj2 = _normalize(out2 / "trajectories.jsonl")
     assert traj1 == traj2
+
+
+def test_replay_runner_error_mentioning_cassette_phrase_not_misreported(tmp_path):
+    """A runner failure whose own message happens to contain the substring
+    "no cassette recording" (but is not a CassetteMissError) must NOT be
+    reported as a cassette miss with the misleading re-record suggestion —
+    it should surface as a plain sampling failure instead.
+    """
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "agentrunner.py").write_text(
+        "def run(input):\n"
+        "    raise RuntimeError('there is no cassette recording of this in our archives')\n"
+    )
+    ad = project / ".agentdiff"
+    ad.mkdir()
+    (ad / "structure.yaml").write_text(
+        "version: '1'\nagents: []\ntools: []\nentry_points: []\n"
+    )
+    (ad / "config.yaml").write_text(
+        "runner:\n  module: agentrunner\n  callable: run\nsamples_per_case: 1\n"
+        "sampling:\n  install_deps: false\n  retries: 0\n"
+    )
+    (ad / "test_cases.yaml").write_text(
+        "test_cases:\n  - id: tc1\n    input:\n      q: hello\n"
+    )
+    cassette_path = project / ".agentdiff" / "cassettes" / "main.jsonl"
+    cassette_path.parent.mkdir(parents=True)
+    cassette_path.write_text("", encoding="utf-8")
+    out = tmp_path / "replay-out"
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "replay",
+            "--project",
+            str(project),
+            "--cassette",
+            str(cassette_path),
+            "--report-dir",
+            str(out),
+        ],
+        catch_exceptions=False,
+    )
+
+    # This is an ordinary runner failure (budgeted as a failed trajectory,
+    # same as any other runner exception) — not a cassette miss, so it must
+    # NOT carry the misleading re-record suggestion anywhere in the CLI
+    # output or in the written trajectory's error message.
+    output = _unwrapped(result.output)
+    assert "agentdiff ci run --cassette-mode record" not in output
+    lines = [json.loads(line) for line in (out / "trajectories.jsonl").read_text().splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert lines[0]["error"] is not None
+    assert "agentdiff ci run --cassette-mode record" not in lines[0]["error"]
+    assert lines[0]["error"].startswith("RuntimeError:")
+
+
+def test_replay_samples_zero_rejected_with_clean_error(tmp_path):
+    project = tmp_path / "proj"
+    project.mkdir()
+    _make_project(project)
+    cassette_path = project / ".agentdiff" / "cassettes" / "main.jsonl"
+    _record_cassette(project, cassette_path)
+    out = tmp_path / "replay-out"
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "replay",
+            "--project",
+            str(project),
+            "--cassette",
+            str(cassette_path),
+            "--report-dir",
+            str(out),
+            "--samples",
+            "0",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert not (out / "trajectories.jsonl").exists()
+    assert "Traceback" not in result.output
 
 
 def test_replay_samples_option_controls_count(tmp_path):

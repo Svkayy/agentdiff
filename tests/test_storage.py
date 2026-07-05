@@ -1,11 +1,16 @@
 """Day 5: JSONL storage round-trip."""
+import sqlite3
 from uuid import uuid4
+
+import pytest
 
 from agentdiff.capture.events import (
     CallSite, CanonicalLLMCall, LLMRequestEvent, LocalToolInvokedEvent,
 )
 from agentdiff.storage import (
+    CURRENT_SCHEMA_VERSION,
     JsonlTrajectorySink,
+    StorageVersionError,
     append_trajectory,
     load_trajectory_set,
     load_trajectory_set_from_sqlite,
@@ -167,3 +172,81 @@ def test_read_artifact_defaults_to_latest_run(tmp_path):
         )
     # run_id=None selects the most recently written run (r2).
     assert read_artifact(db, "output_evals") == [{"v": 2}]
+
+
+# ---------------------------------------------------------------------------
+# WAL mode + schema versioning (Task 9)
+# ---------------------------------------------------------------------------
+
+def test_new_db_uses_wal_mode_and_records_current_version(tmp_path):
+    db = tmp_path / "agentdiff.sqlite"
+    baseline, candidate = _empty_sets()
+    write_run_store(
+        db,
+        metadata={"run_id": "run-1", "timestamp": "t"},
+        baseline_set=baseline,
+        candidate_set=candidate,
+    )
+
+    with sqlite3.connect(db) as conn:
+        mode = conn.execute("pragma journal_mode").fetchone()[0]
+        assert mode.lower() == "wal"
+        version = conn.execute("select version from schema_version").fetchone()[0]
+        assert version == CURRENT_SCHEMA_VERSION == 1
+
+
+def test_opening_db_with_newer_schema_version_raises(tmp_path):
+    db = tmp_path / "agentdiff.sqlite"
+    baseline, candidate = _empty_sets()
+    write_run_store(
+        db,
+        metadata={"run_id": "run-1", "timestamp": "t"},
+        baseline_set=baseline,
+        candidate_set=candidate,
+    )
+
+    # Simulate a DB written by a future version of AgentDiff.
+    with sqlite3.connect(db) as conn:
+        conn.execute("update schema_version set version = 99")
+        conn.commit()
+
+    with pytest.raises(StorageVersionError) as exc_info:
+        write_run_store(
+            db,
+            metadata={"run_id": "run-2", "timestamp": "t"},
+            baseline_set=baseline,
+            candidate_set=candidate,
+        )
+    message = str(exc_info.value)
+    assert "99" in message
+    assert str(CURRENT_SCHEMA_VERSION) in message
+
+
+def test_legacy_db_without_schema_version_table_is_grandfathered(tmp_path):
+    db = tmp_path / "agentdiff.sqlite"
+    # Simulate a DB created by an older AgentDiff version: tables exist, but
+    # there is no schema_version table at all.
+    with sqlite3.connect(db) as conn:
+        conn.executescript(
+            """
+            create table runs (
+                run_id text primary key,
+                metadata_json text not null
+            );
+            """
+        )
+        conn.commit()
+
+    baseline, candidate = _empty_sets()
+    # Opening/writing should not raise, and should grandfather the DB in as
+    # version 1 rather than treating the missing table as an error.
+    write_run_store(
+        db,
+        metadata={"run_id": "run-1", "timestamp": "t"},
+        baseline_set=baseline,
+        candidate_set=candidate,
+    )
+
+    with sqlite3.connect(db) as conn:
+        version = conn.execute("select version from schema_version").fetchone()[0]
+        assert version == 1

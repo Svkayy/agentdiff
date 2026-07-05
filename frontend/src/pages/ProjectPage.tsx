@@ -353,6 +353,16 @@ function RunsTab({ projectId }: { projectId: string }) {
 
   const filtersActive = Boolean(search.trim() || verdict);
 
+  // Escape closes the delete-run confirmation modal.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setConfirmDelete(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [confirmDelete]);
+
   return (
     <div className="space-y-lg">
       {/* Filter bar */}
@@ -1430,7 +1440,18 @@ function ProjectHeader({
 
   const displayName = name ?? "Project";
 
+  // Escape closes the delete-project confirmation modal.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setConfirmDelete(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [confirmDelete]);
+
   async function save() {
+    if (saving) return;
     const next = draft.trim();
     if (!next || next === name) {
       setEditing(false);

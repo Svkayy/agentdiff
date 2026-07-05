@@ -227,3 +227,57 @@ def test_cli_structure_no_existing_structure_yaml_creates_one(tmp_path):
     doc = structure_yaml.load(project)
     assert doc is not None
     assert any(a.function == "research_agent" for a in doc.agents)
+
+
+def test_cli_structure_malformed_yaml_exits_cleanly(tmp_path):
+    """Garbage non-YAML content in structure.yaml must produce a clean error, not a traceback."""
+    project = _init_project(tmp_path)
+    yaml_path = project / ".agentdiff" / "structure.yaml"
+    yaml_path.write_text(": this is not : valid yaml : [unbalanced\n")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["structure", str(project)])
+
+    assert result.exit_code == 1
+    assert str(yaml_path) in result.output or "structure.yaml" in result.output
+    assert "Traceback" not in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_cli_structure_schema_invalid_yaml_exits_cleanly(tmp_path):
+    """Well-formed YAML that fails StructureDoc validation must also exit cleanly."""
+    project = _init_project(tmp_path)
+    yaml_path = project / ".agentdiff" / "structure.yaml"
+    # 'function' is missing from this agent entry, which is required by AgentEntry.
+    yaml_path.write_text(
+        "version: 1\n"
+        "agents:\n"
+        "  - name: Some Agent\n"
+        "    file: agent.py\n"
+        "    line: 5\n"
+        "tools: []\n"
+        "entry_points: []\n"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["structure", str(project)])
+
+    assert result.exit_code == 1
+    assert str(yaml_path) in result.output or "structure.yaml" in result.output
+    assert "Traceback" not in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_cli_structure_malformed_yaml_dry_run_exits_cleanly(tmp_path):
+    """--dry-run must take the same guarded path as a normal refresh."""
+    project = _init_project(tmp_path)
+    yaml_path = project / ".agentdiff" / "structure.yaml"
+    yaml_path.write_text(": this is not : valid yaml : [unbalanced\n")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["structure", str(project), "--dry-run"])
+
+    assert result.exit_code == 1
+    assert str(yaml_path) in result.output or "structure.yaml" in result.output
+    assert "Traceback" not in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)

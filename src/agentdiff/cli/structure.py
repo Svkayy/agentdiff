@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import click
+import yaml
+from pydantic import ValidationError
 from rich.console import Console
 
 from agentdiff.cli.init import infer_structure
@@ -34,7 +36,16 @@ def structure_cmd(path: str, llm: bool, dry_run: bool) -> None:
     """
     root = Path(path).resolve()
 
-    existing = structure_yaml.load(root) or StructureDoc()
+    structure_file = structure_yaml.structure_path(root)
+    try:
+        existing = structure_yaml.load(root) or StructureDoc()
+    except (yaml.YAMLError, ValidationError) as e:
+        console.print(f"[red]Could not read {structure_file}: {e}[/red]")
+        console.print(
+            "[red]Fix the YAML in that file, or delete it and re-run "
+            "`agentdiff init` to regenerate it.[/red]"
+        )
+        raise SystemExit(1) from e
 
     console.print(f"[bold]Scanning[/bold] {root}")
     fresh = infer_structure(root, llm=llm)

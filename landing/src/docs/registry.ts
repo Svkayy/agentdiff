@@ -2,15 +2,16 @@
 //
 // Source of truth for doc BODIES is the repo's `docs/**/*.md`, pulled in at
 // build time via import.meta.glob so the single-file GH-Pages bundle stays
-// self-contained (no runtime fetches, no server). Two entries below
-// (deploy-production, data-handling) are authored by concurrent tasks and may
-// not exist yet — the registry is deliberately TOLERANT: the sidebar is
-// derived from the curated list filtered to globs that actually resolved, so a
-// missing/renamed doc never breaks the build. A later integration task
-// re-verifies completeness.
+// self-contained (no runtime fetches, no server). Some entries below may be
+// authored by concurrent tasks and not exist yet (e.g. deploy-production) —
+// the registry is deliberately TOLERANT: the sidebar is derived from the
+// curated list filtered to globs that actually resolved, so a missing/renamed
+// doc never breaks the build. A later integration task re-verifies
+// completeness.
 //
-// privacy/terms are the two legal docs authored HERE (src/content/*.md); they
-// are merged into the Policies group alongside the repo's security doc.
+// privacy/terms are the two legal docs authored HERE (src/content/*.md).
+// security is the repo-root SECURITY.md (outside docs/, so it has its own
+// glob below). All three are merged into the Policies group.
 
 // Eagerly import every markdown doc in the repo docs tree as raw text.
 const repoDocs = import.meta.glob("../../../docs/**/*.md", {
@@ -22,6 +23,15 @@ const repoDocs = import.meta.glob("../../../docs/**/*.md", {
 // Legal docs live inside the landing app so they ship with the marketing site
 // even when the repo docs tree is absent.
 const legalDocs = import.meta.glob("../content/*.md", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+// The repo-root SECURITY.md is outside the docs/ tree, so it needs its own
+// glob. Kept as a narrow, explicit pattern (not a broad repo-root glob) so we
+// don't accidentally pull in unrelated root-level markdown (README, etc).
+const rootDocs = import.meta.glob("../../../SECURITY.md", {
   query: "?raw",
   import: "default",
   eager: true,
@@ -120,13 +130,17 @@ const NAV: NavGroup[] = [
     items: [
       { slug: "privacy", title: "Privacy Policy", file: "content/privacy.md" },
       { slug: "terms", title: "Terms of Service", file: "content/terms.md" },
-      { slug: "security", title: "Security", file: "docs/security.md" },
+      { slug: "security", title: "Security Policy", file: "SECURITY.md" },
     ],
   },
 ];
 
-/** All raw sources keyed by their glob path, from both roots. */
-const allSources: Record<string, string> = { ...repoDocs, ...legalDocs };
+/** All raw sources keyed by their glob path, from all three roots. */
+const allSources: Record<string, string> = {
+  ...repoDocs,
+  ...legalDocs,
+  ...rootDocs,
+};
 
 /** Find the raw markdown for a nav item, or undefined if it did not resolve. */
 function resolveSource(file: string): string | undefined {

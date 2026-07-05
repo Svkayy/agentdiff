@@ -23,24 +23,38 @@ interface Heading {
 }
 
 /** Render markdown → sanitized HTML, collecting h2/h3 headings for the rail. */
-function renderMarkdown(markdown: string): { html: string; headings: Heading[] } {
+function renderMarkdown(
+  markdown: string,
+  slug: string,
+): { html: string; headings: Heading[] } {
   const headings: Heading[] = [];
   const seen = new Map<string, number>();
   const marked = new Marked({ gfm: true, breaks: false });
 
   marked.use({
     renderer: {
-      heading(this: unknown, token: { tokens: unknown[]; depth: number; text: string }) {
-        // marked v18 passes a token; render its inline content for the label.
-        const raw = token.text;
-        let id = slugify(raw);
+      heading(
+        this: { parser: { parseInline(tokens: unknown[]): string } },
+        token: { tokens: unknown[]; depth: number; text: string },
+      ) {
+        // Plain-text label (backtick-free) drives the id slug and the
+        // "On this page" rail text. The rendered HTML uses marked's own
+        // inline parser (matching its default renderer) so inline markdown
+        // in the heading — `code`, *emphasis*, links — renders properly
+        // instead of showing up as literal source characters.
+        const plain = token.text;
+        const inlineHtml = this.parser.parseInline(token.tokens);
+        let id = slugify(plain);
         const n = seen.get(id) ?? 0;
         seen.set(id, n + 1);
         if (n > 0) id = `${id}-${n}`;
         if (token.depth === 2 || token.depth === 3) {
-          headings.push({ id, text: raw, level: token.depth });
+          headings.push({ id, text: plain, level: token.depth });
         }
-        return `<h${token.depth} id="${id}"><a class="doc-anchor" href="#${id}" aria-label="Link to this section">#</a>${raw}</h${token.depth}>`;
+        // Anchor carries the full route (`#/docs/<slug>#<id>`) so clicking it
+        // stays on the doc instead of falling through to the hash router's
+        // "no path segment" → Home default.
+        return `<h${token.depth} id="${id}"><a class="doc-anchor" href="#/docs/${slug}#${id}" aria-label="Link to this section">#</a>${inlineHtml}</h${token.depth}>`;
       },
     },
   });
@@ -94,7 +108,7 @@ function Sidebar({ activeSlug }: { activeSlug: string | null }) {
 }
 
 /** In-page "On this page" rail (desktop only). */
-function OnThisPage({ headings }: { headings: Heading[] }) {
+function OnThisPage({ slug, headings }: { slug: string; headings: Heading[] }) {
   if (headings.length < 2) return null;
   return (
     <aside className="hidden w-48 shrink-0 xl:block">
@@ -106,7 +120,7 @@ function OnThisPage({ headings }: { headings: Heading[] }) {
           {headings.map((h) => (
             <li key={h.id}>
               <a
-                href={`#${h.id}`}
+                href={`#/docs/${slug}#${h.id}`}
                 className={
                   "block border-l border-transparent py-0.5 text-sm text-muted transition-colors duration-200 hover:text-ink " +
                   (h.level === 3 ? "pl-6" : "pl-3")
@@ -205,8 +219,8 @@ function DocsIndex() {
 /** A single rendered doc. */
 function DocArticle({ doc }: { doc: DocEntry }) {
   const { html, headings } = useMemo(
-    () => renderMarkdown(doc.markdown),
-    [doc.markdown],
+    () => renderMarkdown(doc.markdown, doc.slug),
+    [doc.markdown, doc.slug],
   );
 
   return (
@@ -222,7 +236,7 @@ function DocArticle({ doc }: { doc: DocEntry }) {
         />
         <PrevNext slug={doc.slug} />
       </article>
-      <OnThisPage headings={headings} />
+      <OnThisPage slug={doc.slug} headings={headings} />
     </div>
   );
 }

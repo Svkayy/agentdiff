@@ -26,9 +26,14 @@ export function useHashRoute(): string {
 }
 
 function normalize(hash: string): string {
-  // Strip a single leading "#". Drop any in-page anchor fragment appended by
-  // heading links (we only route on the path segment).
+  // Strip a single leading "#". Routes look like "#/docs/<slug>#<heading-id>"
+  // when an in-page anchor is appended, so drop everything from the SECOND
+  // "#" onward (the route path never contains a literal "#") before deriving
+  // the path segment we route on. The in-page anchor itself is read directly
+  // from window.location.hash by the scroll effect in DocsPage.
   let h = hash.replace(/^#/, "");
+  const anchorIdx = h.indexOf("#");
+  if (anchorIdx !== -1) h = h.slice(0, anchorIdx);
   if (h === "" || h === "/") return "/";
   if (!h.startsWith("/")) h = "/" + h;
   return h;

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from server.config import get_settings
 from server.db import async_session
 from server.drift import check_drift_for_project
-from server.engine_runner import process_run_sync
+from server.engine_runner import build_run_payload, process_run_sync
 from server.models import Finding, LiveTrajectory, Run, Trajectory
 from server.notify import maybe_post_slack, post_recovery
 
@@ -67,6 +67,17 @@ async def process_run(ctx, run_id: str) -> None:
             await session.commit()
             return
 
+        try:
+            report_payload = await asyncio.to_thread(
+                build_run_payload, config, attribution, traj_data
+            )
+        except Exception:  # noqa: BLE001
+            # The payload is a read-model for the dashboard; never let a
+            # payload-assembly failure block persisting findings/verdict for
+            # a run that otherwise processed successfully.
+            log.exception("failed to build report payload for run %s", run.id)
+            report_payload = None
+
         # LLM explanation (default-on when AGENTDIFF_ANTHROPIC_API_KEY is set)
         from server.explain import explain_findings
         await explain_findings(finding_dicts, run=run)
@@ -83,6 +94,7 @@ async def process_run(ctx, run_id: str) -> None:
 
         run.status = "done"
         run.verdict = verdict
+        run.report_payload = report_payload
         await session.commit()
 
         await maybe_post_slack(session, run, finding_dicts, verdict)

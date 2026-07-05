@@ -125,6 +125,25 @@ async def get_run(
     }
 
 
+@router.get("/v1/runs/{run_id}/payload")
+async def get_run_payload(
+    run_id: uuid.UUID,
+    ctx: tuple[User, Org] = Depends(get_user_ctx),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    _user, org = ctx
+    run = (
+        await session.execute(
+            select(Run).join(Project).where(Run.id == run_id, Project.org_id == org.id)
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    if run.report_payload is None:
+        raise HTTPException(status_code=404, detail="payload not ready")
+    return run.report_payload
+
+
 def _processed_run_payload(run: Run, trajectory_rows: list[Trajectory]) -> dict:
     """Build honest dashboard data from stored trajectories and run artifacts.
 

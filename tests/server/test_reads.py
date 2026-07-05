@@ -455,3 +455,46 @@ async def test_get_run_returns_processed_graph_and_comparison(session):
             assert delta["stats"]["confidence_interval"] is not None
     finally:
         app.dependency_overrides.clear()
+
+
+# ── Task 10: run payload endpoint ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_run_payload_returns_stored_payload(session):
+    """GET /v1/runs/{id}/payload returns the stored report_payload dict verbatim."""
+    org = Org(name=f"payload-reads-org-{uuid4()}")
+    project = Project(org=org, name=f"payload-reads-proj-{uuid4()}")
+    stored_payload = {
+        "meta": {"baseline_ref": "main", "candidate_ref": "feat"},
+        "comparison": {"overall_verdict": "pass", "test_case_comparisons": []},
+        "warnings": [],
+        "outputEvals": [],
+        "attribution": None,
+        "trajectories": {"baseline": [], "candidate": []},
+    }
+    run = Run(
+        project=project,
+        idempotency_key=f"payload-reads-{uuid4()}",
+        baseline_ref="main",
+        candidate_ref="feat",
+        tier="hermetic",
+        config={},
+        status="done",
+        verdict="pass",
+        report_payload=stored_payload,
+    )
+    session.add(run)
+    await session.commit()
+
+    user = User(org=org, clerk_user_id=f"u-payload-reads-{uuid4()}", email="pr@pr.com")
+    session.add(user)
+    await session.commit()
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.get(f"/v1/runs/{run.id}/payload")
+            assert r.status_code == 200
+            assert r.json() == stored_payload
+    finally:
+        app.dependency_overrides.clear()

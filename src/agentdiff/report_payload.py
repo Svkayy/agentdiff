@@ -11,6 +11,7 @@ from typing import Any
 from agentdiff.capture.events import (
     LLMRequestEvent, LLMResponseEvent, LocalToolInvokedEvent, MCPToolInvokedEvent,
 )
+from agentdiff.compare import ComparisonResult as ComparisonResultLike
 from agentdiff.graph_model import build as build_graph
 from agentdiff.storage import load_trajectory_set_from_sqlite, read_artifact
 from agentdiff.trajectory import Trajectory, TrajectorySet
@@ -30,8 +31,7 @@ def build(report_dir: Path) -> dict[str, Any]:
     candidate_set = load_trajectory_set_from_sqlite(db_path, "candidate")
     comparison = read_artifact(db_path, "comparison")
     attribution = read_artifact(db_path, "attribution")
-    graph = build_graph(comparison, attribution, baseline_set, candidate_set)
-    comparison = _with_run_metrics(comparison)
+    output_evals = read_artifact(db_path, "output_evals") or []
 
     meta: dict[str, Any] = {
         "baseline_ref": metadata.get("baseline_ref"),
@@ -40,21 +40,66 @@ def build(report_dir: Path) -> dict[str, Any]:
         "timestamp": metadata.get("timestamp"),
         "smoke_mode": metadata.get("smoke_mode", False),
     }
+    run_quality = {
+        "baseline_trajectories": metadata.get("baseline_trajectories"),
+        "candidate_trajectories": metadata.get("candidate_trajectories"),
+        "baseline_failed": metadata.get("baseline_failed"),
+        "candidate_failed": metadata.get("candidate_failed"),
+        "max_failure_rate": metadata.get("max_failure_rate"),
+        "thresholds": metadata.get("thresholds"),
+    }
+
+    return assemble_payload(
+        comparison=comparison,
+        attribution=attribution,
+        baseline_set=baseline_set,
+        candidate_set=candidate_set,
+        output_evals=output_evals,
+        meta=meta,
+        run_quality=run_quality,
+    )
+
+
+def assemble_payload(
+    *,
+    comparison: dict[str, Any] | ComparisonResultLike | None,
+    attribution: dict[str, Any] | None,
+    baseline_set: TrajectorySet,
+    candidate_set: TrajectorySet,
+    output_evals: list[Any] | None = None,
+    meta: dict[str, Any] | None = None,
+    run_quality: dict[str, Any] | None = None,
+    structure: Any = None,
+) -> dict[str, Any]:
+    """Pure, disk-free assembly of the dashboard payload dict.
+
+    Accepts already-in-memory pieces (a ``ComparisonResult`` or its dict form,
+    an attribution dict, and baseline/candidate ``TrajectorySet``s) and returns
+    the exact same JSON-serializable shape ``build()`` produces from on-disk
+    artifacts. This is the seam the hosted server (``server/engine_runner.py``)
+    calls into so it never needs a ``report_dir`` on disk.
+    """
+    graph = build_graph(comparison, attribution, baseline_set, candidate_set, structure)
+
+    comparison_dict: dict[str, Any] | None
+    if comparison is None:
+        comparison_dict = None
+    elif isinstance(comparison, dict):
+        comparison_dict = comparison
+    else:
+        comparison_dict = comparison.model_dump(mode="json")
+    comparison_dict = _with_run_metrics(comparison_dict)
 
     return {
-        "meta": meta,
-        "runQuality": {
-            "baseline_trajectories": metadata.get("baseline_trajectories"),
-            "candidate_trajectories": metadata.get("candidate_trajectories"),
-            "baseline_failed": metadata.get("baseline_failed"),
-            "candidate_failed": metadata.get("candidate_failed"),
-            "max_failure_rate": metadata.get("max_failure_rate"),
-            "thresholds": metadata.get("thresholds"),
-        },
+        "meta": meta or {},
+        "runQuality": run_quality or {},
         "graph": graph.model_dump(),
-        "comparison": comparison,
-        "warnings": (comparison or {}).get("warnings", []),
-        "outputEvals": read_artifact(db_path, "output_evals") or [],
+        "comparison": comparison_dict,
+        "warnings": (comparison_dict or {}).get("warnings", []),
+        "outputEvals": [
+            e.model_dump(mode="json") if hasattr(e, "model_dump") else e
+            for e in (output_evals or [])
+        ],
         "attribution": attribution,
         "trajectories": {
             "baseline": _side(baseline_set),

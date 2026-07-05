@@ -22,7 +22,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal
 
-from agentdiff.capture.tracer import Tracer
+from agentdiff.capture.tracer import Tracer, _flush_lock
 
 if TYPE_CHECKING:
     from agentdiff.config import RedactionConfig
@@ -103,8 +103,17 @@ def run_samples(
                             f"with {workers} worker(s)..."
                         )
                     for i in range(samples_per_case):
+                        # Capture the submitting (main) thread's context fresh
+                        # for each submit: pool worker threads do not inherit
+                        # ContextVars (active redaction config, etc.) from the
+                        # thread that calls executor.submit, so without this,
+                        # strict redaction silently degrades to standard mode
+                        # once workers >= 2. ctx.run(...) replays that captured
+                        # context inside the worker thread.
+                        ctx = contextvars.copy_context()
                         futures.append(
                             executor.submit(
+                                ctx.run,
                                 _run_one_sample_with_retry,
                                 runner=runner,
                                 tc_id=tc_id,
@@ -380,10 +389,14 @@ def _run_one_sample_with_retry(
             else:
                 # Success within this attempt's timeout window: the scratch
                 # file has exactly one flushed trajectory line — append it,
-                # as-is, to the real output.
+                # as-is, to the real output. Guarded by the same module-level
+                # _flush_lock Tracer._flush uses, so concurrent successful
+                # samples (workers > 1) never interleave partial writes to
+                # the same output_path.
                 output_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(output_path, "a") as dst, open(scratch_path) as src:
-                    dst.write(src.read())
+                with _flush_lock:
+                    with open(output_path, "a") as dst, open(scratch_path) as src:
+                        dst.write(src.read())
                 return
 
     # All attempts exhausted: write one failed trajectory so the sample still
@@ -414,20 +427,22 @@ def _write_trajectory(
     error: str | None = None,
 ) -> None:
     """Write exactly one trajectory line, success or failure, via Tracer."""
-    try:
-        with Tracer(
-            test_case_id=tc_id,
-            version_tag=version_tag,
-            input_data=tc_input,
-            output_path=output_path,
-            structure_root=structure_root,
-        ) as tracer:
-            if error is not None:
-                raise RuntimeError(error)
+    with Tracer(
+        test_case_id=tc_id,
+        version_tag=version_tag,
+        input_data=tc_input,
+        output_path=output_path,
+        structure_root=structure_root,
+    ) as tracer:
+        if error is not None:
+            # Set the failure message directly rather than raising: raising
+            # inside this block would have __exit__ format it as
+            # "RuntimeError: <error>", but the persisted error for this
+            # synthetic (non-exception) failure path must be exactly the
+            # original message (e.g. "sample timed out after 0.2s").
+            tracer.set_failed(error)
+        else:
             tracer.set_final_output(final_output)
-    except RuntimeError:
-        if error is None:
-            raise
 
 
 def _run_awaitable(awaitable) -> Any:

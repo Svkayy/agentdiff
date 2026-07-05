@@ -125,7 +125,9 @@ def test_run_samples_timeout_fails_with_message_and_retries(tmp_path, monkeypatc
     ts = load_trajectory_set(out, "baseline")
     assert len(ts.trajectories) == 1
     assert ts.trajectories[0].status == "failed"
-    assert "sample timed out after 0.1s" in ts.trajectories[0].error
+    # Exact match: the persisted error must be the original message with no
+    # "RuntimeError: " (or any other) prefix from the exception-format path.
+    assert ts.trajectories[0].error == "sample timed out after 0.1s"
 
     out_text = capsys.readouterr().out
     assert out_text.count("timed out") >= 1
@@ -264,6 +266,81 @@ def test_run_samples_strict_redaction_reaches_timeout_bounded_worker_thread(tmp_
                 progress=False,
                 # timeout_seconds > 0 forces the worker-thread execution path.
                 timeout_seconds=5.0,
+            )
+
+        assert written == 1
+        raw = out.read_text(encoding="utf-8")
+        assert "the secret plan" not in raw
+
+        ts = load_trajectory_set(out, "baseline")
+        assert len(ts.trajectories) == 1
+        traj = ts.trajectories[0]
+
+        req = next(e for e in traj.events if isinstance(e, LLMRequestEvent))
+        messages_json = json.dumps(req.canonical.messages)
+        assert "the secret plan" not in messages_json
+        assert "sha256:" in messages_json
+    finally:
+        set_active_redaction_config(None)
+        agentdiff.uninstall()
+
+
+def test_run_samples_strict_redaction_reaches_pool_worker_thread(tmp_path, monkeypatch):
+    """Important 1 (round 2) regression test.
+
+    With ``workers >= 2``, ``run_samples`` submits each sample to a
+    ``ThreadPoolExecutor`` pool via ``executor.submit(_run_one_sample_with_retry, ...)``.
+    Pool worker threads do not inherit the submitting (main) thread's
+    ContextVar context, so ``set_active_redaction_config(strict)`` -- set on
+    the main thread before calling ``run_samples`` -- is invisible inside the
+    pool worker thread. The inner ``copy_context()`` done later in
+    ``_run_traced_with_timeout`` only re-captures whatever (wrong, default)
+    context the pool worker thread already has; it cannot recover context lost
+    at the pool-submission boundary.
+
+    This must fail before the fix (capturing ``contextvars.copy_context()`` on
+    the main thread immediately before each ``executor.submit`` call, and
+    running the submitted work via ``ctx.run(...)``) and pass after.
+    """
+    import agentdiff
+
+    (tmp_path / "httprunner2.py").write_text(
+        "import httpx\n"
+        "def run(input):\n"
+        "    client = httpx.Client()\n"
+        "    client.post(\n"
+        "        'https://api.anthropic.com/v1/messages',\n"
+        "        json={\n"
+        "            'model': 'claude-3-5-sonnet-20241022',\n"
+        "            'max_tokens': 100,\n"
+        "            'messages': [{'role': 'user', 'content': 'the secret plan'}],\n"
+        "        },\n"
+        "    )\n"
+        "    return 'ok'\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    agentdiff.install()
+    set_active_redaction_config(RedactionConfig(mode="strict"))
+    try:
+        out = tmp_path / "out.jsonl"
+        with respx.mock() as rmock:
+            rmock.post("https://api.anthropic.com/v1/messages").mock(
+                return_value=httpx.Response(200, json=_ANTHROPIC_RESPONSE)
+            )
+            written = run_samples(
+                runner_module="httprunner2",
+                runner_callable="run",
+                test_cases=[{"id": "tc1", "input": {}}],
+                samples_per_case=1,
+                version_tag="baseline",
+                output_path=out,
+                structure_root=tmp_path,
+                progress=False,
+                # timeout_seconds > 0 (default) + workers=2 forces the
+                # pool-submit path that must propagate context.
+                timeout_seconds=5.0,
+                workers=2,
             )
 
         assert written == 1

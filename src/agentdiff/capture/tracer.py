@@ -103,6 +103,18 @@ class Tracer:
     def set_final_output(self, output: str | None) -> None:
         self._final_output = output
 
+    def set_failed(self, error: str) -> None:
+        """Mark this trajectory as failed with the exact ``error`` message.
+
+        Unlike raising inside the ``with`` block (which ``__exit__`` formats
+        as ``f"{type(exc).__name__}: {exc}"``), this sets the persisted error
+        to exactly ``error`` -- for synthetic failures (e.g. a sample-level
+        timeout/retry-budget message) that are not themselves an exception
+        caught by ``__exit__``.
+        """
+        self._status = "failed"
+        self._error = error
+
     def _flush(self) -> None:
         from agentdiff.trajectory import Trajectory
 

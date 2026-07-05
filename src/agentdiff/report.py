@@ -88,7 +88,16 @@ def _run_quality(lines: list[str], meta: dict[str, Any]) -> None:
             f"{thresholds.get('agent_invocation_rate_fail', 'n/a')}; "
             f"tool usage warn/fail = "
             f"{thresholds.get('tool_usage_avg_warn', 'n/a')}/"
-            f"{thresholds.get('tool_usage_avg_fail', 'n/a')}."
+            f"{thresholds.get('tool_usage_avg_fail', 'n/a')}; "
+            f"latency (ms) warn/fail = "
+            f"{thresholds.get('latency_ms_warn', 'n/a')}/"
+            f"{thresholds.get('latency_ms_fail', 'n/a')}; "
+            f"tokens warn/fail = "
+            f"{thresholds.get('tokens_warn', 'n/a')}/"
+            f"{thresholds.get('tokens_fail', 'n/a')}; "
+            f"error rate warn/fail = "
+            f"{thresholds.get('error_rate_warn', 'n/a')}/"
+            f"{thresholds.get('error_rate_fail', 'n/a')}."
         )
     lines.append("")
 
@@ -174,13 +183,29 @@ def _test_case_block(lines: list[str], tcc: TestCaseComparison) -> None:
             )
         lines.append("")
 
+    if tcc.run_metric_deltas:
+        lines.append("**Runtime deltas**")
+        lines.append("")
+        lines.append("| Metric | Baseline | Candidate | Delta | p-value | Verdict |")
+        lines.append("|---|---|---|---|---|---|")
+        for rd in tcc.run_metric_deltas:
+            lines.append(
+                f"| {rd.metric} | {rd.baseline_mean:.2f} | {rd.candidate_mean:.2f} "
+                f"| {rd.delta:+.2f} | {_fmt_p(rd.p_value, rd.significant)} | {_LABEL[rd.verdict]} |"
+            )
+        lines.append("")
+
     if tcc.behavioral_overlap is not None:
         lines.append(
             f"**Tool-set overlap (Jaccard):** {tcc.behavioral_overlap:.2f}"
         )
         lines.append("")
 
-    if not tcc.agent_invocation_deltas and not tcc.tool_usage_deltas:
+    if (
+        not tcc.agent_invocation_deltas
+        and not tcc.tool_usage_deltas
+        and not tcc.run_metric_deltas
+    ):
         lines.append("_No agents or tools observed for this test case._")
         lines.append("")
 

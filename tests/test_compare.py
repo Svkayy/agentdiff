@@ -16,7 +16,8 @@ STRUCTURE = StructureDoc(
 )
 
 
-def _traj(tc_id, tag, agent_names=(), tool_names=()):
+def _traj(tc_id, tag, agent_names=(), tool_names=(), total_latency_ms=0, total_tokens=0,
+          status="success"):
     cid = uuid4()
     events = []
     for a in agent_names:
@@ -38,7 +39,10 @@ def _traj(tc_id, tag, agent_names=(), tool_names=()):
                 inferred_agent="Router",
             )
         )
-    return Trajectory(test_case_id=tc_id, version_tag=tag, input={}, events=events)
+    return Trajectory(
+        test_case_id=tc_id, version_tag=tag, input={}, events=events,
+        total_latency_ms=total_latency_ms, total_tokens=total_tokens, status=status,
+    )
 
 
 def test_invocation_rate_full_vs_none():
@@ -145,3 +149,75 @@ def test_custom_thresholds_change_verdict():
         },
     )
     assert cmp.agent_invocation_deltas[0].verdict == "warn"
+
+
+# ---------------------------------------------------------------------------
+# Task 6: latency, token, and error-rate run-level deltas.
+# ---------------------------------------------------------------------------
+
+def _run_metric(cmp, metric):
+    return next(d for d in cmp.run_metric_deltas if d.metric == metric)
+
+
+def test_large_latency_shift_fails_significantly():
+    baseline = [_traj("tc", "baseline", total_latency_ms=500) for _ in range(20)]
+    candidate = [_traj("tc", "candidate", total_latency_ms=8000) for _ in range(20)]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "latency_ms")
+    assert d.baseline_mean == 500
+    assert d.candidate_mean == 8000
+    assert d.delta == 7500
+    assert d.p_value is not None and d.p_value < 0.05
+    assert d.significant is True
+    assert d.verdict == "fail"
+    assert cmp.overall_verdict == "fail"
+
+
+def test_identical_latency_sets_pass_p_equals_one():
+    baseline = [_traj("tc", "baseline", total_latency_ms=500) for _ in range(10)]
+    candidate = [_traj("tc", "candidate", total_latency_ms=500) for _ in range(10)]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "latency_ms")
+    assert d.delta == 0
+    assert d.p_value == 1.0
+    assert d.verdict == "pass"
+
+
+def test_token_delta_present_with_metric_name():
+    baseline = [_traj("tc", "baseline", total_tokens=100) for _ in range(10)]
+    candidate = [_traj("tc", "candidate", total_tokens=100) for _ in range(10)]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "total_tokens")
+    assert d.baseline_mean == 100
+    assert d.candidate_mean == 100
+    assert d.verdict == "pass"
+
+
+def test_error_rate_delta_fires_on_candidate_failures():
+    baseline = [_traj("tc", "baseline", status="success") for _ in range(20)]
+    candidate = [
+        _traj("tc", "candidate", status="failed" if i < 10 else "success")
+        for i in range(20)
+    ]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "error_rate")
+    assert d.baseline_mean == 0.0
+    assert d.candidate_mean == 0.5
+    assert d.delta == 0.5
+    assert d.p_value is not None and d.p_value < 0.05
+    assert d.significant is True
+    assert d.verdict == "fail"
+
+
+def test_run_metric_delta_shape_matches_payload_contract():
+    baseline = [_traj("tc", "baseline", total_latency_ms=500) for _ in range(5)]
+    candidate = [_traj("tc", "candidate", total_latency_ms=600) for _ in range(5)]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "latency_ms")
+    # Task 7 owns real BH correction / low-power logic; for now these mirror
+    # p_value / False respectively.
+    assert d.adjusted_p_value == d.p_value
+    assert d.low_power is False
+    assert {"latency_ms", "total_tokens", "error_rate"} == {
+        rd.metric for rd in cmp.run_metric_deltas
+    }

@@ -40,6 +40,12 @@ export interface Thresholds {
   agent_invocation_rate_fail: number;
   tool_usage_avg_warn: number;
   tool_usage_avg_fail: number;
+  latency_ms_warn?: number;
+  latency_ms_fail?: number;
+  tokens_warn?: number;
+  tokens_fail?: number;
+  error_rate_warn?: number;
+  error_rate_fail?: number;
 }
 
 export interface RunMeta {
@@ -99,10 +105,25 @@ export interface ToolUsageDelta {
   verdict: Verdict;
 }
 
+// Latency/token/error-rate run-level delta (Task 6). `adjusted_p_value`
+// mirrors `p_value` until Task 7 wires in Benjamini-Hochberg correction;
+// `low_power` is false-for-now until Task 7 adds the real underpowered-N logic.
+export interface RunMetricDelta {
+  metric: "latency_ms" | "total_tokens" | "error_rate";
+  baseline_mean: number;
+  candidate_mean: number;
+  delta: number;
+  p_value: number | null;
+  adjusted_p_value: number | null;
+  verdict: Verdict;
+  low_power: boolean;
+}
+
 export interface TestCaseComparison {
   test_case_id: string;
   agent_invocation_deltas: AgentInvocationDelta[];
   tool_usage_deltas: ToolUsageDelta[];
+  run_metrics?: RunMetricDelta[];
   behavioral_overlap: number | null;
   overall_verdict: Verdict;
 }

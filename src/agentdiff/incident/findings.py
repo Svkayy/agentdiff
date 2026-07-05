@@ -196,6 +196,77 @@ def build_incident_summary(
             )
         )
 
+    # ── Run-level metric deltas (latency/tokens/error-rate) ──────────────────
+    # These are run-scoped, not per-agent, so they aggregate by metric alone
+    # (no agent_name/function key) rather than through the accumulator above.
+    class _RunMetricAcc:
+        def __init__(self) -> None:
+            self.metric: str = ""
+            self.worst_verdict: Verdict = "pass"
+            self.baseline_means: list[float] = []
+            self.candidate_means: list[float] = []
+            self.affected_tcs: int = 0
+            self.stats: dict | None = None
+            self.best_p: float | None = None
+
+    run_metric_accs: dict[str, _RunMetricAcc] = {}
+    for tcc in comparison.test_case_comparisons:
+        for rd in tcc.run_metric_deltas:
+            if rd.verdict == "pass":
+                continue
+            if rd.metric not in run_metric_accs:
+                racc = _RunMetricAcc()
+                racc.metric = rd.metric
+                run_metric_accs[rd.metric] = racc
+            else:
+                racc = run_metric_accs[rd.metric]
+
+            if _SEVERITY[rd.verdict] > _SEVERITY[racc.worst_verdict]:
+                racc.worst_verdict = rd.verdict
+
+            racc.baseline_means.append(rd.baseline_mean)
+            racc.candidate_means.append(rd.candidate_mean)
+            racc.affected_tcs += 1
+
+            if rd.stats is not None:
+                p = rd.stats.p_value
+                if racc.best_p is None or (p is not None and p < racc.best_p):
+                    racc.best_p = p
+                    racc.stats = rd.stats.model_dump(mode="json")
+
+    for racc in run_metric_accs.values():
+        agg_b_mean = _mean(racc.baseline_means)
+        agg_c_mean = _mean(racc.candidate_means)
+        agg_delta = agg_c_mean - agg_b_mean
+        tc_note = (
+            f" ({racc.affected_tcs} of {total_test_cases} inputs)"
+            if total_test_cases > 1
+            else ""
+        )
+        stats_dict = racc.stats
+        if stats_dict is not None:
+            stats_dict = {
+                **stats_dict,
+                "test_cases_affected": racc.affected_tcs,
+                "test_cases_total": total_test_cases,
+            }
+        findings.append(
+            IncidentFinding(
+                test_case_id=racc.metric,
+                title=f"{racc.metric} changed",
+                verdict=racc.worst_verdict,
+                metric=racc.metric,
+                impact_summary=(
+                    f"{racc.metric} averaged {agg_b_mean:.2f} on baseline "
+                    f"and {agg_c_mean:.2f} on candidate "
+                    f"({agg_delta:+.2f}){tc_note}."
+                ),
+                statistical_evidence=stats_dict,
+                test_cases_affected=racc.affected_tcs,
+                test_cases_total=total_test_cases,
+            )
+        )
+
     verdict: Verdict = comparison.overall_verdict
     if warnings and verdict == "pass":
         verdict = "warn"
@@ -203,3 +274,7 @@ def build_incident_summary(
         if _SEVERITY[finding.verdict] > _SEVERITY[verdict]:
             verdict = finding.verdict
     return IncidentSummary(verdict=verdict, findings=findings, warnings=warnings)
+
+
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0

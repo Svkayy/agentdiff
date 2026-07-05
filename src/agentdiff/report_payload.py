@@ -31,6 +31,7 @@ def build(report_dir: Path) -> dict[str, Any]:
     comparison = read_artifact(db_path, "comparison")
     attribution = read_artifact(db_path, "attribution")
     graph = build_graph(comparison, attribution, baseline_set, candidate_set)
+    comparison = _with_run_metrics(comparison)
 
     meta: dict[str, Any] = {
         "baseline_ref": metadata.get("baseline_ref"),
@@ -59,6 +60,31 @@ def build(report_dir: Path) -> dict[str, Any]:
             "candidate": _side(candidate_set),
         },
     }
+
+
+_RUN_METRIC_FIELDS = (
+    "metric", "baseline_mean", "candidate_mean", "delta",
+    "p_value", "adjusted_p_value", "verdict", "low_power",
+)
+
+
+def _with_run_metrics(comparison: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Project each test case's ``run_metric_deltas`` into a ``run_metrics`` list.
+
+    Keeps the exact field-name contract the dashboard renders against
+    (``metric``, ``baseline_mean``, ``candidate_mean``, ``delta``, ``p_value``,
+    ``adjusted_p_value``, ``verdict``, ``low_power``), independent of whatever
+    extra internal fields (``significant``, ``stats``) the compare engine keeps
+    on ``run_metric_deltas``.
+    """
+    if not comparison:
+        return comparison
+    for tcc in comparison.get("test_case_comparisons", []):
+        tcc["run_metrics"] = [
+            {field: rd.get(field) for field in _RUN_METRIC_FIELDS}
+            for rd in tcc.get("run_metric_deltas", [])
+        ]
+    return comparison
 
 
 def _side(tset: TrajectorySet) -> list[dict[str, Any]]:

@@ -1,6 +1,8 @@
 from agentdiff.attribution.engine import AttributionResult, BehavioralAttribution
 from agentdiff.attribution.rules import Attribution
-from agentdiff.compare import AgentInvocationDelta, ComparisonResult, TestCaseComparison
+from agentdiff.compare import (
+    AgentInvocationDelta, ComparisonResult, RunMetricDelta, TestCaseComparison,
+)
 from agentdiff.incident.findings import IncidentContext, build_incident_summary
 from agentdiff.incident.github import AGENTDIFF_COMMENT_MARKER, GitHubClient, infer_pr_number
 from agentdiff.incident.renderers import (
@@ -71,6 +73,38 @@ def test_incident_summary_merges_attribution_once():
     assert "100%" in summary.findings[0].impact_summary
     assert summary.findings[0].test_cases_affected == 1
     assert summary.findings[0].test_cases_total == 1
+
+
+def test_run_metric_delta_produces_finding():
+    comparison = ComparisonResult(
+        overall_verdict="fail",
+        test_case_comparisons=[
+            TestCaseComparison(
+                test_case_id="tc1",
+                overall_verdict="fail",
+                run_metric_deltas=[
+                    RunMetricDelta(
+                        metric="latency_ms", baseline_mean=500.0, candidate_mean=8000.0,
+                        delta=7500.0, p_value=0.01, adjusted_p_value=0.01,
+                        significant=True, low_power=False, verdict="fail",
+                    ),
+                    RunMetricDelta(
+                        metric="total_tokens", baseline_mean=100.0, candidate_mean=105.0,
+                        delta=5.0, p_value=0.9, adjusted_p_value=0.9,
+                        significant=False, low_power=False, verdict="pass",
+                    ),
+                ],
+            )
+        ],
+    )
+    summary = build_incident_summary(comparison)
+    metrics = {f.metric for f in summary.findings}
+    assert "latency_ms" in metrics
+    assert "total_tokens" not in metrics  # pass verdicts don't surface as findings
+    latency_finding = next(f for f in summary.findings if f.metric == "latency_ms")
+    assert latency_finding.verdict == "fail"
+    assert "500.00" in latency_finding.impact_summary
+    assert "8000.00" in latency_finding.impact_summary
 
 
 def test_empty_input_is_warn_not_pass():

@@ -24,6 +24,17 @@ _RATE_WARN = 0.2
 # Tool average-count deltas (mean invocations per trajectory).
 _TOOL_FAIL = 1.0
 _TOOL_WARN = 0.5
+# Run-level metric deltas (absolute difference in the metric's own units).
+_LATENCY_MS_WARN = 1000.0
+_LATENCY_MS_FAIL = 5000.0
+_TOKENS_WARN = 200.0
+_TOKENS_FAIL = 1000.0
+_ERROR_RATE_WARN = 0.1
+_ERROR_RATE_FAIL = 0.25
+
+_RUN_METRICS: tuple[Literal["latency_ms", "total_tokens", "error_rate"], ...] = (
+    "latency_ms", "total_tokens", "error_rate",
+)
 
 _SEVERITY = {"pass": 0, "warn": 1, "fail": 2}
 
@@ -33,6 +44,12 @@ class CompareThresholds(BaseModel):
     agent_invocation_rate_fail: float = _RATE_FAIL
     tool_usage_avg_warn: float = _TOOL_WARN
     tool_usage_avg_fail: float = _TOOL_FAIL
+    latency_ms_warn: float = _LATENCY_MS_WARN
+    latency_ms_fail: float = _LATENCY_MS_FAIL
+    tokens_warn: float = _TOKENS_WARN
+    tokens_fail: float = _TOKENS_FAIL
+    error_rate_warn: float = _ERROR_RATE_WARN
+    error_rate_fail: float = _ERROR_RATE_FAIL
 
 
 # ---------------------------------------------------------------------------
@@ -85,12 +102,34 @@ class ToolUsageDelta(BaseModel):
     verdict: Verdict
 
 
+class RunMetricDelta(BaseModel):
+    """A run-level behavioral delta: latency, token usage, or error rate.
+
+    ``adjusted_p_value`` mirrors ``p_value`` for now — Task 7 introduces
+    Benjamini-Hochberg correction across all deltas in a comparison and will
+    overwrite it. ``low_power`` is false-for-now; Task 7 owns the real
+    underpowered-sample-size logic.
+    """
+
+    metric: Literal["latency_ms", "total_tokens", "error_rate"]
+    baseline_mean: float
+    candidate_mean: float
+    delta: float
+    p_value: float | None = None
+    adjusted_p_value: float | None = None
+    significant: bool = False
+    low_power: bool = False
+    stats: StatisticalEvidence | None = None
+    verdict: Verdict
+
+
 class TestCaseComparison(BaseModel):
     __test__ = False  # not a pytest test class despite the Test* name
 
     test_case_id: str
     agent_invocation_deltas: list[AgentInvocationDelta] = Field(default_factory=list)
     tool_usage_deltas: list[ToolUsageDelta] = Field(default_factory=list)
+    run_metric_deltas: list[RunMetricDelta] = Field(default_factory=list)
     behavioral_overlap: float | None = None  # Jaccard of exercised tool sets; None if N/A
     overall_verdict: Verdict = "pass"
 
@@ -120,6 +159,26 @@ def _tool_verdict(delta: float, thresholds: CompareThresholds | None = None) -> 
     if a >= thresholds.tool_usage_avg_fail:
         return "fail"
     if a >= thresholds.tool_usage_avg_warn:
+        return "warn"
+    return "pass"
+
+
+def _run_metric_verdict(
+    metric: Literal["latency_ms", "total_tokens", "error_rate"],
+    delta: float,
+    thresholds: CompareThresholds | None = None,
+) -> Verdict:
+    thresholds = thresholds or CompareThresholds()
+    if metric == "latency_ms":
+        warn, fail = thresholds.latency_ms_warn, thresholds.latency_ms_fail
+    elif metric == "total_tokens":
+        warn, fail = thresholds.tokens_warn, thresholds.tokens_fail
+    else:
+        warn, fail = thresholds.error_rate_warn, thresholds.error_rate_fail
+    a = abs(delta)
+    if a >= fail:
+        return "fail"
+    if a >= warn:
         return "warn"
     return "pass"
 
@@ -208,6 +267,82 @@ def _jaccard(a: set[str], b: set[str]) -> float | None:
     if not union:
         return None
     return len(a & b) / len(union)
+
+
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _latency_vector(trajectories: list[Trajectory]) -> list[float]:
+    return [float(t.total_latency_ms) for t in trajectories]
+
+
+def _tokens_vector(trajectories: list[Trajectory]) -> list[float]:
+    return [float(t.total_tokens) for t in trajectories]
+
+
+def _failure_count(trajectories: list[Trajectory]) -> int:
+    return sum(1 for t in trajectories if t.status != "success")
+
+
+def _run_metric_delta(
+    metric: Literal["latency_ms", "total_tokens", "error_rate"],
+    baseline: list[Trajectory],
+    candidate: list[Trajectory],
+    thresholds: CompareThresholds,
+) -> RunMetricDelta:
+    n_b, n_c = len(baseline), len(candidate)
+
+    if metric == "error_rate":
+        b_fail = _failure_count(baseline)
+        c_fail = _failure_count(candidate)
+        b_mean = b_fail / n_b if n_b else 0.0
+        c_mean = c_fail / n_c if n_c else 0.0
+        delta = c_mean - b_mean
+        p = stats.two_proportion_pvalue(b_fail, n_b, c_fail, n_c)
+        significant = stats.is_significant(p)
+        modeled = StatisticalEvidence(
+            test="two_proportion_z",
+            p_value=p,
+            significant=significant,
+            effect_size=stats.cohens_h(b_fail, n_b, c_fail, n_c),
+            effect_label="cohens_h",
+            confidence_interval=stats.proportion_delta_ci(b_fail, n_b, c_fail, n_c),
+            baseline_n=n_b,
+            candidate_n=n_c,
+        )
+    else:
+        b_vector = _latency_vector(baseline) if metric == "latency_ms" else _tokens_vector(baseline)
+        c_vector = _latency_vector(candidate) if metric == "latency_ms" else _tokens_vector(candidate)
+        b_mean = _mean(b_vector)
+        c_mean = _mean(c_vector)
+        delta = c_mean - b_mean
+        p = stats.mann_whitney_pvalue(b_vector, c_vector)
+        significant = stats.is_significant(p)
+        modeled = StatisticalEvidence(
+            test="mann_whitney_u",
+            p_value=p,
+            significant=significant,
+            effect_size=stats.cliffs_delta(b_vector, c_vector),
+            effect_label="cliffs_delta",
+            confidence_interval=None,
+            baseline_n=len(b_vector),
+            candidate_n=len(c_vector),
+        )
+
+    verdict = _apply_significance(_run_metric_verdict(metric, delta, thresholds), significant)
+    return RunMetricDelta(
+        metric=metric,
+        baseline_mean=b_mean,
+        candidate_mean=c_mean,
+        delta=delta,
+        p_value=p,
+        adjusted_p_value=p,  # Task 7 overwrites with BH-corrected value.
+        significant=significant,
+        low_power=False,  # Task 7 owns the real underpowered-sample-size logic.
+        stats=modeled,
+        verdict=verdict,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -301,13 +436,23 @@ def compare_test_case(
 
     overlap = _jaccard(_exercised_tools(baseline), _exercised_tools(candidate))
 
-    verdicts = [d.verdict for d in agent_deltas] + [d.verdict for d in tool_deltas]
+    run_metric_deltas = [
+        _run_metric_delta(metric, baseline, candidate, thresholds)
+        for metric in _RUN_METRICS
+    ]
+
+    verdicts = (
+        [d.verdict for d in agent_deltas]
+        + [d.verdict for d in tool_deltas]
+        + [d.verdict for d in run_metric_deltas]
+    )
     overall = worst_verdict(*verdicts)
 
     return TestCaseComparison(
         test_case_id=test_case_id,
         agent_invocation_deltas=agent_deltas,
         tool_usage_deltas=tool_deltas,
+        run_metric_deltas=run_metric_deltas,
         behavioral_overlap=overlap,
         overall_verdict=overall,
     )

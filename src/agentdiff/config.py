@@ -181,4 +181,10 @@ def thresholds_for_compare(config: AgentDiffConfig) -> dict[str, float]:
         "agent_invocation_rate_fail": config.thresholds.agent_invocation_rate.fail,
         "tool_usage_avg_warn": config.thresholds.tool_usage_avg.warn,
         "tool_usage_avg_fail": config.thresholds.tool_usage_avg.fail,
+        "latency_ms_warn": config.thresholds.latency_ms.warn,
+        "latency_ms_fail": config.thresholds.latency_ms.fail,
+        "tokens_warn": config.thresholds.tokens.warn,
+        "tokens_fail": config.thresholds.tokens.fail,
+        "error_rate_warn": config.thresholds.error_rate.warn,
+        "error_rate_fail": config.thresholds.error_rate.fail,
     }

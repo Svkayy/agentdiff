@@ -71,7 +71,7 @@ function GraphPlate({
 }) {
   return (
     <div
-      className="relative overflow-hidden rounded-lg border border-node-border"
+      className="relative min-w-0 overflow-x-auto overflow-y-hidden rounded-lg border border-node-border"
       style={{ background: "#0E1116", height: "480px" }}
     >
       {/* Plate label */}
@@ -84,12 +84,17 @@ function GraphPlate({
         </span>
       </div>
 
-      {/* React Flow fills the plate */}
-      <AgentGraph
-        graph={data.graph}
-        selectedId={selectedId}
-        onSelect={onSelect}
-      />
+      {/* React Flow fills the plate. min-w-0 on mobile lets the plate shrink
+          to the viewport (no forced horizontal scroll on narrow screens);
+          md:min-w-[620px] guarantees the graph stays readable at tablet+
+          widths, scrolling within this plate rather than the whole page. */}
+      <div className="h-full min-w-0 md:min-w-[620px]">
+        <AgentGraph
+          graph={data.graph}
+          selectedId={selectedId}
+          onSelect={onSelect}
+        />
+      </div>
     </div>
   );
 }

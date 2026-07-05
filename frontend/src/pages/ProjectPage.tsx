@@ -576,11 +576,18 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
 
 function RevealKeyModal({ minted, onClose }: { minted: MintedKey; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  // Copy-first flow: closing requires an explicit "yes I saved it" confirm
+  // step, and that step only appears once the key has actually been copied —
+  // this is the last time the raw key is ever shown, so we want a
+  // deliberate two-step exit rather than a single accidental click.
+  const [confirmingClose, setConfirmingClose] = useState(false);
+
   function copy() {
     void navigator.clipboard.writeText(minted.key);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-dark/40 backdrop-blur-sm">
       <div className="mx-4 w-full max-w-md rounded-lg border border-hairline bg-white p-xl shadow-xl">
@@ -599,6 +606,7 @@ function RevealKeyModal({ minted, onClose }: { minted: MintedKey; onClose: () =>
           </code>
           <button
             onClick={copy}
+            aria-label="Copy API key to clipboard"
             className="shrink-0 rounded-sm border border-hairline bg-white px-sm py-2xs font-mono text-micro text-neutral-muted transition-colors hover:border-ink-dark"
           >
             {copied ? "Copied!" : "Copy"}
@@ -610,12 +618,35 @@ function RevealKeyModal({ minted, onClose }: { minted: MintedKey; onClose: () =>
             Store this key securely. It will not be shown again.
           </p>
         </div>
-        <button
-          onClick={onClose}
-          className="w-full rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white"
-        >
-          I've saved my key
-        </button>
+
+        {!confirmingClose ? (
+          <button
+            onClick={() => setConfirmingClose(true)}
+            className="w-full rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white"
+          >
+            I've saved my key
+          </button>
+        ) : (
+          <div className="space-y-sm rounded-sm border border-hairline bg-shell-bg p-md">
+            <p className="text-small font-medium text-ink-dark">
+              Did you save it? This is the only time it will be shown.
+            </p>
+            <div className="flex gap-sm">
+              <button
+                onClick={() => setConfirmingClose(false)}
+                className="flex-1 rounded-sm border border-hairline bg-white px-lg py-sm text-small font-medium text-ink-dark transition-colors hover:border-ink-dark"
+              >
+                Go back
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white"
+              >
+                Yes, I saved it
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1229,8 +1260,14 @@ function SlackTab({ projectId }: { projectId: string }) {
     setManualSuccess(false);
     try {
       await putSlackConfig(projectId, channelId, botToken, getToken);
-      setManualSuccess(true);
       await loadStatus();
+      // Clear the sensitive bot token from the form and collapse the
+      // disclosure back down — the status card above now shows "Connected",
+      // so there's no reason to keep the form (or the token) on screen.
+      setChannelId("");
+      setBotToken("");
+      setManualSuccess(true);
+      setAdvancedOpen(false);
     } catch (e) {
       setManualError(e instanceof Error ? e.message : "Failed to save Slack config");
     } finally {
@@ -1342,11 +1379,20 @@ function SlackTab({ projectId }: { projectId: string }) {
       <div>
         <button
           onClick={() => setAdvancedOpen((v) => !v)}
+          aria-expanded={advancedOpen}
           className="flex items-center gap-xs font-mono text-micro uppercase tracking-widest text-neutral-faint transition-colors hover:text-neutral-muted"
         >
-          <span>{advancedOpen ? "▾" : "▸"}</span>
+          <span aria-hidden="true">{advancedOpen ? "▾" : "▸"}</span>
           Advanced: manual setup
         </button>
+
+        {/* Success/error banners persist even after the form collapses on
+            success, so the confirmation isn't lost the moment it appears. */}
+        {manualSuccess && !advancedOpen && (
+          <div className="mt-md rounded-sm border border-verdict-pass/30 bg-verdict-pass/5 px-md py-sm text-small text-verdict-pass">
+            Slack configuration saved.
+          </div>
+        )}
 
         {advancedOpen && (
           <div className="mt-md space-y-md">

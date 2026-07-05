@@ -1434,6 +1434,7 @@ function ProjectHeader({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name ?? "");
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -1451,12 +1452,16 @@ function ProjectHeader({
   }, [confirmDelete]);
 
   async function save() {
-    if (saving) return;
+    // Synchronous re-entrancy guard: a single "Save" click fires the input's
+    // onBlur and the form's onSubmit before a `saving` state update flushes, so
+    // a ref (not state) is what reliably collapses them into one PATCH.
+    if (savingRef.current) return;
     const next = draft.trim();
     if (!next || next === name) {
       setEditing(false);
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     try {
       const updated = await renameProject(projectId, next, getToken);
@@ -1466,6 +1471,7 @@ function ProjectHeader({
     } catch (e) {
       toast(e instanceof Error ? e.message : "Failed to rename project", "error");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }

@@ -213,6 +213,21 @@ async def cleanup_retention(ctx) -> None:
     async with factory() as session:
         if settings.retention_days > 0:
             cutoff = now - timedelta(days=settings.retention_days)
+            # Runs->trajectories and runs->findings FKs have NO ON DELETE
+            # CASCADE (see migration b34c322917a3); the ORM
+            # cascade="all, delete-orphan" only fires on session-flush of
+            # loaded objects, not on a Core `delete()`. In production every
+            # Run has trajectory + finding rows, so a bare `delete(Run)`
+            # raises IntegrityError and the whole transaction (including the
+            # LiveTrajectory cleanup below) rolls back. Delete children first,
+            # in FK-safe order, within the same transaction.
+            expired_run_ids = select(Run.id).where(Run.created_at < cutoff)
+            await session.execute(
+                delete(Finding).where(Finding.run_id.in_(expired_run_ids))
+            )
+            await session.execute(
+                delete(Trajectory).where(Trajectory.run_id.in_(expired_run_ids))
+            )
             result = await session.execute(
                 delete(Run).where(Run.created_at < cutoff)
             )

@@ -454,7 +454,7 @@ async def test_retention_deletes_only_old_rows(session, monkeypatch):
     from contextlib import asynccontextmanager
     from datetime import datetime, timedelta, timezone
 
-    from server.models import LiveTrajectory, Run
+    from server.models import Finding, LiveTrajectory, Run, Trajectory
     from server.worker import cleanup_retention
 
     org = Org(name="RetOrg")
@@ -480,9 +480,33 @@ async def test_retention_deletes_only_old_rows(session, monkeypatch):
         project_id=project.id, payload={}, captured_at=now - timedelta(days=1),
     )
     session.add_all([old_run, new_run, old_live, new_live])
+    await session.flush()
+
+    # Both runs have children (Trajectory + Finding rows) with NO
+    # ON DELETE CASCADE on runs->trajectories / runs->findings FKs (see
+    # migration b34c322917a3). A naive `delete(Run)` would violate these FKs
+    # in production, since real runs always have children — the original
+    # fixture (childless runs) masked this bug.
+    old_traj = Trajectory(
+        run=old_run, side="baseline", test_case_id="tc-1", payload={},
+    )
+    old_finding = Finding(
+        run=old_run, test_case_id="tc-1", title="old finding", verdict="fail",
+        metric="latency", impact_summary="old impact",
+    )
+    new_traj = Trajectory(
+        run=new_run, side="baseline", test_case_id="tc-1", payload={},
+    )
+    new_finding = Finding(
+        run=new_run, test_case_id="tc-1", title="new finding", verdict="fail",
+        metric="latency", impact_summary="new impact",
+    )
+    session.add_all([old_traj, old_finding, new_traj, new_finding])
     await session.commit()
     old_run_id, new_run_id = old_run.id, new_run.id
     old_live_id, new_live_id = old_live.id, new_live.id
+    old_traj_id, new_traj_id = old_traj.id, new_traj.id
+    old_finding_id, new_finding_id = old_finding.id, new_finding.id
 
     @asynccontextmanager
     async def _factory():
@@ -501,11 +525,21 @@ async def test_retention_deletes_only_old_rows(session, monkeypatch):
             _select(LiveTrajectory.id).where(LiveTrajectory.project_id == project.id)
         )
     ).scalars().all()
+    remaining_traj_ids = (
+        await session.execute(_select(Trajectory.id))
+    ).scalars().all()
+    remaining_finding_ids = (
+        await session.execute(_select(Finding.id))
+    ).scalars().all()
 
     assert old_run_id not in remaining_runs
     assert new_run_id in remaining_runs
     assert old_live_id not in remaining_live
     assert new_live_id in remaining_live
+    assert old_traj_id not in remaining_traj_ids
+    assert new_traj_id in remaining_traj_ids
+    assert old_finding_id not in remaining_finding_ids
+    assert new_finding_id in remaining_finding_ids
 
 
 # ── Task 12: cron lease prevents double-fire ─────────────────────────────────

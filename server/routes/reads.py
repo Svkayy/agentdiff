@@ -11,11 +11,10 @@ from agentdiff.graph_model import build as build_graph
 from agentdiff.structure.structure_yaml import StructureDoc
 from server import crypto
 from server.config import get_settings
-from server.models import LiveTrajectory
 from server.audit import record_audit
 from server.db import get_session
 from server.deps import get_user_ctx, own_project
-from server.models import Finding, Org, Project, Run, SlackConfig, Trajectory, User
+from server.models import Finding, LiveTrajectory, Org, Project, Run, SlackConfig, Trajectory, User
 from server.usage import check_quota
 
 router = APIRouter()

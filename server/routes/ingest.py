@@ -24,7 +24,17 @@ async def _load_org(session: AsyncSession, org_id) -> Org:
 
 
 async def _enforce_quota(session: AsyncSession, project: Project) -> None:
-    """Raise 429 with quota headers/body when the org's monthly cap is met."""
+    """Raise 429 with quota headers/body when the org's monthly cap is met.
+
+    This is a soft cap: check-then-increment is not atomic with the request
+    handler that follows, so under concurrent requests near the boundary the
+    usage count can overshoot the limit by up to roughly the number of
+    concurrent in-flight requests. This is an accepted tradeoff for the
+    free-tier quota (no SELECT FOR UPDATE / serialization needed) — the
+    overshoot is bounded by concurrency, not unbounded, and the
+    UsageCounter UPSERT in increment_usage() itself never loses increments
+    (each request's usage is still counted exactly once).
+    """
     org = await _load_org(session, project.org_id)
     status = await check_quota(session, org)
     if status.exceeded:

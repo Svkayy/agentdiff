@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -134,8 +135,6 @@ async def _check_redis(request: Request) -> bool:
 
 @app.get("/health")
 async def health(request: Request) -> Response:
-    import json
-
     db_ok = await _check_database()
     redis_ok = await _check_redis(request)
     ok = db_ok and redis_ok

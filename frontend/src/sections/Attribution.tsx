@@ -38,8 +38,10 @@ export function Attribution({ data }: { data: ReportData }) {
 
       {/* Footer note */}
       <p className="text-micro text-neutral-faint">
-        Confidence = normalized causal weight assigned by the attribution engine. Primary cause
-        shown; alternatives listed within each card.
+        Weight = normalized causal score assigned by the attribution engine. Confidence label
+        (high / medium / low) reflects how strong the underlying rule match was — a
+        &quot;low-confidence heuristic&quot; cause is a best guess, not a confirmed root cause.
+        Primary cause shown; alternatives listed within each card.
       </p>
     </div>
   );

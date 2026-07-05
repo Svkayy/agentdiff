@@ -225,6 +225,10 @@ export interface ReportData {
   runQuality: RunQuality;
   graph: AgentGraph;
   comparison: Comparison | null;
+  // Run-level warnings (Task 7 low-power flags, etc). Mirrors
+  // `comparison.warnings` but lives at the payload root too — the adapter
+  // reads whichever is present.
+  warnings: string[];
   outputEvals: OutputEval[];
   attribution: Attribution | null;
   trajectories: Trajectories;

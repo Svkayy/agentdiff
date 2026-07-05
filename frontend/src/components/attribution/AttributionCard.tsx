@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { CardSpotlight } from "@/components/aceternity/CardSpotlight";
 import { DiffHunk } from "@/components/attribution/DiffHunk";
-import type { AttributionEntry, Verdict } from "@/types";
+import type { AttributionConfidence, AttributionEntry, Verdict } from "@/types";
 
 function VerdictBadge({ verdict }: { verdict: Verdict }) {
   const styles: Record<Verdict, string> = {
@@ -24,6 +24,29 @@ function asVerdict(v: string): Verdict {
   const lower = v.toLowerCase();
   if (lower === "pass" || lower === "warn" || lower === "fail") return lower as Verdict;
   return "fail";
+}
+
+// Confidence label shown alongside the numeric weight — "low" is called out
+// explicitly as a heuristic guess rather than a confirmed cause.
+function confidenceLabel(confidence: AttributionConfidence): string {
+  if (confidence === "high") return "high confidence";
+  if (confidence === "medium") return "medium confidence";
+  return "low-confidence heuristic";
+}
+
+function ConfidenceBadge({ confidence }: { confidence: AttributionConfidence }) {
+  const styles: Record<AttributionConfidence, string> = {
+    high: "border-verdict-pass/30 bg-verdict-pass/10 text-verdict-pass",
+    medium: "border-verdict-warn/30 bg-verdict-warn/10 text-verdict-warn",
+    low: "border-neutral-faint/30 bg-node-fill text-neutral-faint",
+  };
+  return (
+    <span
+      className={`rounded-sm border px-xs py-2xs font-mono text-micro uppercase tracking-widest ${styles[confidence]}`}
+    >
+      {confidenceLabel(confidence)}
+    </span>
+  );
 }
 
 export function AttributionCard({ entry }: { entry: AttributionEntry }) {
@@ -66,8 +89,9 @@ export function AttributionCard({ entry }: { entry: AttributionEntry }) {
                 {primary.rule}
               </span>
               <span className="font-mono text-small font-bold text-ink-light">
-                {confidencePct}% confidence
+                {confidencePct}% weight
               </span>
+              <ConfidenceBadge confidence={primary.confidence} />
             </div>
             <p className="text-small text-neutral-faint">{primary.reason}</p>
           </div>
@@ -110,6 +134,7 @@ export function AttributionCard({ entry }: { entry: AttributionEntry }) {
                 <span className="font-mono text-micro font-bold text-neutral-faint">
                   {Math.round(alt.weight * 100)}%
                 </span>
+                <ConfidenceBadge confidence={alt.confidence} />
               </div>
             ))}
           </div>

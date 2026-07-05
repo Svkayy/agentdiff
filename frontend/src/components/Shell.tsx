@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Link, useMatch } from "react-router-dom";
-import { UserButton } from "@clerk/clerk-react";
+import { UserButton, useAuth } from "@clerk/clerk-react";
+import { fetchMe } from "@/lib/api";
 
 interface ShellProps {
   children: ReactNode;
@@ -8,6 +9,22 @@ interface ShellProps {
 
 export function Shell({ children }: ShellProps) {
   const onProjects = useMatch("/");
+  const { getToken } = useAuth();
+  const [orgName, setOrgName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMe(getToken)
+      .then((me) => {
+        if (!cancelled) setOrgName(me.org?.name ?? null);
+      })
+      .catch(() => {
+        /* header org name is non-critical — leave blank on failure */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getToken]);
 
   return (
     <div className="flex h-screen flex-col bg-shell-bg text-ink-dark">
@@ -33,6 +50,12 @@ export function Shell({ children }: ShellProps) {
           )}
         </div>
         <div className="flex items-center gap-md">
+          {orgName && (
+            <span className="hidden items-center gap-xs font-mono text-micro uppercase tracking-widest text-neutral-faint sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-verdict-pass" />
+              {orgName}
+            </span>
+          )}
           <UserButton afterSignOutUrl="/" />
         </div>
       </header>

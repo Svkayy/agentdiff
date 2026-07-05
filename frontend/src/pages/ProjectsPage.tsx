@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -104,23 +104,34 @@ export function ProjectsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState("");
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchProjects(getToken);
-      setProjects(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load projects");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const load = useCallback(
+    async (q?: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await fetchProjects(getToken, q?.trim() || undefined);
+        setProjects(data.items);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load projects");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [getToken],
+  );
 
+  // Initial load.
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
+
+  // Debounced server-side search.
+  useEffect(() => {
+    const t = setTimeout(() => void load(search), 300);
+    return () => clearTimeout(t);
+  }, [search, load]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -152,12 +163,21 @@ export function ProjectsPage() {
           </div>
           <h1 className="font-display text-h1 font-bold text-ink-dark">Your projects</h1>
         </div>
-        <button
-          onClick={() => setShowCreate((v) => !v)}
-          className="rounded-sm border border-hairline bg-white px-md py-sm text-small font-medium text-ink-dark transition-colors hover:border-ink-dark"
-        >
-          {showCreate ? "Cancel" : "+ New project"}
-        </button>
+        <div className="flex items-center gap-md">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search projects…"
+            aria-label="Search projects"
+            className="w-56 rounded-sm border border-hairline bg-white px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
+          />
+          <button
+            onClick={() => setShowCreate((v) => !v)}
+            className="rounded-sm border border-hairline bg-white px-md py-sm text-small font-medium text-ink-dark transition-colors hover:border-ink-dark"
+          >
+            {showCreate ? "Cancel" : "+ New project"}
+          </button>
+        </div>
       </div>
 
       {/* Error banner */}
@@ -211,6 +231,11 @@ export function ProjectsPage() {
       {/* Content */}
       {loading ? (
         <Skeleton />
+      ) : projects.length === 0 && search.trim() ? (
+        <div className="rounded-md border border-hairline bg-white py-2xl text-center text-small text-neutral-muted">
+          No projects match{" "}
+          <span className="font-mono text-ink-dark">&ldquo;{search.trim()}&rdquo;</span>.
+        </div>
       ) : projects.length === 0 ? (
         <EmptyState onCreate={() => setShowCreate(true)} />
       ) : (

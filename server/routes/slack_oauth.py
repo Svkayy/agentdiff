@@ -14,10 +14,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server import crypto
+from server.audit import record_audit
 from server.config import get_settings
 from server.db import get_session
 from server.deps import get_user_ctx, own_project
-from server.models import Org, SlackConfig, User
+from server.models import Org, Project, SlackConfig, User
+
+# Actor recorded when the OAuth callback's state carries no actor (e.g. a
+# stale/pre-Task-11 install link) — the callback is otherwise unauthenticated
+# so there is no Clerk user context to fall back to.
+_FALLBACK_ACTOR = "slack-oauth"
 
 log = logging.getLogger("agentdiff.slack_oauth")
 
@@ -59,11 +65,15 @@ async def slack_install(
     if not settings.slack_client_id:
         raise HTTPException(status_code=503, detail="Slack OAuth not configured")
 
-    _user, org = ctx
+    user, org = ctx
     # Guard: project must belong to the requesting org.
     await own_project(session, org, project_id)
 
-    state = crypto.encrypt(json.dumps({"project_id": str(project_id)}))
+    # Carry the initiating user's Clerk id through state so the (unauthenticated)
+    # callback can attribute the audit row to a real actor.
+    state = crypto.encrypt(
+        json.dumps({"project_id": str(project_id), "actor": user.clerk_user_id})
+    )
     params = urlencode(
         {
             "client_id": settings.slack_client_id,
@@ -96,6 +106,7 @@ async def slack_callback(
         project_id = uuid.UUID(payload["project_id"])
     except Exception:
         raise HTTPException(status_code=400, detail="invalid or expired state")
+    actor = payload.get("actor") or _FALLBACK_ACTOR
 
     error_redirect = RedirectResponse(
         url=f"{settings.dashboard_url}/projects/{project_id}?slack=error",
@@ -159,6 +170,14 @@ async def slack_callback(
         cfg.webhook_url_encrypted = crypto.encrypt(webhook_url) if webhook_url else None
         cfg.enabled = True
 
+    project_org_id = (
+        await session.execute(select(Project.org_id).where(Project.id == project_id))
+    ).scalar_one_or_none()
+    if project_org_id is not None:
+        await record_audit(
+            session, project_org_id, actor, "slack.connected", "project", str(project_id)
+        )
+
     await session.commit()
 
     # Best-effort: join the channel as a bot member (public channels only).
@@ -215,7 +234,7 @@ async def disconnect_slack(
     ctx: tuple[User, Org] = Depends(get_user_ctx),
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    _user, org = ctx
+    user, org = ctx
     await own_project(session, org, project_id)
 
     cfg = (
@@ -224,6 +243,16 @@ async def disconnect_slack(
         )
     ).scalar_one_or_none()
 
+    # Idempotent: only write an audit row when there was actually a config to
+    # disconnect — a repeat DELETE must not produce a second audit row.
     if cfg is not None:
         await session.delete(cfg)
+        await record_audit(
+            session,
+            org.id,
+            user.clerk_user_id,
+            "slack.disconnected",
+            "project",
+            str(project_id),
+        )
         await session.commit()

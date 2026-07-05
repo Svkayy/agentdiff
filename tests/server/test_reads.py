@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from agentdiff.capture.events import CallSite, CanonicalLLMCall, LLMRequestEvent
 from agentdiff.structure.structure_yaml import AgentEntry, StructureDoc
 from agentdiff.trajectory import Trajectory as EngineTrajectory
@@ -65,8 +66,10 @@ async def test_lists_only_own_org_runs(session):
         async with await _client(session, (userA, orgA)) as c:
             r = await c.get(f"/v1/projects/{pA.id}/runs")
             assert r.status_code == 200
-            assert len(r.json()) == 1
-            run_item = r.json()[0]
+            body = r.json()
+            assert body["total"] == 1
+            assert len(body["items"]) == 1
+            run_item = body["items"][0]
             assert "kind" in run_item
             assert "created_at" in run_item
             # Cross-org project -> 404
@@ -94,9 +97,36 @@ async def test_list_projects_own_org(session):
         async with await _client(session, (userC, orgC)) as c:
             r = await c.get("/v1/projects")
             assert r.status_code == 200
-            ids = [p["id"] for p in r.json()]
+            body = r.json()
+            ids = [p["id"] for p in body["items"]]
             assert str(pC.id) in ids
             assert str(pX.id) not in ids
+            assert body["total"] == len(body["items"])
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_projects_search_q(session):
+    org = Org(name=f"search-org-{uuid4()}")
+    p_match = Project(org=org, name="alpha-widget")
+    p_other = Project(org=org, name="beta-gadget")
+    session.add_all([p_match, p_other])
+    await session.commit()
+
+    user = User(org=org, clerk_user_id=f"search-user-{uuid4()}", email="search@s.com")
+    session.add(user)
+    await session.commit()
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.get("/v1/projects?q=alpha")
+            assert r.status_code == 200
+            body = r.json()
+            ids = [p["id"] for p in body["items"]]
+            assert str(p_match.id) in ids
+            assert str(p_other.id) not in ids
+            assert body["total"] == 1
     finally:
         app.dependency_overrides.clear()
 
@@ -496,5 +526,217 @@ async def test_get_run_payload_returns_stored_payload(session):
             r = await c.get(f"/v1/runs/{run.id}/payload")
             assert r.status_code == 200
             assert r.json() == stored_payload
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ── Task 11: runs pagination, verdict filter, search ──────────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_runs_pagination_totals(session):
+    org = Org(name=f"runs-page-org-{uuid4()}")
+    project = Project(org=org, name=f"runs-page-proj-{uuid4()}")
+    session.add(project)
+    await session.commit()
+
+    for i in range(5):
+        session.add(
+            Run(
+                project=project,
+                idempotency_key=f"page-{i}-{uuid4()}",
+                baseline_ref="main",
+                candidate_ref="feat",
+                tier="hermetic",
+                config={},
+                status="done",
+                verdict="pass",
+            )
+        )
+    await session.commit()
+
+    user = User(org=org, clerk_user_id=f"u-runs-page-{uuid4()}", email="rp@rp.com")
+    session.add(user)
+    await session.commit()
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.get(f"/v1/projects/{project.id}/runs?limit=2&offset=0")
+            assert r.status_code == 200
+            body = r.json()
+            assert body["total"] == 5
+            assert len(body["items"]) == 2
+
+            r2 = await c.get(f"/v1/projects/{project.id}/runs?limit=2&offset=4")
+            assert r2.status_code == 200
+            assert len(r2.json()["items"]) == 1
+            assert r2.json()["total"] == 5
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_runs_limit_clamped_to_200(session):
+    org = Org(name=f"runs-clamp-org-{uuid4()}")
+    project = Project(org=org, name=f"runs-clamp-proj-{uuid4()}")
+    session.add(project)
+    await session.commit()
+
+    user = User(org=org, clerk_user_id=f"u-runs-clamp-{uuid4()}", email="rc@rc.com")
+    session.add(user)
+    await session.commit()
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.get(f"/v1/projects/{project.id}/runs?limit=9999&offset=0")
+            assert r.status_code == 200
+            # No error; server clamps rather than 422s. Total is 0 (no runs seeded).
+            assert r.json()["total"] == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_runs_verdict_filter(session):
+    org = Org(name=f"runs-verdict-org-{uuid4()}")
+    project = Project(org=org, name=f"runs-verdict-proj-{uuid4()}")
+    session.add(project)
+    await session.commit()
+
+    verdicts = ["pass", "pass", "warn", "fail"]
+    for i, v in enumerate(verdicts):
+        session.add(
+            Run(
+                project=project,
+                idempotency_key=f"verdict-{i}-{uuid4()}",
+                baseline_ref="main",
+                candidate_ref="feat",
+                tier="hermetic",
+                config={},
+                status="done",
+                verdict=v,
+            )
+        )
+    await session.commit()
+
+    user = User(org=org, clerk_user_id=f"u-runs-verdict-{uuid4()}", email="rv@rv.com")
+    session.add(user)
+    await session.commit()
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.get(f"/v1/projects/{project.id}/runs?verdict=pass")
+            assert r.status_code == 200
+            body = r.json()
+            assert body["total"] == 2
+            assert all(item["verdict"] == "pass" for item in body["items"])
+
+            r2 = await c.get(f"/v1/projects/{project.id}/runs?verdict=fail")
+            assert r2.status_code == 200
+            assert r2.json()["total"] == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_runs_search_q(session):
+    org = Org(name=f"runs-search-org-{uuid4()}")
+    project = Project(org=org, name=f"runs-search-proj-{uuid4()}")
+    session.add(project)
+    await session.commit()
+
+    r_match = Run(
+        project=project,
+        idempotency_key=f"search-match-{uuid4()}",
+        baseline_ref="release/v1.2.3",
+        candidate_ref="feat/special-branch",
+        tier="hermetic",
+        config={},
+        status="done",
+        verdict="pass",
+    )
+    r_other = Run(
+        project=project,
+        idempotency_key=f"search-other-{uuid4()}",
+        baseline_ref="main",
+        candidate_ref="feat/unrelated",
+        tier="hermetic",
+        config={},
+        status="done",
+        verdict="pass",
+    )
+    session.add_all([r_match, r_other])
+    await session.commit()
+
+    user = User(org=org, clerk_user_id=f"u-runs-search-{uuid4()}", email="rs@rs.com")
+    session.add(user)
+    await session.commit()
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.get(f"/v1/projects/{project.id}/runs?q=special-branch")
+            assert r.status_code == 200
+            body = r.json()
+            ids = [item["id"] for item in body["items"]]
+            assert str(r_match.id) in ids
+            assert str(r_other.id) not in ids
+            assert body["total"] == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_runs_cross_org_404_with_query_params(session):
+    org_a = Org(name=f"runs-iso-a-{uuid4()}")
+    user_a = User(org=org_a, clerk_user_id=f"u-runs-iso-a-{uuid4()}", email="ria@ria.com")
+    org_b = Org(name=f"runs-iso-b-{uuid4()}")
+    proj_b = Project(org=org_b, name=f"runs-iso-b-proj-{uuid4()}")
+    session.add_all([user_a, proj_b])
+    await session.commit()
+
+    try:
+        async with await _client(session, (user_a, org_a)) as c:
+            r = await c.get(f"/v1/projects/{proj_b.id}/runs?limit=10&offset=0&verdict=pass&q=x")
+            assert r.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ── Task 11: Slack manual connect/disconnect audit rows ─────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_slack_manual_set_writes_audit(session):
+    from server.models import AuditLog
+
+    org = Org(name=f"slack-audit-org-{uuid4()}")
+    project = Project(org=org, name=f"slack-audit-proj-{uuid4()}")
+    session.add(project)
+    await session.commit()
+
+    user = User(org=org, clerk_user_id=f"u-slack-audit-{uuid4()}", email="sa@sa.com")
+    session.add(user)
+    await session.commit()
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.put(
+                f"/v1/projects/{project.id}/slack",
+                json={"channel_id": "C123", "bot_token": "xoxb-secret"},
+            )
+            assert r.status_code == 200
+
+            rows = (
+                await session.execute(
+                    select(AuditLog).where(
+                        AuditLog.action == "slack.connected",
+                        AuditLog.target_id == str(project.id),
+                    )
+                )
+            ).scalars().all()
+            assert len(rows) == 1
+            assert rows[0].actor == user.clerk_user_id
+            assert rows[0].target_type == "project"
+            assert rows[0].target_id == str(project.id)
     finally:
         app.dependency_overrides.clear()

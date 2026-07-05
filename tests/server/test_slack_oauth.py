@@ -10,7 +10,7 @@ from server import crypto
 from server.db import get_session
 from server.deps import get_user_ctx
 from server.main import app
-from server.models import Org, Project, SlackConfig, User
+from server.models import AuditLog, Org, Project, SlackConfig, User
 from server.routes import slack_oauth
 
 
@@ -58,6 +58,9 @@ async def test_install_returns_authorize_url(session, monkeypatch):
             state = qs["state"][0]
             payload = json.loads(crypto.decrypt(state))
             assert payload["project_id"] == str(project.id)
+            # state also carries the initiating user (Clerk id) so the OAuth
+            # callback can attribute the audit row to a real actor.
+            assert payload["actor"] == user.clerk_user_id
             # redirect_uri is URL-encoded in the query string
             assert "redirect_uri" in url
     finally:
@@ -149,8 +152,15 @@ async def test_callback_happy_path(session, monkeypatch):
     session.add(project)
     await session.commit()
 
-    # Build a valid state.
-    state = crypto.encrypt(json.dumps({"project_id": str(project.id)}))
+    user = User(org=org, clerk_user_id="u_callback_actor", email="cb@cb.com")
+    session.add(user)
+    await session.commit()
+
+    # Build a valid state — carries both project_id and the actor who initiated
+    # the OAuth flow (threaded through from /v1/slack/install).
+    state = crypto.encrypt(
+        json.dumps({"project_id": str(project.id), "actor": user.clerk_user_id})
+    )
 
     # Monkeypatch the exchange function and join_fn.
     monkeypatch.setattr(slack_oauth, "exchange_fn", _make_exchange_fn(ok=True))
@@ -196,6 +206,21 @@ async def test_callback_happy_path(session, monkeypatch):
         # Webhook URL decrypt round-trip.
         assert cfg.webhook_url_encrypted is not None
         assert crypto.decrypt(cfg.webhook_url_encrypted) == "https://hooks.slack.com/test"
+
+        # Audit row written for slack.connected, actor = the user who initiated install.
+        rows = (
+            await session.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "slack.connected",
+                    AuditLog.target_id == str(project.id),
+                )
+            )
+        ).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].target_type == "project"
+        assert rows[0].target_id == str(project.id)
+        assert rows[0].org_id == org.id
+        assert rows[0].actor == user.clerk_user_id
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
@@ -322,6 +347,17 @@ async def test_status_and_disconnect(session, monkeypatch):
             # Second DELETE is idempotent.
             r4 = await c.delete(f"/v1/projects/{project.id}/slack")
             assert r4.status_code == 204
+
+            # Audit row written exactly once for slack.disconnected.
+            rows = (
+                await session.execute(
+                    select(AuditLog).where(AuditLog.action == "slack.disconnected")
+                )
+            ).scalars().all()
+            assert len(rows) == 1
+            assert rows[0].actor == user.clerk_user_id
+            assert rows[0].target_type == "project"
+            assert rows[0].target_id == str(project.id)
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
@@ -459,6 +495,19 @@ async def test_callback_join_raises_still_connected(session, monkeypatch):
         ).scalar_one_or_none()
         assert cfg is not None
         assert cfg.channel_id == "C88"
+
+        # State carried no "actor" (e.g. pre-Task-11 link) — falls back to a
+        # fixed sentinel rather than erroring or leaving actor blank.
+        rows = (
+            await session.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "slack.connected",
+                    AuditLog.target_id == str(project.id),
+                )
+            )
+        ).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].actor == "slack-oauth"
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

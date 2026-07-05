@@ -16,6 +16,23 @@ function slugify(text: string): string {
     .replace(/\s+/g, "-");
 }
 
+/**
+ * Walk a marked inline-token tree and concatenate plain text content,
+ * unwrapping formatting (code spans, emphasis, strong, links, etc.) so the
+ * result has no raw markdown syntax in it — unlike `token.text` on a heading
+ * token, which is the raw markdown source and still contains backticks/
+ * asterisks for any inline formatting.
+ */
+function inlineTokensToPlainText(tokens: unknown[]): string {
+  return tokens
+    .map((t) => {
+      const tok = t as { tokens?: unknown[]; text?: string };
+      if (Array.isArray(tok.tokens)) return inlineTokensToPlainText(tok.tokens);
+      return tok.text ?? "";
+    })
+    .join("");
+}
+
 interface Heading {
   id: string;
   text: string;
@@ -38,11 +55,14 @@ function renderMarkdown(
         token: { tokens: unknown[]; depth: number; text: string },
       ) {
         // Plain-text label (backtick-free) drives the id slug and the
-        // "On this page" rail text. The rendered HTML uses marked's own
-        // inline parser (matching its default renderer) so inline markdown
-        // in the heading — `code`, *emphasis*, links — renders properly
-        // instead of showing up as literal source characters.
-        const plain = token.text;
+        // "On this page" rail text. `token.text` is the raw markdown source
+        // of the heading (still containing backticks/asterisks for any
+        // inline formatting), so walk the inline token tree instead to get
+        // real plain text. The rendered HTML uses marked's own inline parser
+        // (matching its default renderer) so inline markdown in the heading
+        // — `code`, *emphasis*, links — renders properly instead of showing
+        // up as literal source characters.
+        const plain = inlineTokensToPlainText(token.tokens);
         const inlineHtml = this.parser.parseInline(token.tokens);
         let id = slugify(plain);
         const n = seen.get(id) ?? 0;

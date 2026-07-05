@@ -166,6 +166,7 @@ def compare_cmd(
         structure,
         test_case_ids,
         thresholds=thresholds_for_compare(config),
+        stats_config=config.stats,
     )
 
     # --- Output eval (judge optional) -------------------------------------

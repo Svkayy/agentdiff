@@ -140,3 +140,26 @@ def cliffs_delta(baseline: Sequence[float], candidate: Sequence[float]) -> float
 
 def is_significant(p_value: float, alpha: float = _ALPHA) -> bool:
     return p_value < alpha
+
+
+def benjamini_hochberg(pvalues: Sequence[float]) -> list[float]:
+    """Benjamini-Hochberg FDR-adjusted p-values for a family of tests.
+
+    Controls the false discovery rate across every delta in a comparison (agent
+    invocation rates, tool usage, run metrics) treated as one family, rather than
+    letting each test run at its own uncorrected alpha. Returns adjusted p-values
+    in the same order as the input, monotone non-decreasing in rank and clipped
+    to 1.0.
+    """
+    n = len(pvalues)
+    if n == 0:
+        return []
+    order = sorted(range(n), key=lambda i: pvalues[i])
+    adjusted = [0.0] * n
+    running_min = 1.0
+    for rank_from_end, idx in enumerate(reversed(order)):
+        rank = n - rank_from_end
+        value = min(running_min, pvalues[idx] * n / rank)
+        running_min = value
+        adjusted[idx] = min(value, 1.0)
+    return adjusted

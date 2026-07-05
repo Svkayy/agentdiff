@@ -8,11 +8,12 @@ Compares baseline vs candidate trajectories at a structural level:
 All agent identity comes from the loaded ``structure.yaml`` (via the
 ``inferred_agent`` field on captured events) — nothing is hardcoded.
 """
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from agentdiff import stats
+from agentdiff.config import StatsConfig
 from agentdiff.structure.structure_yaml import StructureDoc
 from agentdiff.trajectory import Trajectory
 
@@ -86,7 +87,9 @@ class AgentInvocationDelta(BaseModel):
     baseline_total: int
     candidate_total: int
     p_value: float | None = None
+    adjusted_p_value: float | None = None
     significant: bool = False
+    low_power: bool = False
     stats: StatisticalEvidence | None = None
     verdict: Verdict
 
@@ -97,19 +100,15 @@ class ToolUsageDelta(BaseModel):
     candidate_avg: float
     delta: float
     p_value: float | None = None
+    adjusted_p_value: float | None = None
     significant: bool = False
+    low_power: bool = False
     stats: StatisticalEvidence | None = None
     verdict: Verdict
 
 
 class RunMetricDelta(BaseModel):
-    """A run-level behavioral delta: latency, token usage, or error rate.
-
-    ``adjusted_p_value`` mirrors ``p_value`` for now — Task 7 introduces
-    Benjamini-Hochberg correction across all deltas in a comparison and will
-    overwrite it. ``low_power`` is false-for-now; Task 7 owns the real
-    underpowered-sample-size logic.
-    """
+    """A run-level behavioral delta: latency, token usage, or error rate."""
 
     metric: Literal["latency_ms", "total_tokens", "error_rate"]
     baseline_mean: float
@@ -137,6 +136,7 @@ class TestCaseComparison(BaseModel):
 class ComparisonResult(BaseModel):
     test_case_comparisons: list[TestCaseComparison] = Field(default_factory=list)
     overall_verdict: Verdict = "pass"
+    warnings: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +290,7 @@ def _run_metric_delta(
     baseline: list[Trajectory],
     candidate: list[Trajectory],
     thresholds: CompareThresholds,
+    stats_config: StatsConfig,
 ) -> RunMetricDelta:
     n_b, n_c = len(baseline), len(candidate)
 
@@ -300,11 +301,12 @@ def _run_metric_delta(
         c_mean = c_fail / n_c if n_c else 0.0
         delta = c_mean - b_mean
         p = stats.two_proportion_pvalue(b_fail, n_b, c_fail, n_c)
-        significant = stats.is_significant(p)
+        significant = stats.is_significant(p, stats_config.alpha)
         modeled = StatisticalEvidence(
             test="two_proportion_z",
             p_value=p,
             significant=significant,
+            alpha=stats_config.alpha,
             effect_size=stats.cohens_h(b_fail, n_b, c_fail, n_c),
             effect_label="cohens_h",
             confidence_interval=stats.proportion_delta_ci(b_fail, n_b, c_fail, n_c),
@@ -318,11 +320,12 @@ def _run_metric_delta(
         c_mean = _mean(c_vector)
         delta = c_mean - b_mean
         p = stats.mann_whitney_pvalue(b_vector, c_vector)
-        significant = stats.is_significant(p)
+        significant = stats.is_significant(p, stats_config.alpha)
         modeled = StatisticalEvidence(
             test="mann_whitney_u",
             p_value=p,
             significant=significant,
+            alpha=stats_config.alpha,
             effect_size=stats.cliffs_delta(b_vector, c_vector),
             effect_label="cliffs_delta",
             confidence_interval=None,
@@ -331,15 +334,16 @@ def _run_metric_delta(
         )
 
     verdict = _apply_significance(_run_metric_verdict(metric, delta, thresholds), significant)
+    low_power = n_b < stats_config.min_samples_warn or n_c < stats_config.min_samples_warn
     return RunMetricDelta(
         metric=metric,
         baseline_mean=b_mean,
         candidate_mean=c_mean,
         delta=delta,
         p_value=p,
-        adjusted_p_value=p,  # Task 7 overwrites with BH-corrected value.
+        adjusted_p_value=p,  # Rewritten by the family-wide BH pass in compare_all.
         significant=significant,
-        low_power=False,  # Task 7 owns the real underpowered-sample-size logic.
+        low_power=low_power,
         stats=modeled,
         verdict=verdict,
     )
@@ -355,13 +359,24 @@ def compare_test_case(
     candidate: list[Trajectory],
     structure: StructureDoc,
     thresholds: CompareThresholds | dict[str, float] | None = None,
+    stats_config: StatsConfig | None = None,
 ) -> TestCaseComparison:
-    """Compare one test case's baseline vs candidate trajectory sets."""
+    """Compare one test case's baseline vs candidate trajectory sets.
+
+    Raw p-values, ``low_power`` flags, and provisional (uncorrected) verdicts
+    are computed here. Benjamini-Hochberg correction is a family-wide concern
+    (every delta across every test case in the comparison is one family), so
+    ``compare_all`` applies it once, after every test case has been computed,
+    and rewrites ``adjusted_p_value``/``significant``/``verdict`` in place.
+    """
     n_b, n_c = len(baseline), len(candidate)
     if thresholds is None:
         thresholds = CompareThresholds()
     elif not isinstance(thresholds, CompareThresholds):
         thresholds = CompareThresholds.model_validate(thresholds)
+    if stats_config is None:
+        stats_config = StatsConfig(correction="none")
+    low_power_sides = n_b < stats_config.min_samples_warn or n_c < stats_config.min_samples_warn
 
     agent_deltas: list[AgentInvocationDelta] = []
     for agent in structure.agents:
@@ -371,11 +386,12 @@ def compare_test_case(
         c = c_count / n_c if n_c else 0.0
         delta = c - b
         p = stats.two_proportion_pvalue(b_count, n_b, c_count, n_c)
-        significant = stats.is_significant(p)
+        significant = stats.is_significant(p, stats_config.alpha)
         modeled = StatisticalEvidence(
             test="two_proportion_z",
             p_value=p,
             significant=significant,
+            alpha=stats_config.alpha,
             effect_size=stats.cohens_h(b_count, n_b, c_count, n_c),
             effect_label="cohens_h",
             confidence_interval=stats.proportion_delta_ci(b_count, n_b, c_count, n_c),
@@ -394,7 +410,9 @@ def compare_test_case(
                 baseline_total=n_b,
                 candidate_total=n_c,
                 p_value=p,
+                adjusted_p_value=p,  # Rewritten by the family-wide BH pass in compare_all.
                 significant=significant,
+                low_power=low_power_sides,
                 stats=modeled,
                 verdict=_apply_significance(_rate_verdict(delta, thresholds), significant),
             )
@@ -410,11 +428,12 @@ def compare_test_case(
         b_vector = _tool_count_vector(name, baseline)
         c_vector = _tool_count_vector(name, candidate)
         p = stats.mann_whitney_pvalue(b_vector, c_vector)
-        significant = stats.is_significant(p)
+        significant = stats.is_significant(p, stats_config.alpha)
         modeled = StatisticalEvidence(
             test="mann_whitney_u",
             p_value=p,
             significant=significant,
+            alpha=stats_config.alpha,
             effect_size=stats.cliffs_delta(b_vector, c_vector),
             effect_label="cliffs_delta",
             confidence_interval=None,
@@ -428,7 +447,9 @@ def compare_test_case(
                 candidate_avg=c,
                 delta=delta,
                 p_value=p,
+                adjusted_p_value=p,  # Rewritten by the family-wide BH pass in compare_all.
                 significant=significant,
+                low_power=low_power_sides,
                 stats=modeled,
                 verdict=_apply_significance(_tool_verdict(delta, thresholds), significant),
             )
@@ -437,7 +458,7 @@ def compare_test_case(
     overlap = _jaccard(_exercised_tools(baseline), _exercised_tools(candidate))
 
     run_metric_deltas = [
-        _run_metric_delta(metric, baseline, candidate, thresholds)
+        _run_metric_delta(metric, baseline, candidate, thresholds, stats_config)
         for metric in _RUN_METRICS
     ]
 
@@ -458,20 +479,109 @@ def compare_test_case(
     )
 
 
+def _all_deltas(comparisons: list[TestCaseComparison]) -> list[Any]:
+    """Every delta object across every test case, in a stable, repeatable order."""
+    deltas: list[Any] = []
+    for tcc in comparisons:
+        deltas.extend(tcc.agent_invocation_deltas)
+        deltas.extend(tcc.tool_usage_deltas)
+        deltas.extend(tcc.run_metric_deltas)
+    return deltas
+
+
+def _delta_verdict_fn(delta: Any, thresholds: CompareThresholds) -> Verdict:
+    """Recompute the pre-significance effect-size verdict for one delta."""
+    if isinstance(delta, AgentInvocationDelta):
+        return _rate_verdict(delta.delta, thresholds)
+    if isinstance(delta, ToolUsageDelta):
+        return _tool_verdict(delta.delta, thresholds)
+    return _run_metric_verdict(delta.metric, delta.delta, thresholds)
+
+
+def _apply_bh_correction(
+    comparisons: list[TestCaseComparison],
+    thresholds: CompareThresholds,
+    stats_config: StatsConfig,
+) -> None:
+    """Benjamini-Hochberg-correct every p-value in the comparison as one family.
+
+    Every agent-invocation, tool-usage, and run-metric delta across every test
+    case contributes one p-value to a single family-wide correction pass (not
+    corrected per test case) — this mutates each delta's ``adjusted_p_value``
+    in place and, when ``stats_config.correction == "benjamini_hochberg"``,
+    recomputes ``significant``/``verdict`` from the adjusted p rather than the
+    raw one.
+    """
+    deltas = _all_deltas(comparisons)
+    if not deltas:
+        return
+    use_adjusted = stats_config.correction == "benjamini_hochberg"
+    if not use_adjusted:
+        # "none" restores pre-Task-7 behavior: adjusted mirrors raw, no
+        # verdict recomputation.
+        return
+
+    raw_pvalues = [d.p_value if d.p_value is not None else 1.0 for d in deltas]
+    adjusted = stats.benjamini_hochberg(raw_pvalues)
+
+    for delta, adj_p in zip(deltas, adjusted):
+        delta.adjusted_p_value = adj_p
+        significant = stats.is_significant(adj_p, stats_config.alpha)
+        delta.significant = significant
+        if delta.stats is not None:
+            delta.stats.significant = significant
+        delta.verdict = _apply_significance(_delta_verdict_fn(delta, thresholds), significant)
+
+    for tcc in comparisons:
+        verdicts = (
+            [d.verdict for d in tcc.agent_invocation_deltas]
+            + [d.verdict for d in tcc.tool_usage_deltas]
+            + [d.verdict for d in tcc.run_metric_deltas]
+        )
+        tcc.overall_verdict = worst_verdict(*verdicts)
+
+
+def _low_power_warnings(comparisons: list[TestCaseComparison]) -> list[str]:
+    """One warning per test case that has any delta with an underpowered side."""
+    warnings: list[str] = []
+    for tcc in comparisons:
+        deltas = (
+            list(tcc.agent_invocation_deltas)
+            + list(tcc.tool_usage_deltas)
+            + list(tcc.run_metric_deltas)
+        )
+        if any(d.low_power for d in deltas):
+            warnings.append(
+                f"Test case '{tcc.test_case_id}' has low statistical power "
+                "(fewer samples than min_samples_warn on at least one side) — "
+                "treat its verdicts with caution."
+            )
+    return warnings
+
+
 def compare_all(
     baseline_set,
     candidate_set,
     structure: StructureDoc,
     test_case_ids: list[str] | None = None,
     thresholds: CompareThresholds | dict[str, float] | None = None,
+    stats_config: StatsConfig | None = None,
 ) -> ComparisonResult:
-    """Compare every test case present across the two TrajectorySets."""
+    """Compare every test case present across the two TrajectorySets.
+
+    Benjamini-Hochberg correction (when enabled via ``stats_config.correction``)
+    and low-power warnings are computed once, across the whole family of deltas
+    from every test case — not per test case.
+    """
     if thresholds is None:
         resolved_thresholds = CompareThresholds()
     elif isinstance(thresholds, CompareThresholds):
         resolved_thresholds = thresholds
     else:
         resolved_thresholds = CompareThresholds.model_validate(thresholds)
+
+    if stats_config is None:
+        stats_config = StatsConfig(correction="none")
 
     if test_case_ids is None:
         ids = sorted(
@@ -485,7 +595,14 @@ def compare_all(
     for tc_id in ids:
         b = baseline_set.for_test_case(tc_id)
         c = candidate_set.for_test_case(tc_id)
-        comparisons.append(compare_test_case(tc_id, b, c, structure, resolved_thresholds))
+        comparisons.append(
+            compare_test_case(tc_id, b, c, structure, resolved_thresholds, stats_config)
+        )
+
+    _apply_bh_correction(comparisons, resolved_thresholds, stats_config)
+    warnings = _low_power_warnings(comparisons)
 
     overall = worst_verdict(*(c.overall_verdict for c in comparisons))
-    return ComparisonResult(test_case_comparisons=comparisons, overall_verdict=overall)
+    return ComparisonResult(
+        test_case_comparisons=comparisons, overall_verdict=overall, warnings=warnings
+    )

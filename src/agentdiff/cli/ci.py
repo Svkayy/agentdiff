@@ -259,6 +259,7 @@ def ci_run_cmd(
         structure,
         test_case_ids,
         thresholds=thresholds_for_compare(config),
+        stats_config=config.stats,
     )
 
     attribution = None

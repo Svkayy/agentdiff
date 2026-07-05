@@ -24,6 +24,22 @@ def _fmt_p(p_value: float | None, significant: bool) -> str:
     return f"{p_value:.3f}{marker}"
 
 
+def _fmt_p_adjusted(
+    p_value: float | None,
+    adjusted_p_value: float | None,
+    significant: bool,
+    low_power: bool,
+) -> str:
+    """Render adjusted p (BH-corrected) with the raw p alongside, plus a
+    low-power marker (`!`) when the delta's per-side sample size fell below
+    ``min_samples_warn`` — a `*` still marks significance at the adjusted p.
+    """
+    adjusted = _fmt_p(adjusted_p_value, significant)
+    raw = _fmt_p(p_value, significant) if p_value != adjusted_p_value else None
+    text = f"{adjusted} (raw {raw})" if raw is not None else adjusted
+    return f"{text} !" if low_power else text
+
+
 def render_report(
     comparison: ComparisonResult,
     output_evals: list[OutputEvalResult],
@@ -35,6 +51,7 @@ def render_report(
 
     _header(lines, comparison, meta)
     _run_quality(lines, meta)
+    _warnings_section(lines, comparison)
     _summary_table(lines, comparison, evals_by_id)
     _output_eval_details(lines, output_evals)
     _behavioral_findings(lines, comparison)
@@ -102,6 +119,16 @@ def _run_quality(lines: list[str], meta: dict[str, Any]) -> None:
     lines.append("")
 
 
+def _warnings_section(lines: list[str], comparison: ComparisonResult) -> None:
+    if not comparison.warnings:
+        return
+    lines.append("## Warnings")
+    lines.append("")
+    for w in comparison.warnings:
+        lines.append(f"- {w}")
+    lines.append("")
+
+
 def _summary_table(
     lines: list[str],
     comparison: ComparisonResult,
@@ -160,38 +187,44 @@ def _test_case_block(lines: list[str], tcc: TestCaseComparison) -> None:
     if tcc.agent_invocation_deltas:
         lines.append("**Agent invocation rates**")
         lines.append("")
-        lines.append("| Agent | Baseline | Candidate | Delta | p-value | Verdict |")
+        lines.append("| Agent | Baseline | Candidate | Delta | p-value (adjusted) | Verdict |")
         lines.append("|---|---|---|---|---|---|")
         for d in tcc.agent_invocation_deltas:
             lines.append(
                 f"| {d.agent_name} "
                 f"| {d.baseline_rate:.0%} ({d.baseline_count}/{d.baseline_total}) "
                 f"| {d.candidate_rate:.0%} ({d.candidate_count}/{d.candidate_total}) "
-                f"| {d.delta:+.0%} | {_fmt_p(d.p_value, d.significant)} | {_LABEL[d.verdict]} |"
+                f"| {d.delta:+.0%} "
+                f"| {_fmt_p_adjusted(d.p_value, d.adjusted_p_value, d.significant, d.low_power)} "
+                f"| {_LABEL[d.verdict]} |"
             )
         lines.append("")
 
     if tcc.tool_usage_deltas:
         lines.append("**Tool usage (avg per trajectory)**")
         lines.append("")
-        lines.append("| Tool | Baseline | Candidate | Delta | p-value | Verdict |")
+        lines.append("| Tool | Baseline | Candidate | Delta | p-value (adjusted) | Verdict |")
         lines.append("|---|---|---|---|---|---|")
         for td in tcc.tool_usage_deltas:
             lines.append(
                 f"| {td.tool_name} | {td.baseline_avg:.2f} | {td.candidate_avg:.2f} "
-                f"| {td.delta:+.2f} | {_fmt_p(td.p_value, td.significant)} | {_LABEL[td.verdict]} |"
+                f"| {td.delta:+.2f} "
+                f"| {_fmt_p_adjusted(td.p_value, td.adjusted_p_value, td.significant, td.low_power)} "
+                f"| {_LABEL[td.verdict]} |"
             )
         lines.append("")
 
     if tcc.run_metric_deltas:
         lines.append("**Runtime deltas**")
         lines.append("")
-        lines.append("| Metric | Baseline | Candidate | Delta | p-value | Verdict |")
+        lines.append("| Metric | Baseline | Candidate | Delta | p-value (adjusted) | Verdict |")
         lines.append("|---|---|---|---|---|---|")
         for rd in tcc.run_metric_deltas:
             lines.append(
                 f"| {rd.metric} | {rd.baseline_mean:.2f} | {rd.candidate_mean:.2f} "
-                f"| {rd.delta:+.2f} | {_fmt_p(rd.p_value, rd.significant)} | {_LABEL[rd.verdict]} |"
+                f"| {rd.delta:+.2f} "
+                f"| {_fmt_p_adjusted(rd.p_value, rd.adjusted_p_value, rd.significant, rd.low_power)} "
+                f"| {_LABEL[rd.verdict]} |"
             )
         lines.append("")
 

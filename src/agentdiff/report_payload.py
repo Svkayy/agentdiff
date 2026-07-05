@@ -53,6 +53,7 @@ def build(report_dir: Path) -> dict[str, Any]:
         },
         "graph": graph.model_dump(),
         "comparison": comparison,
+        "warnings": (comparison or {}).get("warnings", []),
         "outputEvals": read_artifact(db_path, "output_evals") or [],
         "attribution": attribution,
         "trajectories": {

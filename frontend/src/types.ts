@@ -89,7 +89,9 @@ export interface AgentInvocationDelta {
   baseline_total: number;
   candidate_total: number;
   p_value: number | null;
+  adjusted_p_value: number | null;
   significant: boolean;
+  low_power: boolean;
   stats?: StatisticalEvidence | null;
   verdict: Verdict;
 }
@@ -100,14 +102,17 @@ export interface ToolUsageDelta {
   candidate_avg: number;
   delta: number;
   p_value: number | null;
+  adjusted_p_value: number | null;
   significant: boolean;
+  low_power: boolean;
   stats?: StatisticalEvidence | null;
   verdict: Verdict;
 }
 
-// Latency/token/error-rate run-level delta (Task 6). `adjusted_p_value`
-// mirrors `p_value` until Task 7 wires in Benjamini-Hochberg correction;
-// `low_power` is false-for-now until Task 7 adds the real underpowered-N logic.
+// Latency/token/error-rate run-level delta. `adjusted_p_value` is the
+// Benjamini-Hochberg-corrected p-value across every delta in the whole
+// comparison (Task 7); `low_power` flags a per-side sample size below
+// config.stats.min_samples_warn.
 export interface RunMetricDelta {
   metric: "latency_ms" | "total_tokens" | "error_rate";
   baseline_mean: number;
@@ -131,6 +136,7 @@ export interface TestCaseComparison {
 export interface Comparison {
   test_case_comparisons: TestCaseComparison[];
   overall_verdict: Verdict;
+  warnings: string[];
 }
 
 // ── Output evaluation (output_eval.OutputEvalResult) ───────────────────────

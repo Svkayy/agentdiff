@@ -9,13 +9,15 @@ The Runner contract (see docs/recipes) is ``Callable[[dict], dict | str | None]`
 """
 import json
 import asyncio
+import contextvars
 import inspect
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager, nullcontext
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal
@@ -215,6 +217,95 @@ def _call_runner(runner: Callable[[dict], Any], input_data: dict[str, Any]) -> A
     return result
 
 
+def _call_traced(
+    tracer: Tracer,
+    runner: Callable[[dict], Any],
+    input_data: dict[str, Any],
+) -> Any:
+    """Run the runner with ``tracer`` active, flushing exactly one trajectory.
+
+    Enters ``tracer`` (so HTTP/SDK shims' ``get_active_tracer()`` resolves to
+    it and events attach to it — matching pre-timeout/retry behavior where
+    the runner call always happened inside a live ``Tracer`` context),
+    calls the runner, sets the final output, and flushes via
+    ``tracer.__exit__`` — all in one function so that when this whole thing
+    runs via ``contextvars.copy_context().run(...)`` on a worker thread, the
+    ContextVar ``set`` (enter) and ``reset`` (exit) happen in the *same*
+    Context. ``ContextVar.Token.reset()`` requires the same Context it was
+    created in, so splitting enter/exit across a context boundary (e.g.
+    entering on a worker thread but exiting on the submitting thread) raises
+    ``ValueError`` — keeping both here avoids that entirely.
+
+    ``tracer.output_path`` is expected to be a private, per-attempt scratch
+    file (see ``_run_one_sample_with_retry``), never the sample's real
+    trajectory file — so this function's flush is always safe to call
+    unconditionally, even for an attempt that will ultimately be treated as
+    abandoned/timed-out by the caller.
+    """
+    with tracer:
+        result = _call_runner(runner, input_data)
+        tracer.set_final_output(_normalize_output(result))
+    return result
+
+
+def _run_traced_with_timeout(
+    tracer: Tracer,
+    runner: Callable[[dict], Any],
+    input_data: dict[str, Any],
+    timeout_seconds: float,
+) -> Any:
+    """Run the runner with ``tracer`` active, on a daemon thread bounded by
+    ``timeout_seconds``.
+
+    Unlike ``ThreadPoolExecutor`` (whose ``__exit__`` blocks on
+    ``shutdown(wait=True)`` even after ``future.result(timeout=...)`` raises),
+    a raw daemon thread lets the caller move on the instant ``join`` times
+    out. The thread is simply abandoned — Python has no API to forcibly kill
+    a running thread. If it eventually finishes, it flushes ``tracer`` (see
+    ``_call_traced``) to whatever (private, scratch) ``output_path`` it was
+    given — but by then the caller has already raised ``TimeoutError`` and
+    moved on to a retry or the failure budget, and never reads ``tracer`` or
+    its output file again, so that stray flush has no effect on the sample's
+    recorded outcome. That lingering abandoned thread is the accepted cost of
+    a soft, in-process timeout without full process isolation.
+
+    ``contextvars.copy_context()`` on the calling (submitting) thread is used
+    to run the target so ContextVars (active redaction config, etc.)
+    propagate correctly into the worker thread and into any code the runner
+    calls — plain ``threading.Thread`` would not propagate ContextVars on
+    its own.
+    """
+    result_holder: dict[str, Any] = {"done": False}
+    ctx = contextvars.copy_context()
+
+    def _target() -> None:
+        try:
+            value = ctx.run(_call_traced, tracer, runner, input_data)
+        except BaseException as exc:  # noqa: BLE001 — re-raised on the caller's side below
+            result_holder["exc"] = exc
+        else:
+            result_holder["value"] = value
+        finally:
+            # Only meaningful if the caller hasn't already abandoned this
+            # attempt (i.e. join() returned before this line runs); once
+            # abandoned, no one reads result_holder again.
+            result_holder["done"] = True
+
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout_seconds)
+
+    if thread.is_alive() or not result_holder.get("done"):
+        # Timed out: the thread is abandoned here (left running as a daemon
+        # so it doesn't block process exit); its eventual result/exception
+        # is never consulted again.
+        raise TimeoutError(f"sample timed out after {timeout_seconds}s")
+
+    if "exc" in result_holder:
+        raise result_holder["exc"]
+    return result_holder["value"]
+
+
 def _run_one_sample_with_retry(
     *,
     runner: Callable[[dict], Any],
@@ -230,51 +321,70 @@ def _run_one_sample_with_retry(
 ) -> None:
     """Attempt a sample up to ``1 + retries`` times, writing exactly one trajectory.
 
-    Each attempt runs the runner call (not the Tracer bookkeeping) in a
-    single-use executor so it can be bounded by ``timeout_seconds`` (0
-    disables the timeout — the runner call is made directly with no executor
-    indirection). A timed-out attempt's thread is abandoned (Python has no
-    way to forcibly kill a running thread) but its result is never used.
+    Each attempt gets its own ``Tracer`` pointed at a private scratch file
+    (never the real ``output_path``) so HTTP/SDK-shim-captured events attach
+    to that attempt (matching pre-timeout/retry behavior: the runner call
+    always happens with a tracer active, not floating outside any capture
+    context) without risking a stray write to the real trajectory file if
+    the attempt is later abandoned. When ``timeout_seconds > 0`` the attempt
+    runs on a dedicated daemon ``threading.Thread`` (see
+    ``_run_traced_with_timeout``) so it can be bounded without blocking the
+    sampling loop past the timeout — a plain ``ThreadPoolExecutor`` was tried
+    first, but its context-manager ``__exit__`` calls ``shutdown(wait=True)``,
+    which blocks until the abandoned runner call actually returns, defeating
+    the point of a timeout for a truly hung runner. ``timeout_seconds == 0``
+    disables the timeout and runs the attempt directly, no thread involved.
+
+    On success, the attempt's scratch trajectory (with its captured events
+    and final output) is copied verbatim into the real ``output_path``. On
+    failure/timeout, the scratch file is simply discarded (best-effort
+    cleanup; an abandoned daemon thread may still write to it later, but
+    since it's never read again that has no effect on the sample's recorded
+    outcome) and a single clean failure trajectory is written to the real
+    ``output_path`` after all retries are exhausted instead — so an
+    abandoned attempt never contributes a line to the real trajectory file.
     """
     max_attempts = 1 + max(0, retries)
     last_error: Exception | None = None
     last_was_timeout = False
 
     for attempt in range(1, max_attempts + 1):
-        try:
-            if timeout_seconds and timeout_seconds > 0:
-                with ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(_call_runner, runner, tc_input)
-                    try:
-                        result = future.result(timeout=timeout_seconds)
-                    except FutureTimeoutError:
-                        raise TimeoutError(
-                            f"sample timed out after {timeout_seconds}s"
-                        ) from None
-            else:
-                result = _call_runner(runner, tc_input)
-        except Exception as exc:  # noqa: BLE001 — retried below, budgeted on final failure
-            last_error = exc
-            last_was_timeout = isinstance(exc, TimeoutError)
-            if attempt < max_attempts:
-                print(
-                    f"    run {sample_index + 1} attempt {attempt}/{max_attempts} "
-                    f"failed: {type(exc).__name__}: {exc} — retrying"
-                )
-                if retry_backoff_seconds > 0:
-                    time.sleep(retry_backoff_seconds * attempt)
-                continue
-            break
-        else:
-            _write_trajectory(
-                tc_id=tc_id,
-                tc_input=tc_input,
+        with tempfile.TemporaryDirectory(
+            prefix="agentdiff-sample-", ignore_cleanup_errors=True
+        ) as scratch_dir:
+            scratch_path = Path(scratch_dir) / "attempt.jsonl"
+            tracer = Tracer(
+                test_case_id=tc_id,
                 version_tag=version_tag,
-                output_path=output_path,
+                input_data=tc_input,
+                output_path=scratch_path,
                 structure_root=structure_root,
-                final_output=_normalize_output(result),
             )
-            return
+            try:
+                if timeout_seconds and timeout_seconds > 0:
+                    _run_traced_with_timeout(tracer, runner, tc_input, timeout_seconds)
+                else:
+                    _call_traced(tracer, runner, tc_input)
+            except Exception as exc:  # noqa: BLE001 — retried below, budgeted on final failure
+                last_error = exc
+                last_was_timeout = isinstance(exc, TimeoutError)
+                if attempt < max_attempts:
+                    print(
+                        f"    run {sample_index + 1} attempt {attempt}/{max_attempts} "
+                        f"failed: {type(exc).__name__}: {exc} — retrying"
+                    )
+                    if retry_backoff_seconds > 0:
+                        time.sleep(retry_backoff_seconds * attempt)
+                    continue
+                break
+            else:
+                # Success within this attempt's timeout window: the scratch
+                # file has exactly one flushed trajectory line — append it,
+                # as-is, to the real output.
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(output_path, "a") as dst, open(scratch_path) as src:
+                    dst.write(src.read())
+                return
 
     # All attempts exhausted: write one failed trajectory so the sample still
     # counts toward the run's failure budget, with a message that identifies

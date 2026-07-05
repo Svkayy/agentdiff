@@ -30,6 +30,29 @@ _SIMPLE_SHIMS: dict[str, Callable[[], bool]] = {
     "mcp": mcp_shim.install,
 }
 
+# Process-wide dedupe: a shim/adapter name that already warned once (in this
+# process, since the last uninstall()) is skipped on subsequent install()
+# calls. Without this, a single compare/ci run — which calls install() once
+# for baseline and once for candidate — emits the same
+# AgentDiffCaptureWarning twice. Cleared by uninstall() so tests (and any
+# code that treats uninstall() as "start fresh") stay isolated: the very
+# next install() call is free to warn again for a still-unavailable shim.
+_warned_shims: set[str] = set()
+
+
+def _warn_unavailable_once(name: str) -> None:
+    if name in _warned_shims:
+        return
+    _warned_shims.add(name)
+    warnings.warn(
+        f"AgentDiff capture: '{name}' is enabled but its library is not "
+        "installed — calls made through it will not be recorded. "
+        "Install the library, or disable it in .agentdiff/config.yaml "
+        f"(capture.{name}: false) to silence this warning.",
+        AgentDiffCaptureWarning,
+        stacklevel=3,
+    )
+
 
 def install(capture: dict[str, bool] | None = None) -> None:
     capture = capture or {}
@@ -38,25 +61,11 @@ def install(capture: dict[str, bool] | None = None) -> None:
             continue
         installed = install_shim()
         if installed is False:
-            warnings.warn(
-                f"AgentDiff capture: '{name}' is enabled but its library is not "
-                "installed — calls made through it will not be recorded. "
-                "Install the library, or disable it in .agentdiff/config.yaml "
-                f"(capture.{name}: false) to silence this warning.",
-                AgentDiffCaptureWarning,
-                stacklevel=2,
-            )
+            _warn_unavailable_once(name)
 
     unavailable = framework_registry.install(capture)
     for name in unavailable:
-        warnings.warn(
-            f"AgentDiff capture: '{name}' is enabled but its library is not "
-            "installed — calls made through it will not be recorded. "
-            "Install the library, or disable it in .agentdiff/config.yaml "
-            f"(capture.{name}: false) to silence this warning.",
-            AgentDiffCaptureWarning,
-            stacklevel=2,
-        )
+        _warn_unavailable_once(name)
 
 
 def uninstall() -> None:
@@ -68,3 +77,4 @@ def uninstall() -> None:
     aiohttp_shim.uninstall()
     requests_shim.uninstall()
     httpx_shim.uninstall()
+    _warned_shims.clear()

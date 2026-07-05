@@ -161,6 +161,54 @@ def test_confidence_boundaries_by_weight():
     assert _confidence_for_weight(0.2) == "low"
 
 
+def test_rule_reachable_fallback_reason_has_no_baked_in_label():
+    """Rule-5's blind-heuristic reason string must not itself contain the
+    '(low-confidence heuristic)' phrase — the renderer is the single source
+    of that label (added only when confidence == 'low'). If the rule's reason
+    also carries the phrase, rendered output doubles it."""
+    d = diff_manifests(
+        {"research_agent": _manifest("h", "c", "m")},
+        {"research_agent": _manifest("h", "c", "m")},
+    )["research_agent"]
+    git_diff = {"utils.py": "@@ -1 +1 @@\n-a\n+b\n"}
+    attrs = apply_rules(d, git_diff, STRUCT)
+    assert len(attrs) == 1
+    assert "(low-confidence heuristic)" not in attrs[0].reason
+
+
+def test_renderer_low_confidence_label_appears_exactly_once_for_rule5():
+    """End-to-end through the real rule-5 reason string and the real
+    renderer: the phrase must appear exactly once in the rendered report,
+    not doubled by both the rule's reason text and the renderer's label."""
+    from agentdiff.attribution.engine import AttributionResult, BehavioralAttribution
+    from agentdiff.compare import ComparisonResult
+    from agentdiff.report import render_report
+
+    d = diff_manifests(
+        {"research_agent": _manifest("h", "c", "m")},
+        {"research_agent": _manifest("h", "c", "m")},
+    )["research_agent"]
+    git_diff = {"utils.py": "@@ -1 +1 @@\n-a\n+b\n"}
+    primary = apply_rules(d, git_diff, STRUCT)[0]
+
+    attribution = AttributionResult(
+        attributions=[
+            BehavioralAttribution(
+                test_case_id="tc1",
+                agent_name="Research",
+                function="research_agent",
+                metric="invocation_rate",
+                delta_summary="100% -> 70% (-30%)",
+                verdict="warn",
+                primary=primary,
+            )
+        ]
+    )
+    comparison = ComparisonResult(test_case_comparisons=[], overall_verdict="warn")
+    md = render_report(comparison, [], {}, attribution)
+    assert md.count("(low-confidence heuristic)") == 1
+
+
 def test_renderer_low_confidence_label_in_report():
     from agentdiff.attribution.engine import AttributionResult, BehavioralAttribution
     from agentdiff.attribution.rules import Attribution

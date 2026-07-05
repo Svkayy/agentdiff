@@ -15,6 +15,11 @@ from agentdiff.output_eval import OutputEvalResult
 _LABEL = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}
 
 
+def _esc_md_table_cell(text: str) -> str:
+    """Escape `|` so free-text can't fracture a Markdown table row."""
+    return text.replace("|", "\\|")
+
+
 def _fmt_p(p_value: float | None, significant: bool) -> str:
     if p_value is None:
         return "n/a"
@@ -161,9 +166,11 @@ def _output_eval_details(lines: list[str], output_evals: list[OutputEvalResult])
     lines.append("| Test case | Kind | Semantic | Structural | Length | Judge | Notes | Skipped checks |")
     lines.append("|---|---|---:|---:|---:|---:|---|---|")
     for ev in output_evals:
-        notes = "; ".join(ev.notes) if ev.notes else ""
+        notes = _esc_md_table_cell("; ".join(ev.notes)) if ev.notes else ""
         skipped = (
-            "; ".join(f"{c['check']} ({c['reason']})" for c in ev.skipped_checks)
+            _esc_md_table_cell(
+                "; ".join(f"{c['check']} ({c['reason']})" for c in ev.skipped_checks)
+            )
             if ev.skipped_checks
             else ""
         )

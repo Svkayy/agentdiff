@@ -193,7 +193,7 @@ def _rule_reachable_change(
             reason=(
                 f"Behavior of agent '{md.agent_name}' changed but no direct prompt, code, "
                 f"model, or tool change matched, and no changed file was provably reachable. "
-                f"A change in `{target}` is the likely cause (low-confidence heuristic)."
+                f"A change in `{target}` is the likely cause."
             ),
         )
     ]

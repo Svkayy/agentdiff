@@ -173,6 +173,27 @@ def test_generate_openai_primary_falls_back_to_anthropic(monkeypatch, fake_opena
     assert result.error is None
 
 
+def test_generate_fallback_uses_fallback_providers_default_model_when_pinned(
+    monkeypatch, fake_openai
+):
+    """A model pinned via AGENTDIFF_LLM_MODEL/constructor applies only to the
+    primary provider. When anthropic fails and falls back to openai, the
+    fallback call must use openai's own default model, not the pinned
+    anthropic-shaped model string (which would 404 against the OpenAI API)."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setenv("OPENAI_API_KEY", "y")
+    monkeypatch.setenv("AGENTDIFF_LLM_MODEL", "claude-x")
+    _install_fake_anthropic(monkeypatch, error=RuntimeError("anthropic down"))
+    client = LLMClient(provider="anthropic")
+    result = client.generate("sys", "hi")
+    assert result.error is None
+    assert result.text == "ok"
+    assert fake_openai.captured["create_kwargs"]["model"] == LLMClient._default_model_for(
+        "openai"
+    )
+    assert fake_openai.captured["create_kwargs"]["model"] != "claude-x"
+
+
 def test_complete_still_returns_bare_string_for_backward_compat(monkeypatch):
     """complete() is the older API — it must keep returning '' on failure,
     not raise, so existing callers (output_eval, explainer) don't break."""

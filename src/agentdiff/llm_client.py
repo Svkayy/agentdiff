@@ -100,7 +100,14 @@ class LLMClient:
                 return LLMResult(error=primary_error)
 
             try:
-                text = self._generate_with(fallback_provider, system, prompt, max_tokens)
+                # A model pinned via AGENTDIFF_LLM_MODEL/constructor applies
+                # only to the primary provider. The fallback targets a
+                # different provider's API, so it must always use that
+                # provider's own default model — sending the pinned model
+                # string verbatim would silently 404 against the wrong API.
+                text = self._generate_with(
+                    fallback_provider, system, prompt, max_tokens, use_default_model=True
+                )
                 log.warning(
                     "LLMClient.generate: %s failed, served by fallback provider %s",
                     self.provider, fallback_provider,
@@ -114,17 +121,22 @@ class LLMClient:
                 )
                 return LLMResult(error=f"{primary_error}; fallback: {fallback_error}")
 
-    def _generate_with(self, provider: str, system: str, prompt: str, max_tokens: int) -> str:
+    def _generate_with(
+        self, provider: str, system: str, prompt: str, max_tokens: int,
+        use_default_model: bool = False,
+    ) -> str:
         if provider == "anthropic":
-            return self._complete_anthropic(system, prompt, max_tokens)
-        return self._complete_openai(system, prompt, max_tokens)
+            return self._complete_anthropic(system, prompt, max_tokens, use_default_model)
+        return self._complete_openai(system, prompt, max_tokens, use_default_model)
 
     # -- providers ----------------------------------------------------------
     # Each provider's SDK client is cached under self._clients[provider] so a
     # fallback call for the *other* provider never reuses the primary
     # provider's client.
 
-    def _complete_anthropic(self, system: str, prompt: str, max_tokens: int) -> str:
+    def _complete_anthropic(
+        self, system: str, prompt: str, max_tokens: int, use_default_model: bool = False,
+    ) -> str:
         client = self._clients.get("anthropic")
         if client is None:
             import anthropic
@@ -136,15 +148,22 @@ class LLMClient:
                 timeout=15.0,
             )
             self._clients["anthropic"] = client
+        model = (
+            self._default_model_for("anthropic")
+            if use_default_model
+            else (self._model or self._default_model_for("anthropic"))
+        )
         resp = client.messages.create(
-            model=self._model or self._default_model_for("anthropic"),
+            model=model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text if resp.content else ""
 
-    def _complete_openai(self, system: str, prompt: str, max_tokens: int) -> str:
+    def _complete_openai(
+        self, system: str, prompt: str, max_tokens: int, use_default_model: bool = False,
+    ) -> str:
         client = self._clients.get("openai")
         if client is None:
             import openai
@@ -155,8 +174,13 @@ class LLMClient:
                 timeout=15.0,
             )
             self._clients["openai"] = client
+        model = (
+            self._default_model_for("openai")
+            if use_default_model
+            else (self._model or self._default_model_for("openai"))
+        )
         resp = client.chat.completions.create(
-            model=self._model or self._default_model_for("openai"),
+            model=model,
             max_tokens=max_tokens,
             messages=[
                 {"role": "system", "content": system},

@@ -65,7 +65,13 @@ async def create_project(
     session.add(project)
     await session.flush()
     await record_audit(
-        session, org.id, user.clerk_user_id, "project.created", "project", str(project.id)
+        session,
+        org.id,
+        user.clerk_user_id,
+        "project.created",
+        "project",
+        str(project.id),
+        project_id=project.id,
     )
     await session.commit()
     return {"id": str(project.id), "name": project.name}
@@ -82,7 +88,13 @@ async def rename_project(
     project = await own_project(session, org, project_id)
     project.name = body.name
     await record_audit(
-        session, org.id, user.clerk_user_id, "project.renamed", "project", str(project.id)
+        session,
+        org.id,
+        user.clerk_user_id,
+        "project.renamed",
+        "project",
+        str(project.id),
+        project_id=project.id,
     )
     await session.commit()
     return {"id": str(project.id), "name": project.name}
@@ -97,7 +109,13 @@ async def delete_project(
     user, org = ctx
     project = await own_project(session, org, project_id)
     await record_audit(
-        session, org.id, user.clerk_user_id, "project.deleted", "project", str(project.id)
+        session,
+        org.id,
+        user.clerk_user_id,
+        "project.deleted",
+        "project",
+        str(project.id),
+        project_id=project.id,
     )
     await session.delete(project)
     await session.commit()
@@ -133,6 +151,7 @@ async def create_key(
         "api_key",
         str(api_key.id),
         {"project_id": str(project.id)},
+        project_id=project.id,
     )
     await session.commit()
     # Full key is returned exactly once here — never stored in plain text, never logged.
@@ -188,7 +207,14 @@ async def revoke_key(
     if row.revoked_at is None:
         row.revoked_at = datetime.now(timezone.utc)
         await record_audit(
-            session, org.id, user.clerk_user_id, "key.revoked", "api_key", str(row.id)
+            session,
+            org.id,
+            user.clerk_user_id,
+            "key.revoked",
+            "api_key",
+            str(row.id),
+            {"project_id": str(row.project_id)},
+            project_id=row.project_id,
         )
         await session.commit()
     return Response(status_code=204)
@@ -219,6 +245,7 @@ async def delete_run(
         "run",
         str(run.id),
         {"project_id": str(run.project_id)},
+        project_id=run.project_id,
     )
     await session.delete(run)
     await session.commit()
@@ -241,10 +268,13 @@ async def list_audit(
     clamped_limit = max(0, min(limit, 200))
     clamped_offset = max(0, offset)
 
-    # A row belongs to this project's audit trail either because it targets
-    # the project directly (project.created/renamed/deleted) or because its
-    # meta carries the owning project_id (key.*, run.deleted, slack.*).
+    # Primary scoping is the dedicated, indexed AuditLog.project_id column,
+    # populated by record_audit() at every call site where a project is in
+    # scope. The target_id/meta fallbacks below only matter for legacy rows
+    # written before this column existed (project.*/key.*/run.deleted/slack.*
+    # written by older code paths, or ad-hoc rows without project_id set).
     project_scope = or_(
+        AuditLog.project_id == project.id,
         AuditLog.target_id == str(project.id),
         AuditLog.meta["project_id"].as_string() == str(project.id),
     )

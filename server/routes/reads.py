@@ -381,7 +381,13 @@ async def set_slack(
         cfg.bot_token_encrypted = enc
         cfg.enabled = True
     await record_audit(
-        session, org.id, user.clerk_user_id, "slack.connected", "project", str(project.id)
+        session,
+        org.id,
+        user.clerk_user_id,
+        "slack.connected",
+        "project",
+        str(project.id),
+        project_id=project.id,
     )
     await session.commit()
     return {"status": "ok"}

@@ -351,7 +351,10 @@ async def test_status_and_disconnect(session, monkeypatch):
             # Audit row written exactly once for slack.disconnected.
             rows = (
                 await session.execute(
-                    select(AuditLog).where(AuditLog.action == "slack.disconnected")
+                    select(AuditLog).where(
+                        AuditLog.action == "slack.disconnected",
+                        AuditLog.target_id == str(project.id),
+                    )
                 )
             ).scalars().all()
             assert len(rows) == 1

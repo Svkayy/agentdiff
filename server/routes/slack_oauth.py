@@ -175,7 +175,13 @@ async def slack_callback(
     ).scalar_one_or_none()
     if project_org_id is not None:
         await record_audit(
-            session, project_org_id, actor, "slack.connected", "project", str(project_id)
+            session,
+            project_org_id,
+            actor,
+            "slack.connected",
+            "project",
+            str(project_id),
+            project_id=project_id,
         )
 
     await session.commit()
@@ -254,5 +260,6 @@ async def disconnect_slack(
             "slack.disconnected",
             "project",
             str(project_id),
+            project_id=project_id,
         )
         await session.commit()

@@ -139,9 +139,14 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
     __table_args__ = (
         Index("ix_audit_logs_org_id_created_at", "org_id", "created_at"),
+        Index("ix_audit_logs_project_id_created_at", "project_id", "created_at"),
     )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
+    # Nullable, plain column (not a hard FK-cascade): audit rows must survive
+    # deletion of the project they reference, so a deleted project's trail is
+    # retained rather than cascade-deleted or orphaned via ON DELETE CASCADE.
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     actor: Mapped[str] = mapped_column(String(255))
     action: Mapped[str] = mapped_column(String(120))
     target_type: Mapped[str] = mapped_column(String(64))

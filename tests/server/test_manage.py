@@ -449,7 +449,10 @@ async def test_delete_project_cascades(session):
     # Audit row for delete.
     rows = (
         await session.execute(
-            select(AuditLog).where(AuditLog.action == "project.deleted")
+            select(AuditLog).where(
+                AuditLog.action == "project.deleted",
+                AuditLog.target_id == str(proj_id),
+            )
         )
     ).scalars().all()
     assert len(rows) == 1
@@ -509,7 +512,10 @@ async def test_delete_run(session):
 
     rows = (
         await session.execute(
-            select(AuditLog).where(AuditLog.action == "run.deleted")
+            select(AuditLog).where(
+                AuditLog.action == "run.deleted",
+                AuditLog.target_id == str(run_id),
+            )
         )
     ).scalars().all()
     assert len(rows) == 1
@@ -740,3 +746,90 @@ async def test_audit_endpoint_cross_org_404(session):
             assert r.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+# ── AuditLog.project_id column-based scoping ──────────────────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_audit_scoped_by_project_id_column(session):
+    """Audit rows for project A must not leak into project B's audit listing,
+    and a row that carries the new project_id column (but no meta['project_id']
+    key at all) must still be returned — proving list_audit filters on the
+    dedicated column rather than the brittle meta JSONB heuristic."""
+    org = Org(name="ColScope-Org")
+    user = User(org=org, clerk_user_id="col_scope_user", email="cs@test.example")
+    proj_a = Project(org=org, name="proj-col-scope-a")
+    proj_b = Project(org=org, name="proj-col-scope-b")
+    session.add_all([user, proj_a, proj_b])
+    await session.commit()
+
+    # Row scoped to project A via the new column only — no meta at all.
+    row_a = AuditLog(
+        org_id=org.id,
+        actor=user.clerk_user_id,
+        action="widget.touched",
+        target_type="widget",
+        target_id="not-a-project-id",
+        project_id=proj_a.id,
+        meta=None,
+    )
+    # Row scoped to project B via the new column only.
+    row_b = AuditLog(
+        org_id=org.id,
+        actor=user.clerk_user_id,
+        action="widget.touched",
+        target_type="widget",
+        target_id="another-widget-id",
+        project_id=proj_b.id,
+        meta=None,
+    )
+    session.add_all([row_a, row_b])
+    await session.commit()
+
+    _override(session, (user, org))
+    try:
+        async with _client() as c:
+            ar_a = await c.get(f"/v1/projects/{proj_a.id}/audit")
+            assert ar_a.status_code == 200
+            body_a = ar_a.json()
+            ids_a = [item["id"] for item in body_a["items"]]
+            assert str(row_a.id) in ids_a
+            assert str(row_b.id) not in ids_a
+
+            ar_b = await c.get(f"/v1/projects/{proj_b.id}/audit")
+            assert ar_b.status_code == 200
+            body_b = ar_b.json()
+            ids_b = [item["id"] for item in body_b["items"]]
+            assert str(row_b.id) in ids_b
+            assert str(row_a.id) not in ids_b
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_record_audit_sets_project_id_column(session):
+    """record_audit(..., project_id=...) must persist AuditLog.project_id so
+    callers no longer have to rely solely on the meta JSONB blob for scoping."""
+    from server.audit import record_audit
+
+    org = Org(name="RecordAudit-Org")
+    proj = Project(org=org, name="proj-record-audit")
+    session.add_all([org, proj])
+    await session.commit()
+
+    entry = await record_audit(
+        session,
+        org.id,
+        "actor-1",
+        "widget.touched",
+        "widget",
+        "widget-1",
+        project_id=proj.id,
+    )
+    await session.commit()
+
+    reloaded = (
+        await session.execute(select(AuditLog).where(AuditLog.id == entry.id))
+    ).scalar_one()
+    assert reloaded.project_id == proj.id

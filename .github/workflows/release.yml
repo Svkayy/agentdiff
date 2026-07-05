@@ -10,9 +10,8 @@ name: release
 # register this workflow as a trusted publisher on the PyPI project.
 #
 # The dashboard ships as a vendored single-file build
-# (src/agentdiff/dashboard_assets/index.html). Re-vendor it after any frontend
-# change: `npm --prefix frontend run build && cp frontend/dist/index.html
-# src/agentdiff/dashboard_assets/index.html`.
+# (src/agentdiff/dashboard_assets/index.html). This workflow builds and
+# re-vendors it automatically before packaging — no manual pre-step required.
 
 on:
   push:
@@ -30,6 +29,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
       # Fail fast before the build if the tag doesn't match the packaged
       # version — otherwise we'd publish a wheel whose version disagrees with
@@ -58,6 +61,12 @@ jobs:
 
       - name: Test
         run: pytest -q
+
+      - name: Build dashboard and vendor into the package
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+          cp frontend/dist/index.html src/agentdiff/dashboard_assets/index.html
 
       - name: Build sdist + wheel
         run: python -m build

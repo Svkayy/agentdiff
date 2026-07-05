@@ -11,7 +11,13 @@ from agentdiff.capture.callstack import (
 )
 from agentdiff.capture.http.provider_registry import match_provider
 from agentdiff.capture.http.canonical import build_canonical_from_http
-from agentdiff.capture.http.redact import redact_url
+from agentdiff.capture.http.redact import (
+    get_active_redaction_config,
+    redact_body,
+    redact_canonical,
+    redact_headers,
+    redact_url,
+)
 from agentdiff.capture.http.streaming import record_stream_chunks
 from agentdiff.capture.cassette import active_cassette
 
@@ -71,6 +77,7 @@ def _wrap_async(original):
 def _capture_sync(tracer, original, self_client, request, args, kwargs):
     provider = match_provider(str(request.url))
     call_id = uuid4()
+    redaction_cfg = get_active_redaction_config()
 
     try:
         # skip=1 to drop this _capture_sync frame.
@@ -78,13 +85,15 @@ def _capture_sync(tracer, original, self_client, request, args, kwargs):
         inferred_agent = classify_call_stack(stack)
         callsite = callsite_from_stack(stack)
 
-        canonical_req = build_canonical_from_http(provider, request, response=None)
+        canonical_req = redact_canonical(
+            build_canonical_from_http(provider, request, response=None), redaction_cfg
+        )
         tracer.record(LLMRequestEvent(
             call_id=call_id,
             canonical=canonical_req,
             captured_by="http_shim",
             request_url=redact_url(str(request.url)),
-            raw_body=bytes(request.content) if provider == "unknown" else None,
+            raw_body=_unknown_raw_body(bytes(request.content), provider, redaction_cfg),
             callsite=callsite,
             call_stack=stack,
             inferred_agent=inferred_agent,
@@ -121,16 +130,19 @@ def _capture_sync(tracer, original, self_client, request, args, kwargs):
                 url=str(request.url),
                 body=bytes(request.content),
                 status_code=response.status_code,
-                headers=dict(response.headers),
+                headers=redact_headers(dict(response.headers), redaction_cfg),
                 response_body=body,
             )
-        canonical_resp = build_canonical_from_http(provider, request, response=(response, body))
+        canonical_resp = redact_canonical(
+            build_canonical_from_http(provider, request, response=(response, body)),
+            redaction_cfg,
+        )
         tracer.record(LLMResponseEvent(
             call_id=call_id,
             latency_ms=latency_ms,
             canonical=canonical_resp,
             captured_by="http_shim",
-            raw_body=body if provider == "unknown" else None,
+            raw_body=_unknown_raw_body(body, provider, redaction_cfg),
             is_error=(response.status_code >= 400),
         ))
         record_stream_chunks(tracer, call_id=call_id, provider=provider, body=body)
@@ -145,7 +157,10 @@ def _record_transport_error(tracer, provider, request, call_id, t0) -> None:
         tracer.record(LLMResponseEvent(
             call_id=call_id,
             latency_ms=int((time.perf_counter() - t0) * 1000),
-            canonical=build_canonical_from_http(provider, request, response=None),
+            canonical=redact_canonical(
+                build_canonical_from_http(provider, request, response=None),
+                get_active_redaction_config(),
+            ),
             captured_by="http_shim",
             is_error=True,
         ))
@@ -153,22 +168,36 @@ def _record_transport_error(tracer, provider, request, call_id, t0) -> None:
         print(f"[agentdiff] httpx shim error-capture error: {exc}")
 
 
+def _unknown_raw_body(body: bytes, provider: str, cfg) -> bytes | None:
+    """Raw body storage: unknown-provider only, and only when opted in.
+
+    ``capture_raw_bodies=True`` still runs the body through ``redact_body``
+    first — opting in to raw capture is not an opt-out of secret masking.
+    """
+    if provider != "unknown" or not cfg.capture_raw_bodies:
+        return None
+    return redact_body(body, cfg)
+
+
 async def _capture_async(tracer, original, self_client, request, args, kwargs):
     provider = match_provider(str(request.url))
     call_id = uuid4()
+    redaction_cfg = get_active_redaction_config()
 
     try:
         stack = capture_call_stack(skip=1)
         inferred_agent = classify_call_stack(stack)
         callsite = callsite_from_stack(stack)
 
-        canonical_req = build_canonical_from_http(provider, request, response=None)
+        canonical_req = redact_canonical(
+            build_canonical_from_http(provider, request, response=None), redaction_cfg
+        )
         tracer.record(LLMRequestEvent(
             call_id=call_id,
             canonical=canonical_req,
             captured_by="http_shim",
             request_url=redact_url(str(request.url)),
-            raw_body=bytes(request.content) if provider == "unknown" else None,
+            raw_body=_unknown_raw_body(bytes(request.content), provider, redaction_cfg),
             callsite=callsite,
             call_stack=stack,
             inferred_agent=inferred_agent,
@@ -203,16 +232,19 @@ async def _capture_async(tracer, original, self_client, request, args, kwargs):
                 url=str(request.url),
                 body=bytes(request.content),
                 status_code=response.status_code,
-                headers=dict(response.headers),
+                headers=redact_headers(dict(response.headers), redaction_cfg),
                 response_body=body,
             )
-        canonical_resp = build_canonical_from_http(provider, request, response=(response, body))
+        canonical_resp = redact_canonical(
+            build_canonical_from_http(provider, request, response=(response, body)),
+            redaction_cfg,
+        )
         tracer.record(LLMResponseEvent(
             call_id=call_id,
             latency_ms=latency_ms,
             canonical=canonical_resp,
             captured_by="http_shim",
-            raw_body=body if provider == "unknown" else None,
+            raw_body=_unknown_raw_body(body, provider, redaction_cfg),
             is_error=(response.status_code >= 400),
         ))
         record_stream_chunks(tracer, call_id=call_id, provider=provider, body=body)

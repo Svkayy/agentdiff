@@ -11,7 +11,13 @@ from agentdiff.capture.callstack import (
 )
 from agentdiff.capture.http.provider_registry import match_provider
 from agentdiff.capture.http.canonical import build_canonical_from_http
-from agentdiff.capture.http.redact import redact_url
+from agentdiff.capture.http.redact import (
+    get_active_redaction_config,
+    redact_body,
+    redact_canonical,
+    redact_headers,
+    redact_url,
+)
 from agentdiff.capture.http.streaming import record_stream_chunks
 from agentdiff.capture.cassette import active_cassette
 
@@ -59,6 +65,7 @@ def _capture(tracer, original, self_adapter, request, args, kwargs):
     url = request.url or ""
     provider = match_provider(url)
     call_id = uuid4()
+    redaction_cfg = get_active_redaction_config()
 
     # requests.PreparedRequest doesn't have .content like httpx.Request.
     # We need to adapt to the requests API.
@@ -69,13 +76,16 @@ def _capture(tracer, original, self_adapter, request, args, kwargs):
 
         # Build a lightweight adapter so the canonical parser can call bytes(req.content).
         req_adapter = _RequestsRequestAdapter(request)
-        canonical_req = build_canonical_from_http(provider, req_adapter, response=None)
+        canonical_req = redact_canonical(
+            build_canonical_from_http(provider, req_adapter, response=None), redaction_cfg
+        )
+        request_body = _get_request_body(request)
         tracer.record(LLMRequestEvent(
             call_id=call_id,
             canonical=canonical_req,
             captured_by="http_shim",
             request_url=redact_url(url),
-            raw_body=_get_request_body(request) if provider == "unknown" else None,
+            raw_body=_unknown_raw_body(request_body, provider, redaction_cfg),
             callsite=callsite,
             call_stack=stack,
             inferred_agent=inferred_agent,
@@ -104,8 +114,11 @@ def _capture(tracer, original, self_adapter, request, args, kwargs):
             tracer.record(LLMResponseEvent(
                 call_id=call_id,
                 latency_ms=int((time.perf_counter() - t0) * 1000),
-                canonical=build_canonical_from_http(
-                    provider, _RequestsRequestAdapter(request), response=None
+                canonical=redact_canonical(
+                    build_canonical_from_http(
+                        provider, _RequestsRequestAdapter(request), response=None
+                    ),
+                    redaction_cfg,
                 ),
                 captured_by="http_shim",
                 is_error=True,
@@ -123,19 +136,22 @@ def _capture(tracer, original, self_adapter, request, args, kwargs):
                 url=url,
                 body=_get_request_body(request),
                 status_code=response.status_code,
-                headers=dict(response.headers),
+                headers=redact_headers(dict(response.headers), redaction_cfg),
                 response_body=body,
             )
         resp_adapter = _RequestsRequestAdapter(request)
-        canonical_resp = build_canonical_from_http(
-            provider, resp_adapter, response=(_RequestsResponseAdapter(response), body)
+        canonical_resp = redact_canonical(
+            build_canonical_from_http(
+                provider, resp_adapter, response=(_RequestsResponseAdapter(response), body)
+            ),
+            redaction_cfg,
         )
         tracer.record(LLMResponseEvent(
             call_id=call_id,
             latency_ms=latency_ms,
             canonical=canonical_resp,
             captured_by="http_shim",
-            raw_body=body if provider == "unknown" else None,
+            raw_body=_unknown_raw_body(body, provider, redaction_cfg),
             is_error=(response.status_code >= 400),
         ))
         record_stream_chunks(tracer, call_id=call_id, provider=provider, body=body)
@@ -143,6 +159,17 @@ def _capture(tracer, original, self_adapter, request, args, kwargs):
         print(f"[agentdiff] requests shim response-capture error: {exc}")
 
     return response
+
+
+def _unknown_raw_body(body: bytes | None, provider: str, cfg) -> bytes | None:
+    """Raw body storage: unknown-provider only, and only when opted in.
+
+    ``capture_raw_bodies=True`` still runs the body through ``redact_body``
+    first — opting in to raw capture is not an opt-out of secret masking.
+    """
+    if provider != "unknown" or not cfg.capture_raw_bodies or body is None:
+        return None
+    return redact_body(body, cfg)
 
 
 def _get_request_body(request) -> bytes | None:

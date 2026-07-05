@@ -23,12 +23,11 @@ def test_help_lists_all_commands():
         assert cmd in result.output
 
 
-def test_structure_and_replay_stubs_run():
+def test_replay_stub_runs():
     runner = CliRunner()
-    for cmd in ("structure", "replay"):
-        result = runner.invoke(cli, [cmd], catch_exceptions=False)
-        assert result.exit_code == 0
-        assert "not implemented in v0" in result.output
+    result = runner.invoke(cli, ["replay"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert "not implemented in v0" in result.output
 
 
 def test_init_writes_config_scaffolding(tmp_path):

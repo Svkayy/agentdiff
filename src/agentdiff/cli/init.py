@@ -6,9 +6,10 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from agentdiff.structure.ast_walker import walk_project
+from agentdiff.structure.ast_walker import CandidateFunction, walk_project
 from agentdiff.structure.heuristic_classifier import classify
 from agentdiff.structure import structure_yaml
+from agentdiff.structure.structure_yaml import StructureDoc
 
 console = Console()
 
@@ -101,13 +102,7 @@ def init_cmd(path: str, llm: bool, install_hook: bool) -> None:
     doc = classify(candidates)
 
     if llm:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            console.print("[red]--llm requires ANTHROPIC_API_KEY to be set.[/red]")
-            raise SystemExit(1)
-        console.print("[dim]Running LLM refinement pass…[/dim]")
-        from agentdiff.structure.llm_classifier import refine
-        doc = refine(doc, candidates, api_key)
+        doc = _refine_with_llm(doc, candidates)
 
     _print_summary(doc)
 
@@ -133,6 +128,34 @@ def init_cmd(path: str, llm: bool, install_hook: bool) -> None:
 
     console.print("\n[bold]Next:[/bold] edit .agentdiff/config.yaml and test_cases.yaml, "
                   "then run [cyan]agentdiff compare --baseline auto[/cyan]")
+
+
+# ---------------------------------------------------------------------------
+# Shared inference (reused by `agentdiff structure`)
+# ---------------------------------------------------------------------------
+
+def infer_structure(root: Path, llm: bool = False) -> StructureDoc:
+    """Scan `root` and classify its functions into a StructureDoc.
+
+    This is the same inference path `agentdiff init` uses, extracted so
+    `agentdiff structure` can re-run it without duplicating the walk+classify
+    (+ optional LLM refinement) logic.
+    """
+    candidates = walk_project(root)
+    doc = classify(candidates)
+    if llm:
+        doc = _refine_with_llm(doc, candidates)
+    return doc
+
+
+def _refine_with_llm(doc: StructureDoc, candidates: list[CandidateFunction]) -> StructureDoc:
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        console.print("[red]--llm requires ANTHROPIC_API_KEY to be set.[/red]")
+        raise SystemExit(1)
+    console.print("[dim]Running LLM refinement pass…[/dim]")
+    from agentdiff.structure.llm_classifier import refine
+    return refine(doc, candidates, api_key)
 
 
 # ---------------------------------------------------------------------------

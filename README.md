@@ -300,7 +300,8 @@ agentdiff dashboard  Generate or serve a local HTML dashboard for a run.
 agentdiff monitor    Run local compare monitoring or summarize the latest report.
 agentdiff doctor     Validate config, runner imports, git refs, hook status, and optional deps.
 agentdiff hook       Manage the optional autoload hook: status/install/uninstall.
-agentdiff structure  Refresh structure.yaml (stub in v0 — re-run init).
+agentdiff structure  Refresh structure.yaml, merging in added/removed functions
+                     while preserving user-edited display names.
 agentdiff replay     Replay captured tool calls (stub in v0).
 ```
 

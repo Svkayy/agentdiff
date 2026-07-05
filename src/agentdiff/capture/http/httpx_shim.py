@@ -25,19 +25,21 @@ _PATCHED = False
 _ORIGINALS: dict[str, object] = {}
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch httpx if installed. Returns False if httpx isn't importable."""
     global _PATCHED
     if _PATCHED:
-        return
+        return True
     try:
         import httpx
     except ImportError:
-        return
+        return False
     _ORIGINALS["sync_send"] = httpx.Client.send
     _ORIGINALS["async_send"] = httpx.AsyncClient.send
     httpx.Client.send = _wrap_sync(_ORIGINALS["sync_send"])  # type: ignore[method-assign]
     httpx.AsyncClient.send = _wrap_async(_ORIGINALS["async_send"])  # type: ignore[method-assign]
     _PATCHED = True
+    return True
 
 
 def uninstall() -> None:

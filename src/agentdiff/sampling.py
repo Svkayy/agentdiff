@@ -13,13 +13,17 @@ import inspect
 import subprocess
 import sys
 import tempfile
+import time
 from contextlib import contextmanager, nullcontext
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError, as_completed
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Callable, Iterator, Literal
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal
 
 from agentdiff.capture.tracer import Tracer
+
+if TYPE_CHECKING:
+    from agentdiff.config import RedactionConfig
 
 
 class SamplingError(RuntimeError):
@@ -38,10 +42,19 @@ def run_samples(
     workers: int = 1,
     cassette_path: str | Path | None = None,
     cassette_mode: str | None = None,
+    timeout_seconds: float = 300.0,
+    retries: int = 1,
+    retry_backoff_seconds: float = 2.0,
 ) -> int:
     """Run the sampling loop in the current process. Returns trajectories written.
 
     Importable from a subprocess so the checked-out code path reuses it.
+
+    ``timeout_seconds`` bounds each individual sample attempt (0 disables the
+    timeout). A timed-out or failed attempt is retried up to ``retries`` times,
+    sleeping ``retry_backoff_seconds * attempt`` between attempts. A sample
+    that still fails/times out after all retries counts one trajectory toward
+    the run's failure budget.
     """
     # Honor custom provider patterns declared in .agentdiff/providers.yaml so
     # URL-keyed capture works for providers without a built-in parser.
@@ -63,7 +76,7 @@ def run_samples(
                 if progress:
                     print(f"  Sampling {samples_per_case} run(s) of '{tc_id}'...")
                 for i in range(samples_per_case):
-                    _run_one_sample(
+                    _run_one_sample_with_retry(
                         runner=runner,
                         tc_id=tc_id,
                         tc_input=tc_input,
@@ -71,6 +84,9 @@ def run_samples(
                         version_tag=version_tag,
                         output_path=output_path,
                         structure_root=structure_root,
+                        timeout_seconds=timeout_seconds,
+                        retries=retries,
+                        retry_backoff_seconds=retry_backoff_seconds,
                     )
                     written += 1
         else:
@@ -87,7 +103,7 @@ def run_samples(
                     for i in range(samples_per_case):
                         futures.append(
                             executor.submit(
-                                _run_one_sample,
+                                _run_one_sample_with_retry,
                                 runner=runner,
                                 tc_id=tc_id,
                                 tc_input=tc_input,
@@ -95,6 +111,9 @@ def run_samples(
                                 version_tag=version_tag,
                                 output_path=output_path,
                                 structure_root=structure_root,
+                                timeout_seconds=timeout_seconds,
+                                retries=retries,
+                                retry_backoff_seconds=retry_backoff_seconds,
                             )
                         )
                 for future in as_completed(futures):
@@ -119,12 +138,19 @@ def sample_for_side(
     workers: int = 1,
     cassette_path: str | Path | None = None,
     cassette_mode: str | None = None,
+    timeout_seconds: float = 300.0,
+    retries: int = 1,
+    retry_backoff_seconds: float = 2.0,
+    redaction_config: "RedactionConfig | None" = None,
 ) -> None:
     """Sample one side. ``git_ref=None`` means the live working tree."""
     import agentdiff
+    from agentdiff.capture.http.redact import set_active_redaction_config
 
     capture = capture or {}
     agentdiff.install(capture)
+    if redaction_config is not None:
+        set_active_redaction_config(redaction_config)
 
     if git_ref is None:
         # The runner module lives in the user's project, not on our sys.path.
@@ -142,6 +168,9 @@ def sample_for_side(
             workers=workers,
             cassette_path=cassette_path,
             cassette_mode=cassette_mode,
+            timeout_seconds=timeout_seconds,
+            retries=retries,
+            retry_backoff_seconds=retry_backoff_seconds,
         )
     else:
         with _checked_out(Path(repo_root), git_ref, install_deps=install_deps) as checkout:
@@ -157,6 +186,9 @@ def sample_for_side(
                 workers=workers,
                 cassette_path=cassette_path,
                 cassette_mode=cassette_mode,
+                timeout_seconds=timeout_seconds,
+                retries=retries,
+                retry_backoff_seconds=retry_backoff_seconds,
             )
 
 
@@ -183,7 +215,7 @@ def _call_runner(runner: Callable[[dict], Any], input_data: dict[str, Any]) -> A
     return result
 
 
-def _run_one_sample(
+def _run_one_sample_with_retry(
     *,
     runner: Callable[[dict], Any],
     tc_id: str,
@@ -192,10 +224,86 @@ def _run_one_sample(
     version_tag: Literal["baseline", "candidate"],
     output_path: Path,
     structure_root: Path | None,
+    timeout_seconds: float = 300.0,
+    retries: int = 1,
+    retry_backoff_seconds: float = 2.0,
 ) -> None:
-    # The try wraps the whole `with` so a runner exception propagates through
-    # Tracer.__exit__ (marking the trajectory failed + flushing) before being
-    # caught here, so one bad sample never aborts the run.
+    """Attempt a sample up to ``1 + retries`` times, writing exactly one trajectory.
+
+    Each attempt runs the runner call (not the Tracer bookkeeping) in a
+    single-use executor so it can be bounded by ``timeout_seconds`` (0
+    disables the timeout — the runner call is made directly with no executor
+    indirection). A timed-out attempt's thread is abandoned (Python has no
+    way to forcibly kill a running thread) but its result is never used.
+    """
+    max_attempts = 1 + max(0, retries)
+    last_error: Exception | None = None
+    last_was_timeout = False
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            if timeout_seconds and timeout_seconds > 0:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(_call_runner, runner, tc_input)
+                    try:
+                        result = future.result(timeout=timeout_seconds)
+                    except FutureTimeoutError:
+                        raise TimeoutError(
+                            f"sample timed out after {timeout_seconds}s"
+                        ) from None
+            else:
+                result = _call_runner(runner, tc_input)
+        except Exception as exc:  # noqa: BLE001 — retried below, budgeted on final failure
+            last_error = exc
+            last_was_timeout = isinstance(exc, TimeoutError)
+            if attempt < max_attempts:
+                print(
+                    f"    run {sample_index + 1} attempt {attempt}/{max_attempts} "
+                    f"failed: {type(exc).__name__}: {exc} — retrying"
+                )
+                if retry_backoff_seconds > 0:
+                    time.sleep(retry_backoff_seconds * attempt)
+                continue
+            break
+        else:
+            _write_trajectory(
+                tc_id=tc_id,
+                tc_input=tc_input,
+                version_tag=version_tag,
+                output_path=output_path,
+                structure_root=structure_root,
+                final_output=_normalize_output(result),
+            )
+            return
+
+    # All attempts exhausted: write one failed trajectory so the sample still
+    # counts toward the run's failure budget, with a message that identifies
+    # a timeout distinctly from any other runner failure.
+    assert last_error is not None
+    error_message = str(last_error) if last_was_timeout else f"{type(last_error).__name__}: {last_error}"
+    print(f"    run {sample_index + 1} failed: {error_message}")
+    _write_trajectory(
+        tc_id=tc_id,
+        tc_input=tc_input,
+        version_tag=version_tag,
+        output_path=output_path,
+        structure_root=structure_root,
+        final_output=None,
+        error=error_message,
+    )
+
+
+def _write_trajectory(
+    *,
+    tc_id: str,
+    tc_input: dict[str, Any],
+    version_tag: Literal["baseline", "candidate"],
+    output_path: Path,
+    structure_root: Path | None,
+    final_output: str | None,
+    error: str | None = None,
+) -> None:
+    """Write exactly one trajectory line, success or failure, via Tracer."""
     try:
         with Tracer(
             test_case_id=tc_id,
@@ -204,10 +312,12 @@ def _run_one_sample(
             output_path=output_path,
             structure_root=structure_root,
         ) as tracer:
-            result = _call_runner(runner, tc_input)
-            tracer.set_final_output(_normalize_output(result))
-    except Exception as e:  # noqa: BLE001 — never abort the whole run
-        print(f"    run {sample_index + 1} failed: {type(e).__name__}: {e}")
+            if error is not None:
+                raise RuntimeError(error)
+            tracer.set_final_output(final_output)
+    except RuntimeError:
+        if error is None:
+            raise
 
 
 def _run_awaitable(awaitable) -> Any:
@@ -303,6 +413,10 @@ def _sample_in_checkout(
     workers: int = 1,
     cassette_path: str | Path | None = None,
     cassette_mode: str | None = None,
+    timeout_seconds: float = 300.0,
+    retries: int = 1,
+    retry_backoff_seconds: float = 2.0,
+    redaction_config: "RedactionConfig | None" = None,
 ) -> None:
     """Run the sampling loop in a subprocess rooted at the checkout dir."""
     params = {
@@ -317,6 +431,10 @@ def _sample_in_checkout(
         "workers": workers,
         "cassette_path": str(cassette_path) if cassette_path is not None else None,
         "cassette_mode": cassette_mode,
+        "timeout_seconds": timeout_seconds,
+        "retries": retries,
+        "retry_backoff_seconds": retry_backoff_seconds,
+        "redaction_config": redaction_config.model_dump() if redaction_config is not None else None,
     }
     params_file = checkout / ".agentdiff_sample_params.json"
     params_file.write_text(json.dumps(params), encoding="utf-8")
@@ -343,6 +461,11 @@ with open({params_file}) as f:
 sys.path.insert(0, p["checkout"])
 import agentdiff
 agentdiff.install(p.get("capture", {{}}))
+redaction_config = p.get("redaction_config")
+if redaction_config is not None:
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    from agentdiff.config import RedactionConfig
+    set_active_redaction_config(RedactionConfig(**redaction_config))
 from agentdiff.sampling import run_samples
 run_samples(
     runner_module=p["runner_module"],
@@ -355,5 +478,8 @@ run_samples(
     workers=p.get("workers", 1),
     cassette_path=p.get("cassette_path"),
     cassette_mode=p.get("cassette_mode"),
+    timeout_seconds=p.get("timeout_seconds", 300.0),
+    retries=p.get("retries", 1),
+    retry_backoff_seconds=p.get("retry_backoff_seconds", 2.0),
 )
 """

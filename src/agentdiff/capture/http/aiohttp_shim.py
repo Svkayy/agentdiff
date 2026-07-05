@@ -24,17 +24,19 @@ _PATCHED = False
 _ORIGINALS: dict[str, object] = {}
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch aiohttp if installed. Returns False if aiohttp isn't importable."""
     global _PATCHED
     if _PATCHED:
-        return
+        return True
     try:
         import aiohttp
     except ImportError:
-        return
+        return False
     _ORIGINALS["request"] = aiohttp.ClientSession._request
     aiohttp.ClientSession._request = _wrap(_ORIGINALS["request"])  # type: ignore[method-assign]
     _PATCHED = True
+    return True
 
 
 def uninstall() -> None:

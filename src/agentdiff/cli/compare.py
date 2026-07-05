@@ -1,6 +1,8 @@
+import importlib
 import json
 import os
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -92,6 +94,14 @@ def compare_cmd(
         console.print("[red]No test cases found in test_cases.yaml.[/red]")
         raise SystemExit(1)
 
+    runner_error = validate_runner_importable(root, runner_module, runner_callable)
+    if runner_error:
+        console.print(f"[red]{runner_error}[/red]")
+        raise SystemExit(1)
+
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    set_active_redaction_config(config.capture.redaction)
+
     baseline_ref, baseline_label, smoke_mode = resolve_baseline(root, baseline)
     git_error = git_validation_error(root, baseline_ref, candidate)
     if git_error:
@@ -129,6 +139,10 @@ def compare_cmd(
                 install_deps=should_install_deps,
                 capture=config.capture.model_dump(),
                 workers=worker_count,
+                timeout_seconds=config.sampling.timeout_seconds,
+                retries=config.sampling.retries,
+                retry_backoff_seconds=config.sampling.retry_backoff_seconds,
+                redaction_config=config.capture.redaction,
             )
         except Exception as e:  # import failure, git failure, runner setup crash
             console.print(f"[red]{tag.capitalize()} sampling failed: {type(e).__name__}: {e}[/red]")
@@ -266,6 +280,33 @@ def git_validation_error(root: Path, baseline: str | None, candidate: str) -> st
             "Pass an existing ref or 'working' via --candidate."
         )
     return None
+
+
+def validate_runner_importable(root: Path, module: str, callable_name: str) -> str | None:
+    """Return an error string if the runner can't be imported, else None.
+
+    Fails fast before sampling: a bad runner module/callable would otherwise
+    only surface deep inside the sampling loop (or, worse, inside a git
+    checkout subprocess), producing a confusing empty-trajectories error.
+    """
+    root_str = str(root)
+    old_path = list(sys.path)
+    try:
+        if root_str not in sys.path:
+            sys.path.insert(0, root_str)
+        try:
+            mod = importlib.import_module(module)
+        except Exception as e:  # noqa: BLE001 — surfaced to the user as a fast-fail message
+            return f"Run 'agentdiff doctor' — could not import {module}: {type(e).__name__}: {e}"
+        runner = getattr(mod, callable_name, None)
+        if not callable(runner):
+            return (
+                f"Run 'agentdiff doctor' — could not import {module}: "
+                f"{module}.{callable_name} is not callable"
+            )
+        return None
+    finally:
+        sys.path[:] = old_path
 
 
 def _git_ok(root: Path, args: list[str]) -> bool:

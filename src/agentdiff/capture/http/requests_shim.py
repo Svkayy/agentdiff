@@ -25,17 +25,19 @@ _PATCHED = False
 _ORIGINALS: dict[str, object] = {}
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch requests if installed. Returns False if requests isn't importable."""
     global _PATCHED
     if _PATCHED:
-        return
+        return True
     try:
         from requests.adapters import HTTPAdapter
     except ImportError:
-        return
+        return False
     _ORIGINALS["send"] = HTTPAdapter.send
     HTTPAdapter.send = _wrap(_ORIGINALS["send"])  # type: ignore[method-assign]
     _PATCHED = True
+    return True
 
 
 def uninstall() -> None:

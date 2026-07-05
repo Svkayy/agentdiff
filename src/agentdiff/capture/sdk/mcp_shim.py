@@ -33,17 +33,19 @@ def _safe_output(result: Any) -> Any:
         return str(result)
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch mcp if installed. Returns False if mcp isn't importable."""
     global _PATCHED
     if _PATCHED:
-        return
+        return True
     try:
         from mcp.client.session import ClientSession
     except ImportError:
-        return
+        return False
     _ORIGINALS["call_tool"] = ClientSession.call_tool
     ClientSession.call_tool = _wrap_async(_ORIGINALS["call_tool"])  # type: ignore[method-assign]
     _PATCHED = True
+    return True
 
 
 def uninstall() -> None:

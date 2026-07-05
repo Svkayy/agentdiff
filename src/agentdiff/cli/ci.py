@@ -16,6 +16,7 @@ from agentdiff.cli.compare import (
     _validate_trajectory_quality,
     git_validation_error,
     resolve_baseline,
+    validate_runner_importable,
 )
 from agentdiff.config import load_config, thresholds_for_compare
 from agentdiff.incident.findings import IncidentContext, build_incident_summary
@@ -173,6 +174,14 @@ def ci_run_cmd(
         console.print("[yellow]No test cases found; wrote WARN CI artifacts.[/yellow]")
         raise SystemExit(_exit_code(summary.verdict, fail_on))
 
+    runner_error = validate_runner_importable(root, runner_module, config.runner.callable)
+    if runner_error:
+        console.print(f"[red]{runner_error}[/red]")
+        raise SystemExit(1)
+
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    set_active_redaction_config(config.capture.redaction)
+
     baseline_ref, baseline_label, smoke_mode = resolve_baseline(root, baseline)
     git_error = git_validation_error(root, baseline_ref, candidate)
     if git_error:
@@ -205,6 +214,10 @@ def ci_run_cmd(
                 workers=worker_count,
                 cassette_path=cassette_path,
                 cassette_mode=cassette_mode_for_sampling,
+                timeout_seconds=config.sampling.timeout_seconds,
+                retries=config.sampling.retries,
+                retry_backoff_seconds=config.sampling.retry_backoff_seconds,
+                redaction_config=config.capture.redaction,
             )
         except Exception as exc:
             console.print(f"[red]{tag.capitalize()} sampling failed: {type(exc).__name__}: {exc}[/red]")

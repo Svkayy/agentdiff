@@ -13,11 +13,14 @@ _ADAPTERS = {
 }
 
 
-def install(capture: dict[str, bool] | None = None) -> None:
+def install(capture: dict[str, bool] | None = None) -> list[str]:
+    """Install enabled framework adapters. Returns names enabled but unavailable."""
     capture = capture or {}
+    unavailable = []
     for name, adapter in _ADAPTERS.items():
-        if capture.get(name, True):
-            adapter.install()
+        if capture.get(name, True) and not adapter.install():
+            unavailable.append(name)
+    return unavailable
 
 
 def uninstall() -> None:

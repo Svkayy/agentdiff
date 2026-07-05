@@ -7,19 +7,21 @@ _PATCHED = False
 _ORIGINALS: dict[str, Any] = {}
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch anthropic if installed. Returns False if anthropic isn't importable."""
     global _PATCHED
     if _PATCHED:
-        return
+        return True
     try:
         import anthropic.resources.messages as _mod
     except ImportError:
-        return
+        return False
     _ORIGINALS["sync_create"] = _mod.Messages.create
     _ORIGINALS["async_create"] = _mod.AsyncMessages.create
     _mod.Messages.create = _wrap_sync(_ORIGINALS["sync_create"])  # type: ignore[method-assign]
     _mod.AsyncMessages.create = _wrap_async(_ORIGINALS["async_create"])  # type: ignore[method-assign]
     _PATCHED = True
+    return True
 
 
 def uninstall() -> None:

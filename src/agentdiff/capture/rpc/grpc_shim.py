@@ -6,11 +6,12 @@ from agentdiff.capture.framework.base import PatchRegistry, record_framework_eve
 _PATCHES = PatchRegistry("grpc")
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch grpc if installed. Returns False if grpc isn't importable."""
     try:
         import grpc
     except ImportError:
-        return
+        return False
 
     UnaryUnary = getattr(grpc, "UnaryUnaryMultiCallable", None)
     UnaryStream = getattr(grpc, "UnaryStreamMultiCallable", None)
@@ -35,6 +36,8 @@ def install() -> None:
         cls = getattr(aio, class_name, None) if aio is not None else None
         if cls is not None:
             _PATCHES.patch_method(cls, "__call__", _wrap_call(kind))
+
+    return True
 
 
 def uninstall() -> None:

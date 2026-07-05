@@ -7,19 +7,21 @@ _PATCHED = False
 _ORIGINALS: dict[str, Any] = {}
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch openai if installed. Returns False if openai isn't importable."""
     global _PATCHED
     if _PATCHED:
-        return
+        return True
     try:
         import openai.resources.chat.completions as _mod
     except ImportError:
-        return
+        return False
     _ORIGINALS["sync_create"] = _mod.Completions.create
     _ORIGINALS["async_create"] = _mod.AsyncCompletions.create
     _mod.Completions.create = _wrap_sync(_ORIGINALS["sync_create"])  # type: ignore[method-assign]
     _mod.AsyncCompletions.create = _wrap_async(_ORIGINALS["async_create"])  # type: ignore[method-assign]
     _PATCHED = True
+    return True
 
 
 def uninstall() -> None:

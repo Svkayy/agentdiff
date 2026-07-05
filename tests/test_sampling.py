@@ -84,3 +84,107 @@ def test_run_samples_supports_async_runner(tmp_path, monkeypatch):
     assert written == 1
     ts = load_trajectory_set(out, "baseline")
     assert ts.trajectories[0].final_output == '{"echo": "hello"}'
+
+
+def test_run_samples_timeout_fails_with_message_and_retries(tmp_path, monkeypatch, capsys):
+    (tmp_path / "slowrunner.py").write_text(
+        "import time\n"
+        "CALLS = []\n"
+        "def run(input):\n"
+        "    CALLS.append(1)\n"
+        "    time.sleep(0.3)\n"
+        "    return 'too slow'\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    out = tmp_path / "out.jsonl"
+    written = run_samples(
+        runner_module="slowrunner",
+        runner_callable="run",
+        test_cases=[{"id": "tc1", "input": {}}],
+        samples_per_case=1,
+        version_tag="baseline",
+        output_path=out,
+        structure_root=tmp_path,
+        progress=False,
+        timeout_seconds=0.1,
+        retries=2,
+        retry_backoff_seconds=0.01,
+    )
+
+    assert written == 1
+    ts = load_trajectory_set(out, "baseline")
+    assert len(ts.trajectories) == 1
+    assert ts.trajectories[0].status == "failed"
+    assert "sample timed out after 0.1s" in ts.trajectories[0].error
+
+    out_text = capsys.readouterr().out
+    assert out_text.count("timed out") >= 1
+
+    import slowrunner
+    # Initial attempt + 2 retries = 3 calls to the runner.
+    assert len(slowrunner.CALLS) == 3
+
+
+def test_run_samples_timeout_disabled_when_zero(tmp_path, monkeypatch):
+    (tmp_path / "slowrunner2.py").write_text(
+        "import time\n"
+        "def run(input):\n"
+        "    time.sleep(0.05)\n"
+        "    return 'ok'\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    out = tmp_path / "out.jsonl"
+    written = run_samples(
+        runner_module="slowrunner2",
+        runner_callable="run",
+        test_cases=[{"id": "tc1", "input": {}}],
+        samples_per_case=1,
+        version_tag="baseline",
+        output_path=out,
+        structure_root=tmp_path,
+        progress=False,
+        timeout_seconds=0,
+        retries=0,
+    )
+
+    assert written == 1
+    ts = load_trajectory_set(out, "baseline")
+    assert ts.trajectories[0].status == "success"
+    assert ts.trajectories[0].final_output == "ok"
+
+
+def test_run_samples_retries_transient_failure_then_succeeds(tmp_path, monkeypatch):
+    (tmp_path / "flakyrunner.py").write_text(
+        "CALLS = []\n"
+        "def run(input):\n"
+        "    CALLS.append(1)\n"
+        "    if len(CALLS) < 2:\n"
+        "        raise ValueError('transient')\n"
+        "    return 'recovered'\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    out = tmp_path / "out.jsonl"
+    written = run_samples(
+        runner_module="flakyrunner",
+        runner_callable="run",
+        test_cases=[{"id": "tc1", "input": {}}],
+        samples_per_case=1,
+        version_tag="baseline",
+        output_path=out,
+        structure_root=tmp_path,
+        progress=False,
+        timeout_seconds=5,
+        retries=2,
+        retry_backoff_seconds=0.01,
+    )
+
+    assert written == 1
+    ts = load_trajectory_set(out, "baseline")
+    assert ts.trajectories[0].status == "success"
+    assert ts.trajectories[0].final_output == "recovered"
+
+    import flakyrunner
+    assert len(flakyrunner.CALLS) == 2

@@ -158,17 +158,30 @@ def _output_eval_details(lines: list[str], output_evals: list[OutputEvalResult])
         lines.append("_No output evaluations were produced._")
         lines.append("")
         return
-    lines.append("| Test case | Kind | Semantic | Structural | Length | Judge | Notes |")
-    lines.append("|---|---|---:|---:|---:|---:|---|")
+    lines.append("| Test case | Kind | Semantic | Structural | Length | Judge | Notes | Skipped checks |")
+    lines.append("|---|---|---:|---:|---:|---:|---|---|")
     for ev in output_evals:
         notes = "; ".join(ev.notes) if ev.notes else ""
+        skipped = (
+            "; ".join(f"{c['check']} ({c['reason']})" for c in ev.skipped_checks)
+            if ev.skipped_checks
+            else ""
+        )
         lines.append(
             f"| `{ev.test_case_id}` | {ev.output_kind} "
             f"| {_fmt_float(ev.semantic_similarity)} "
             f"| {_fmt_float(ev.structural_similarity)} "
             f"| {_fmt_float(ev.length_ratio)} "
             f"| {_fmt_float(ev.judge_score)} "
-            f"| {notes} |"
+            f"| {notes} "
+            f"| {skipped} |"
+        )
+    if any(ev.skipped_checks for ev in output_evals):
+        lines.append("")
+        lines.append(
+            "_Some checks above were skipped (missing dependency, no LLM credential, "
+            "or judge error) — a PASS/WARN/FAIL verdict may not reflect every signal. "
+            "See the Skipped checks column._"
         )
     lines.append("")
 
@@ -267,9 +280,10 @@ def _attribution_section(lines: list[str], attribution) -> None:
             continue
 
         p = ba.primary
+        low_conf_label = " (low-confidence heuristic)" if p.confidence == "low" else ""
         lines.append(
             f"- **Primary cause:** `{p.target_path}` "
-            f"(rule: `{p.rule}`, confidence {p.weight:.0%})"
+            f"(rule: `{p.rule}`, confidence {p.weight:.0%} [{p.confidence}]){low_conf_label}"
         )
         lines.append(f"- {p.reason}")
         if ba.explanation:

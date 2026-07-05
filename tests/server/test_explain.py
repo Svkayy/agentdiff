@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 
+from agentdiff.llm_client import LLMResult
 from server import explain as explain_mod
 
 
@@ -20,9 +21,16 @@ class _FakeClient:
         self.calls.append((system, prompt))
         return self._text
 
+    def generate(self, system: str, prompt: str, max_tokens: int = 200) -> LLMResult:
+        self.calls.append((system, prompt))
+        return LLMResult(text=self._text)
+
 
 class _RaisingClient:
     def complete(self, system: str, prompt: str, max_tokens: int = 200) -> str:
+        raise RuntimeError("fake LLM error")
+
+    def generate(self, system: str, prompt: str, max_tokens: int = 200) -> LLMResult:
         raise RuntimeError("fake LLM error")
 
 

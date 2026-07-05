@@ -6,10 +6,27 @@ reason). The engine ranks them by weight; the highest is the primary cause.
 
 Rule 5 (reachable_change) is the v0 fallback — full reachability analysis is v1.
 """
+from typing import Literal
+
 from pydantic import BaseModel
 
 from agentdiff.attribution.manifest_diff import ManifestDelta
 from agentdiff.structure.structure_yaml import StructureDoc
+
+Confidence = Literal["high", "medium", "low"]
+
+
+def _confidence_for_weight(weight: float) -> Confidence:
+    """Map a rule's numeric weight to a coarse, human-facing confidence label.
+
+    weight >= 0.7 -> high, >= 0.5 -> medium, else low. Rule 5 (reachable_change)
+    always weights below 0.5, so its attributions are always "low".
+    """
+    if weight >= 0.7:
+        return "high"
+    if weight >= 0.5:
+        return "medium"
+    return "low"
 
 
 class Attribution(BaseModel):
@@ -18,6 +35,7 @@ class Attribution(BaseModel):
     hunk: str | None = None
     weight: float
     reason: str
+    confidence: Confidence = "low"
 
 
 def _rule_direct_prompt_change(md: ManifestDelta, git_diff: dict[str, str]) -> list[Attribution]:
@@ -31,6 +49,7 @@ def _rule_direct_prompt_change(md: ManifestDelta, git_diff: dict[str, str]) -> l
                 target_path=f,
                 hunk=git_diff[f],
                 weight=0.9,
+                confidence=_confidence_for_weight(0.9),
                 reason=(
                     f"The system prompt for agent '{md.agent_name}' changed, and "
                     f"`{f}` (which contains it) was modified."
@@ -46,6 +65,7 @@ def _rule_direct_prompt_change(md: ManifestDelta, git_diff: dict[str, str]) -> l
                 target_path=md.code_file,
                 hunk=git_diff[md.code_file],
                 weight=0.75,
+                confidence=_confidence_for_weight(0.75),
                 reason=(
                     f"The system prompt for agent '{md.agent_name}' changed; it appears "
                     f"inline in `{md.code_file}`."
@@ -63,6 +83,7 @@ def _rule_code_change(md: ManifestDelta, git_diff: dict[str, str]) -> list[Attri
                 target_path=md.code_file,
                 hunk=git_diff[md.code_file],
                 weight=0.8,
+                confidence=_confidence_for_weight(0.8),
                 reason=(
                     f"The body of agent '{md.agent_name}' (`{md.function}`) changed in "
                     f"`{md.code_file}`."
@@ -83,6 +104,7 @@ def _rule_model_config_change(md: ManifestDelta, git_diff: dict[str, str]) -> li
             target_path=md.code_file,
             hunk=git_diff.get(md.code_file),
             weight=0.7,
+            confidence=_confidence_for_weight(0.7),
             reason=(
                 f"Model configuration for agent '{md.agent_name}' changed: "
                 f"{before} → {after}."
@@ -105,6 +127,7 @@ def _rule_tool_schema_change(
                 target_path=f,
                 hunk=git_diff[f],
                 weight=0.6,
+                confidence=_confidence_for_weight(0.6),
                 reason=(
                     f"The set of tools available to agent '{md.agent_name}' changed; "
                     f"`{f}` was modified. ({md.tools_before} → {md.tools_after})"
@@ -118,6 +141,7 @@ def _rule_tool_schema_change(
             target_path=md.code_file,
             hunk=git_diff.get(md.code_file),
             weight=0.5,
+            confidence=_confidence_for_weight(0.5),
             reason=(
                 f"The set of tools used by agent '{md.agent_name}' changed "
                 f"({md.tools_before} → {md.tools_after})."
@@ -149,6 +173,7 @@ def _rule_reachable_change(
                 target_path=target,
                 hunk=git_diff.get(target),
                 weight=0.35,
+                confidence=_confidence_for_weight(0.35),
                 reason=(
                     f"Behavior of agent '{md.agent_name}' changed with no direct prompt, "
                     f"code, model, or tool change. `{target}` changed and is reachable from "
@@ -164,6 +189,7 @@ def _rule_reachable_change(
             target_path=target,
             hunk=git_diff.get(target),
             weight=0.2,
+            confidence=_confidence_for_weight(0.2),
             reason=(
                 f"Behavior of agent '{md.agent_name}' changed but no direct prompt, code, "
                 f"model, or tool change matched, and no changed file was provably reachable. "

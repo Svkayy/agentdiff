@@ -53,7 +53,10 @@ def explain(
         f"Relevant diff:\n{hunk}\n\n"
         "In 1-3 sentences, explain why this change likely produced the behavioral change."
     )
-    text = client.complete(_SYSTEM, prompt, max_tokens=200).strip()
+    result = client.generate(_SYSTEM, prompt, max_tokens=200)
+    if result.error is not None or not result.text:
+        return None
+    text = result.text.strip()
     return text or None
 
 

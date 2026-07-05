@@ -75,6 +75,43 @@ def test_incident_summary_merges_attribution_once():
     assert summary.findings[0].test_cases_total == 1
 
 
+def test_low_confidence_attribution_renders_heuristic_label():
+    attribution = AttributionResult(
+        attributions=[
+            BehavioralAttribution(
+                test_case_id="tc1",
+                agent_name="Fact Checker",
+                function="fact_checker",
+                metric="invocation_rate",
+                delta_summary="invocation rate 100% -> 0%",
+                verdict="fail",
+                primary=Attribution(
+                    rule="reachable_change",
+                    target_path="utils.py",
+                    hunk="@@ -1 +1 @@",
+                    weight=0.2,
+                    confidence="low",
+                    reason="low confidence heuristic reason",
+                ),
+            )
+        ]
+    )
+    summary = build_incident_summary(_comparison(), attribution)
+    assert summary.findings[0].cause_confidence == "low"
+
+    pr_check = render_pr_check(summary)
+    postmortem = render_postmortem(summary)
+    blocks = render_slack_blocks(summary)
+
+    assert "(low-confidence heuristic)" in pr_check
+    assert "(low-confidence heuristic)" in postmortem
+    assert any(
+        "(low-confidence heuristic)" in b.get("text", {}).get("text", "")
+        for b in blocks
+        if b.get("type") == "section"
+    )
+
+
 def test_run_metric_delta_produces_finding():
     comparison = ComparisonResult(
         overall_verdict="fail",

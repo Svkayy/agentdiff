@@ -177,7 +177,9 @@ def compare_cmd(
         b_out = [t.final_output or "" for t in baseline_set.for_test_case(tc_id)]
         c_out = [t.final_output or "" for t in candidate_set.for_test_case(tc_id)]
         output_evals.append(
-            output_eval.evaluate_output(tc_id, b_out, c_out, llm_client=llm_client)
+            output_eval.evaluate_output(
+                tc_id, b_out, c_out, llm_client=llm_client, thresholds=config.output_eval
+            )
         )
 
     # --- Causal attribution ----------------------------------------------

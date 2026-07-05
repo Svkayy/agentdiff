@@ -38,6 +38,7 @@ class IncidentFinding(BaseModel):
     cause_path: str | None = None
     cause_rule: str | None = None
     cause_hunk: str | None = None
+    cause_confidence: str | None = None
     explanation: str | None = None
     # Aggregation context — how many test cases were affected vs. total seen.
     # Stored in statistical_evidence JSON to avoid schema migration; also
@@ -106,6 +107,7 @@ def build_incident_summary(
             self.cause_path: str | None = None
             self.cause_rule: str | None = None
             self.cause_hunk: str | None = None
+            self.cause_confidence: str | None = None
             self.explanation: str | None = None
             # Statistical evidence from the most-significant delta seen.
             self.stats: dict | None = None
@@ -145,6 +147,7 @@ def build_incident_summary(
                     acc.cause_path = primary.target_path if primary else None
                     acc.cause_rule = primary.rule if primary else None
                     acc.cause_hunk = primary.hunk if primary else None
+                    acc.cause_confidence = primary.confidence if primary else None
                     acc.explanation = attr.explanation
 
             # Statistical evidence: keep the one with the smallest p-value
@@ -190,6 +193,7 @@ def build_incident_summary(
                 cause_path=acc.cause_path,
                 cause_rule=acc.cause_rule,
                 cause_hunk=acc.cause_hunk,
+                cause_confidence=acc.cause_confidence,
                 explanation=acc.explanation,
                 test_cases_affected=acc.affected_tcs,
                 test_cases_total=total_test_cases,

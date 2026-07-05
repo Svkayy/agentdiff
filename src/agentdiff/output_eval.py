@@ -15,24 +15,22 @@ from typing import Any, Callable, Literal
 import numpy as np
 from pydantic import BaseModel, Field
 
+from agentdiff.config import OutputEvalThresholds
 from agentdiff.llm_client import LLMClient
 
 Verdict = Literal["pass", "warn", "fail"]
 OutputKind = Literal["text", "structured", "empty"]
 
-_SEM_FAIL = 0.70
-_SEM_WARN = 0.85
-_LEN_FAIL = 0.50
-_LEN_WARN = 0.80
-_STRUCT_FAIL = 0.70
-_STRUCT_WARN = 0.90
+_DEFAULT_THRESHOLDS = OutputEvalThresholds()
 
 _MISSING = object()
 
 _JUDGE_SYSTEM = (
     "You compare two AI agent outputs (a baseline and a candidate) and rate how "
-    "equivalent they are in meaning and usefulness on a 1-5 scale, where 5 means "
-    "fully equivalent and 1 means completely different. Respond with ONLY the integer."
+    "equivalent they are in meaning and usefulness. Respond with ONLY a JSON object "
+    'of the exact form {"score": <integer 1-5>, "reason": "<short reason>"}, where '
+    "5 means fully equivalent and 1 means completely different. Do not include any "
+    "other text, markdown, or explanation outside the JSON object."
 )
 
 # Lazily-loaded singleton embedding model.
@@ -46,9 +44,15 @@ class OutputEvalResult(BaseModel):
     structural_similarity: float | None = None  # structured (dict/list) outputs
     changed_keys: list[str] = Field(default_factory=list)  # structured: differing paths
     judge_score: float | None = None  # 1-5
+    judge_reason: str | None = None
     length_ratio: float | None = None
     verdict: Verdict = "pass"
     notes: list[str] = []
+    # Checks that were not run (missing optional dep, no LLM credential, judge
+    # error, etc.) — {"check": "semantic"|"judge"|..., "reason": "<why>"}. A
+    # non-empty list means this PASS/WARN/FAIL is not a *full* pass: some
+    # signal that would normally contribute to the verdict was unavailable.
+    skipped_checks: list[dict[str, str]] = Field(default_factory=list)
 
 
 def _get_model():
@@ -131,11 +135,13 @@ def _structural_compare(a: Any, b: Any) -> tuple[float, list[str]]:
     return matching / len(all_paths), changed
 
 
-def _structural_verdict(similarity: float) -> tuple[Verdict, list[str]]:
-    if similarity < _STRUCT_FAIL:
-        return "fail", [f"structural similarity {similarity:.2f} below {_STRUCT_FAIL}"]
-    if similarity < _STRUCT_WARN:
-        return "warn", [f"structural similarity {similarity:.2f} below {_STRUCT_WARN}"]
+def _structural_verdict(
+    similarity: float, thresholds: OutputEvalThresholds
+) -> tuple[Verdict, list[str]]:
+    if similarity < thresholds.structural_fail:
+        return "fail", [f"structural similarity {similarity:.2f} below {thresholds.structural_fail}"]
+    if similarity < thresholds.structural_warn:
+        return "warn", [f"structural similarity {similarity:.2f} below {thresholds.structural_warn}"]
     return "pass", []
 
 
@@ -150,38 +156,41 @@ def _length_ratio(a: str, b: str) -> float:
 
 
 def _combine_verdict(
-    semantic: float | None, judge: float | None, length: float | None
+    semantic: float | None,
+    judge: float | None,
+    length: float | None,
+    thresholds: OutputEvalThresholds,
 ) -> tuple[Verdict, list[str]]:
     notes: list[str] = []
     verdicts: list[Verdict] = []
 
     if semantic is not None:
-        if semantic < _SEM_FAIL:
+        if semantic < thresholds.semantic_fail:
             verdicts.append("fail")
-            notes.append(f"semantic similarity {semantic:.2f} below {_SEM_FAIL}")
-        elif semantic < _SEM_WARN:
+            notes.append(f"semantic similarity {semantic:.2f} below {thresholds.semantic_fail}")
+        elif semantic < thresholds.semantic_warn:
             verdicts.append("warn")
-            notes.append(f"semantic similarity {semantic:.2f} below {_SEM_WARN}")
+            notes.append(f"semantic similarity {semantic:.2f} below {thresholds.semantic_warn}")
         else:
             verdicts.append("pass")
 
     if judge is not None:
-        if judge <= 2:
+        if judge <= thresholds.judge_fail:
             verdicts.append("fail")
             notes.append(f"judge equivalence score {judge:.1f}/5")
-        elif judge <= 3.5:
+        elif judge <= thresholds.judge_warn:
             verdicts.append("warn")
             notes.append(f"judge equivalence score {judge:.1f}/5")
         else:
             verdicts.append("pass")
 
     if length is not None:
-        if length < _LEN_FAIL:
+        if length < thresholds.length_fail:
             verdicts.append("fail")
-            notes.append(f"length ratio {length:.2f} below {_LEN_FAIL}")
-        elif length < _LEN_WARN:
+            notes.append(f"length ratio {length:.2f} below {thresholds.length_fail}")
+        elif length < thresholds.length_warn:
             verdicts.append("warn")
-            notes.append(f"length ratio {length:.2f} below {_LEN_WARN}")
+            notes.append(f"length ratio {length:.2f} below {thresholds.length_warn}")
         else:
             verdicts.append("pass")
 
@@ -199,12 +208,22 @@ def evaluate_output(
     candidate_outputs: list[str],
     llm_client: LLMClient | None = None,
     embed_fn: Callable[[list[str]], np.ndarray] | None = None,
+    thresholds: OutputEvalThresholds | None = None,
 ) -> OutputEvalResult:
     """Evaluate output equivalence for one test case.
 
     ``embed_fn`` lets callers/tests inject embeddings instead of loading the
     sentence-transformers model. ``llm_client`` enables the optional judge.
+    ``thresholds`` overrides the default pass/warn/fail cutoffs (normally
+    ``config.output_eval`` from ``.agentdiff/config.yaml``, Task 1).
+
+    Whenever a check that would normally contribute to the verdict was not
+    run (missing embeddings dep, no judge credential, judge error), the
+    result's ``skipped_checks`` records it — so a PASS is never mistaken for
+    a full pass across every signal.
     """
+    thresholds = thresholds or _DEFAULT_THRESHOLDS
+    skipped_checks: list[dict[str, str]] = []
     b_repr = _representative(baseline_outputs)
     c_repr = _representative(candidate_outputs)
 
@@ -222,14 +241,12 @@ def evaluate_output(
     b_struct, c_struct = _as_structured(b_repr), _as_structured(c_repr)
     if b_struct is not None and c_struct is not None:
         similarity, changed = _structural_compare(b_struct, c_struct)
-        verdict, notes = _structural_verdict(similarity)
-        judge: float | None = None
-        if llm_client is not None:
-            judge = _run_judge(llm_client, b_repr, c_repr)
-            if judge is not None:
-                jv, jnotes = _combine_verdict(None, judge, None)
-                notes += jnotes
-                verdict = max([verdict, jv], key=lambda v: {"pass": 0, "warn": 1, "fail": 2}[v])
+        verdict, notes = _structural_verdict(similarity, thresholds)
+        judge, judge_reason = _judge_or_skip(llm_client, b_repr, c_repr, skipped_checks)
+        if judge is not None:
+            jv, jnotes = _combine_verdict(None, judge, None, thresholds)
+            notes += jnotes
+            verdict = max([verdict, jv], key=lambda v: {"pass": 0, "warn": 1, "fail": 2}[v])
         if changed:
             notes.append(f"{len(changed)} differing key(s)")
         return OutputEvalResult(
@@ -238,8 +255,10 @@ def evaluate_output(
             structural_similarity=similarity,
             changed_keys=changed[:50],
             judge_score=judge,
+            judge_reason=judge_reason,
             verdict=verdict,
             notes=notes,
+            skipped_checks=skipped_checks,
         )
 
     embed = embed_fn or _default_embed
@@ -248,37 +267,95 @@ def evaluate_output(
         vecs = embed([b_repr, c_repr])
         semantic = _cosine(np.asarray(vecs[0]), np.asarray(vecs[1]))
     except Exception as e:  # noqa: BLE001
-        print(f"[agentdiff] semantic similarity failed: {type(e).__name__}: {e}")
+        reason = f"{type(e).__name__}: {e}"
+        print(f"[agentdiff] semantic similarity failed: {reason}")
+        skipped_checks.append({"check": "semantic", "reason": reason})
 
     length = _length_ratio(b_repr, c_repr)
 
-    judge = None
-    if llm_client is not None:
-        judge = _run_judge(llm_client, b_repr, c_repr)
+    judge, judge_reason = _judge_or_skip(llm_client, b_repr, c_repr, skipped_checks)
 
-    verdict, notes = _combine_verdict(semantic, judge, length)
+    verdict, notes = _combine_verdict(semantic, judge, length, thresholds)
     return OutputEvalResult(
         test_case_id=test_case_id,
         semantic_similarity=semantic,
         judge_score=judge,
+        judge_reason=judge_reason,
         length_ratio=length,
         verdict=verdict,
         notes=notes,
+        skipped_checks=skipped_checks,
     )
 
 
-def _run_judge(client: LLMClient, baseline: str, candidate: str) -> float | None:
-    prompt = (
+def _judge_or_skip(
+    client: LLMClient | None,
+    baseline: str,
+    candidate: str,
+    skipped_checks: list[dict[str, str]],
+) -> tuple[float | None, str | None]:
+    """Run the judge if a client is configured; record why it was skipped otherwise."""
+    if client is None:
+        skipped_checks.append(
+            {"check": "judge", "reason": "no LLM credential configured (skipping judge)"}
+        )
+        return None, None
+    result = _run_judge(client, baseline, candidate)
+    if result is None:
+        skipped_checks.append(
+            {"check": "judge", "reason": "judge did not return a parseable score"}
+        )
+        return None, None
+    return result
+
+
+def _judge_prompt(baseline: str, candidate: str) -> str:
+    return (
         f"BASELINE OUTPUT:\n{baseline}\n\n"
         f"CANDIDATE OUTPUT:\n{candidate}\n\n"
-        "How equivalent are these (1-5)? Respond with only the integer."
+        'Respond with ONLY a JSON object of the form {"score": <integer 1-5>, '
+        '"reason": "<short reason>"}.'
     )
-    raw = client.complete(_JUDGE_SYSTEM, prompt, max_tokens=8).strip()
-    for token in raw.replace("/", " ").split():
-        try:
-            val = float(token)
-            if 1 <= val <= 5:
-                return val
-        except ValueError:
-            continue
+
+
+def _parse_judge_json(raw: str) -> tuple[float, str | None] | None:
+    """Parse the judge's JSON reply; return (score, reason) or None on failure."""
+    text = raw.strip()
+    # Tolerate the model wrapping the object in markdown or surrounding prose.
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        return None
+    try:
+        data = json.loads(text[start : end + 1])
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw_score = data.get("score")
+    if raw_score is None or isinstance(raw_score, bool):
+        return None
+    try:
+        score = float(raw_score)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if not 1 <= score <= 5:
+        return None
+    reason = data.get("reason")
+    return score, (str(reason) if reason is not None else None)
+
+
+def _run_judge(client: LLMClient, baseline: str, candidate: str) -> tuple[float, str | None] | None:
+    """Call the judge, parsing its JSON reply with one retry on parse failure.
+
+    Returns ``(score, reason)`` on success (status "ok"), or ``None`` if both
+    the initial attempt and the single retry failed to yield parseable JSON
+    (status "error") — including when the underlying call raised or returned
+    nothing, which ``LLMClient.complete()`` surfaces as ``""``.
+    """
+    prompt = _judge_prompt(baseline, candidate)
+    for _attempt in range(2):  # initial try + one retry on parse failure
+        raw = client.complete(_JUDGE_SYSTEM, prompt, max_tokens=64)
+        parsed = _parse_judge_json(raw)
+        if parsed is not None:
+            return parsed
     return None

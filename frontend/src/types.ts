@@ -140,6 +140,11 @@ export interface Comparison {
 }
 
 // ── Output evaluation (output_eval.OutputEvalResult) ───────────────────────
+export interface SkippedCheck {
+  check: string;
+  reason: string;
+}
+
 export interface OutputEval {
   test_case_id: string;
   output_kind: string;
@@ -147,18 +152,26 @@ export interface OutputEval {
   structural_similarity: number | null;
   length_ratio: number | null;
   judge_score: number | null;
+  judge_reason?: string | null;
   changed_keys?: string[];
   verdict: Verdict;
   notes: string[];
+  // Checks skipped this run (missing embeddings dep, no judge credential,
+  // judge parse error, ...) — non-empty means the verdict is not a full pass
+  // across every signal.
+  skipped_checks: SkippedCheck[];
 }
 
 // ── Causal attribution (attribution.engine.AttributionResult) ──────────────
+export type AttributionConfidence = "high" | "medium" | "low";
+
 export interface AttributionCause {
   rule: string;
   target_path: string;
   hunk: string | null;
   weight: number;
   reason: string;
+  confidence: AttributionConfidence;
 }
 
 export interface AttributionEntry {

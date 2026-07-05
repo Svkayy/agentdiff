@@ -105,6 +105,7 @@ def test_rule_reachable_fallback_when_nothing_direct():
     assert len(attrs) == 1
     assert attrs[0].rule == "reachable_change"
     assert attrs[0].weight == 0.2
+    assert attrs[0].confidence == "low"
 
 
 def test_rule_reachable_prefers_reachable_changed_file():
@@ -119,6 +120,76 @@ def test_rule_reachable_prefers_reachable_changed_file():
     assert attrs[0].rule == "reachable_change"
     assert attrs[0].target_path == "helper.py"
     assert attrs[0].weight == 0.35
+    assert attrs[0].confidence == "low"
+
+
+# ---------------------------------------------------------------------------
+# confidence labels
+# ---------------------------------------------------------------------------
+
+def test_confidence_high_for_direct_prompt_change():
+    # weight 0.9 >= 0.7 -> high
+    d = diff_manifests(
+        {"research_agent": _manifest("A", "c", "m")},
+        {"research_agent": _manifest("B", "c", "m")},
+    )["research_agent"]
+    git_diff = {"prompts/research.txt": "@@ -1 +1 @@\n-old\n+new\n"}
+    attrs = apply_rules(d, git_diff, STRUCT)
+    assert attrs[0].weight == 0.9
+    assert attrs[0].confidence == "high"
+
+
+def test_confidence_medium_for_tool_schema_change():
+    # weight 0.6 -> >= 0.5 and < 0.7 -> medium
+    d = diff_manifests(
+        {"research_agent": _manifest("h", "c", "m", tools=["search"])},
+        {"research_agent": _manifest("h", "c", "m", tools=["search", "calc"])},
+    )["research_agent"]
+    git_diff = {"tools.py": "@@ -1 +1 @@\n+def calc(): ...\n"}
+    attrs = apply_rules(d, git_diff, STRUCT)
+    assert any(a.rule == "tool_schema_change" and a.confidence == "medium" for a in attrs)
+
+
+def test_confidence_boundaries_by_weight():
+    from agentdiff.attribution.rules import _confidence_for_weight
+
+    assert _confidence_for_weight(0.9) == "high"
+    assert _confidence_for_weight(0.7) == "high"
+    assert _confidence_for_weight(0.69) == "medium"
+    assert _confidence_for_weight(0.5) == "medium"
+    assert _confidence_for_weight(0.49) == "low"
+    assert _confidence_for_weight(0.2) == "low"
+
+
+def test_renderer_low_confidence_label_in_report():
+    from agentdiff.attribution.engine import AttributionResult, BehavioralAttribution
+    from agentdiff.attribution.rules import Attribution
+    from agentdiff.compare import ComparisonResult
+    from agentdiff.report import render_report
+
+    attribution = AttributionResult(
+        attributions=[
+            BehavioralAttribution(
+                test_case_id="tc1",
+                agent_name="Research",
+                function="research_agent",
+                metric="invocation_rate",
+                delta_summary="100% -> 70% (-30%)",
+                verdict="warn",
+                primary=Attribution(
+                    rule="reachable_change",
+                    target_path="utils.py",
+                    hunk=None,
+                    weight=0.2,
+                    reason="low confidence heuristic reason",
+                    confidence="low",
+                ),
+            )
+        ]
+    )
+    comparison = ComparisonResult(test_case_comparisons=[], overall_verdict="warn")
+    md = render_report(comparison, [], {}, attribution)
+    assert "(low-confidence heuristic)" in md
 
 
 # ---------------------------------------------------------------------------

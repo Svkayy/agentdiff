@@ -58,3 +58,127 @@ def test_openai_path_default_model_and_no_base_url(fake_openai, monkeypatch):
     client.complete("sys", "hi")
     assert fake_openai.captured["init_kwargs"].get("base_url") is None
     assert fake_openai.captured["create_kwargs"]["model"] == "gpt-4o-mini"
+
+
+# --- LLMResult + generate() --------------------------------------------------
+
+class _FakeAnthropicMessage:
+    def __init__(self, content): self.content = content
+
+
+class _FakeAnthropicContentBlock:
+    def __init__(self, text): self.text = text
+
+
+class _FakeAnthropicMessages:
+    def __init__(self, captured, response=None, error=None):
+        self._captured = captured
+        self._response = response
+        self._error = error
+
+    def create(self, **kwargs):
+        self._captured["create_kwargs"] = kwargs
+        if self._error is not None:
+            raise self._error
+        return self._response
+
+
+class _FakeAnthropicSDKClient:
+    def __init__(self, **kwargs):
+        _FakeAnthropicSDKClient.captured["init_kwargs"] = kwargs
+        self.messages = _FakeAnthropicSDKClient._messages_factory(
+            _FakeAnthropicSDKClient.captured
+        )
+    captured: dict = {}
+    _messages_factory = None
+
+
+def _install_fake_anthropic(monkeypatch, *, response=None, error=None):
+    _FakeAnthropicSDKClient.captured = {}
+    _FakeAnthropicSDKClient._messages_factory = (
+        lambda captured: _FakeAnthropicMessages(captured, response=response, error=error)
+    )
+    fake_module = types.ModuleType("anthropic")
+    fake_module.Anthropic = _FakeAnthropicSDKClient
+    monkeypatch.setitem(sys.modules, "anthropic", fake_module)
+    return _FakeAnthropicSDKClient
+
+
+def test_generate_returns_llm_result_with_text_on_success(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    response = _FakeAnthropicMessage([_FakeAnthropicContentBlock("hello")])
+    _install_fake_anthropic(monkeypatch, response=response)
+    client = LLMClient(provider="anthropic")
+    result = client.generate("sys", "hi")
+    assert result.text == "hello"
+    assert result.error is None
+
+
+def test_generate_returns_error_not_bare_string_on_failure(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _install_fake_anthropic(monkeypatch, error=RuntimeError("boom"))
+    client = LLMClient(provider="anthropic")
+    result = client.generate("sys", "hi")
+    assert result.text is None
+    assert result.error is not None
+    assert "boom" in result.error
+
+
+def test_generate_falls_back_to_openai_when_anthropic_errors_and_openai_key_present(
+    monkeypatch, fake_openai
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setenv("OPENAI_API_KEY", "y")
+    _install_fake_anthropic(monkeypatch, error=RuntimeError("anthropic down"))
+    client = LLMClient(provider="anthropic")
+    result = client.generate("sys", "hi")
+    assert result.text == "ok"
+    assert result.error is None
+    assert fake_openai.captured["create_kwargs"] is not None
+
+
+def test_generate_no_fallback_when_other_key_absent(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _install_fake_anthropic(monkeypatch, error=RuntimeError("anthropic down"))
+    client = LLMClient(provider="anthropic")
+    result = client.generate("sys", "hi")
+    assert result.text is None
+    assert result.error is not None
+
+
+def test_generate_openai_primary_falls_back_to_anthropic(monkeypatch, fake_openai):
+    monkeypatch.setenv("OPENAI_API_KEY", "y")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+
+    class _FailingOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = types.SimpleNamespace(
+                completions=types.SimpleNamespace(
+                    create=lambda **kw: (_ for _ in ()).throw(RuntimeError("openai down"))
+                )
+            )
+
+    fake_module = types.ModuleType("openai")
+    fake_module.OpenAI = _FailingOpenAI
+    monkeypatch.setitem(sys.modules, "openai", fake_module)
+
+    response = _FakeAnthropicMessage([_FakeAnthropicContentBlock("rescued")])
+    _install_fake_anthropic(monkeypatch, response=response)
+
+    client = LLMClient(provider="openai")
+    result = client.generate("sys", "hi")
+    assert result.text == "rescued"
+    assert result.error is None
+
+
+def test_complete_still_returns_bare_string_for_backward_compat(monkeypatch):
+    """complete() is the older API — it must keep returning '' on failure,
+    not raise, so existing callers (output_eval, explainer) don't break."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _install_fake_anthropic(monkeypatch, error=RuntimeError("boom"))
+    client = LLMClient(provider="anthropic")
+    out = client.complete("sys", "hi")
+    assert out == ""

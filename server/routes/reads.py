@@ -10,10 +10,13 @@ from agentdiff.compare import ComparisonResult, compare_all
 from agentdiff.graph_model import build as build_graph
 from agentdiff.structure.structure_yaml import StructureDoc
 from server import crypto
+from server.config import get_settings
+from server.models import LiveTrajectory
 from server.audit import record_audit
 from server.db import get_session
 from server.deps import get_user_ctx, own_project
 from server.models import Finding, Org, Project, Run, SlackConfig, Trajectory, User
+from server.usage import check_quota
 
 router = APIRouter()
 
@@ -337,13 +340,55 @@ async def get_project_stats(
         for r in recent_rows
     ]
 
+    # Drift readiness: is there enough live traffic in the most recent window
+    # for the drift cron to actually classify behavior?  Surfaces the same
+    # min_samples gate the worker enforces so the dashboard can explain a
+    # "quiet" drift lane instead of implying it's broken.
+    settings = get_settings()
+    if settings.drift_window_minutes <= 0 or settings.drift_check_interval_minutes <= 0:
+        drift_status = "disabled"
+    else:
+        window_start = datetime.now(timezone.utc) - timedelta(
+            minutes=settings.drift_window_minutes
+        )
+        live_count: int = (
+            await session.execute(
+                select(func.count(LiveTrajectory.id)).where(
+                    LiveTrajectory.project_id == project.id,
+                    LiveTrajectory.captured_at >= window_start,
+                )
+            )
+        ).scalar_one()
+        drift_status = (
+            "ok" if live_count >= settings.drift_min_samples else "insufficient_samples"
+        )
+
     return {
         "total_runs": total_runs,
         "pass_rate_30": pass_rate_30,
         "failing_streak": failing_streak,
         "last_failure_at": last_failure_at,
         "drift_runs_7d": drift_runs_7d,
+        "drift_status": drift_status,
         "recent": recent,
+    }
+
+
+@router.get("/v1/usage")
+async def get_usage(
+    ctx: tuple[User, Org] = Depends(get_user_ctx),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Current-period usage + plan limits for the caller's org."""
+    _user, org = ctx
+    status = await check_quota(session, org)
+    return {
+        "plan": status.plan,
+        "period": status.period,
+        "runs_used": status.runs_used,
+        "runs_limit": status.runs_limit,
+        "trajectories_used": status.trajectories_used,
+        "trajectories_limit": status.trajectories_limit,
     }
 
 

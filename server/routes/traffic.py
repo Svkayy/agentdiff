@@ -12,6 +12,8 @@ from server.db import get_session
 from server.deps import get_project_from_api_key
 from server.models import LiveTrajectory, Project
 from server.ratelimit import check_rate_limit
+from server.routes.ingest import _enforce_quota
+from server.usage import increment_usage
 
 router = APIRouter()
 logger = logging.getLogger("agentdiff.traffic")
@@ -47,8 +49,16 @@ async def ingest_traffic(
         except Exception:  # noqa: BLE001
             logger.warning("Rate-limit check failed (fail-open) for project %s", project.id)
 
+    # Monthly quota enforcement (429 for capped plans past their cap).
+    await _enforce_quota(session, project)
+
     for payload in body.trajectories:
         session.add(LiveTrajectory(project_id=project.id, payload=payload))
 
     await session.commit()
+
+    # Meter live trajectories against the org's monthly usage.
+    await increment_usage(
+        session, project.org_id, trajectories=len(body.trajectories)
+    )
     return TrafficAccepted(accepted=len(body.trajectories))

@@ -6,9 +6,12 @@ from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from server.config import get_settings
+from server.db import async_session
+from server.metrics import METRICS
 from server.routes import ingest, manage, reads, slack_oauth, traffic
 from server.worker import make_enqueue
 
@@ -60,6 +63,16 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["x-request-id"] = request_id
+        # Record request metric.  Use the matched route template (not the raw
+        # path) so per-id URLs don't explode label cardinality.
+        route = request.scope.get("route")
+        path_label = getattr(route, "path", request.url.path)
+        METRICS.inc(
+            "agentdiff_requests_total",
+            path=path_label,
+            method=request.method,
+            status=str(response.status_code),
+        )
         logger.info(
             "request",
             extra={
@@ -95,6 +108,48 @@ app.include_router(traffic.router)
 app.include_router(slack_oauth.router)
 
 
+async def _check_database() -> bool:
+    """True if a trivial SELECT succeeds against the DB."""
+    try:
+        async with async_session() as session:
+            await session.execute(text("SELECT 1"))
+        return True
+    except Exception:  # noqa: BLE001
+        logger.warning("health: database ping failed", exc_info=True)
+        return False
+
+
+async def _check_redis(request: Request) -> bool:
+    """True if Redis responds to PING."""
+    redis = getattr(request.app.state, "redis_pool", None)
+    if redis is None:
+        return False
+    try:
+        await redis.ping()
+        return True
+    except Exception:  # noqa: BLE001
+        logger.warning("health: redis ping failed", exc_info=True)
+        return False
+
+
 @app.get("/health")
-async def health() -> dict:
-    return {"status": "ok"}
+async def health(request: Request) -> Response:
+    import json
+
+    db_ok = await _check_database()
+    redis_ok = await _check_redis(request)
+    ok = db_ok and redis_ok
+    body = {
+        "status": "ok" if ok else "degraded",
+        "checks": {"database": db_ok, "redis": redis_ok},
+    }
+    return Response(
+        content=json.dumps(body),
+        status_code=200 if ok else 503,
+        media_type="application/json",
+    )
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    return Response(content=METRICS.render(), media_type="text/plain; version=0.0.4")

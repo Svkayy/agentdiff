@@ -1,0 +1,73 @@
+# Deploy the marketing/docs landing site to GitHub Pages.
+#
+# The landing app (landing/) builds to a single self-contained index.html via
+# vite-plugin-singlefile, and its in-app docs section pulls doc bodies from the
+# repo's docs/**/*.md at build time. So a change to EITHER landing/** or
+# docs/** should rebuild and redeploy the site.
+#
+# IMPORTANT: GitHub Pages must be enabled for this repo with "GitHub Actions"
+# as the source (Settings → Pages → Build and deployment → Source: GitHub
+# Actions). This workflow publishes via actions/deploy-pages and will fail
+# until Pages is enabled that way.
+name: Deploy landing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "landing/**"
+      - "docs/**"
+      - ".github/workflows/deploy-landing.yml"
+  # Allow manual redeploys from the Actions tab.
+  workflow_dispatch:
+
+# Least-privilege token for Pages deployment.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; don't cancel an in-flight publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix landing ci
+
+      - name: Build landing (tsc + vite)
+        run: npm --prefix landing run build
+        env:
+          # Optional analytics — set these as repo/environment variables to
+          # enable. Unset is fine; the build ships without analytics.
+          VITE_PLAUSIBLE_DOMAIN: ${{ vars.VITE_PLAUSIBLE_DOMAIN }}
+          # Override the hosted app URL if the dashboard lives elsewhere.
+          VITE_APP_URL: ${{ vars.VITE_APP_URL }}
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: landing/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

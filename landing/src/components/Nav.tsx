@@ -1,9 +1,13 @@
 import { Github } from "lucide-react";
 
+// The hosted dashboard is a separate app that carries the Clerk sign-in gate.
+// CTAs deep-link to it; override per-env with VITE_APP_URL.
+const APP_URL = import.meta.env.VITE_APP_URL ?? "https://app.agentdiff.ai";
+
 const LINKS = [
   { label: "How it works", href: "#how-it-works" },
   { label: "Integrations", href: "#integrations" },
-  { label: "Docs", href: "https://github.com/sandeepvinay/agentdiff#documentation" },
+  { label: "Docs", href: "#/docs" },
 ];
 
 export function Nav() {
@@ -13,13 +17,13 @@ export function Nav() {
         aria-label="Primary"
         className="mx-auto flex h-14 max-w-content items-center justify-between px-5"
       >
-        <a href="#top" className="flex items-baseline gap-2" aria-label="AgentDiff home">
+        <a href="#/" className="flex items-baseline gap-2" aria-label="AgentDiff home">
           <span className="font-mono text-sm font-medium text-ink">Δ</span>
           <span className="font-display text-lg font-bold tracking-tight text-ink">
             AgentDiff
           </span>
         </a>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 sm:gap-6">
           {LINKS.map((l) => (
             <a
               key={l.label}
@@ -31,10 +35,23 @@ export function Nav() {
           ))}
           <a
             href="https://github.com/sandeepvinay/agentdiff"
-            className="inline-flex items-center gap-2 rounded-sm border border-hairline bg-card px-3 py-1.5 text-sm text-ink transition-colors duration-200 hover:border-faint"
+            className="hidden items-center gap-2 rounded-sm border border-hairline bg-card px-3 py-1.5 text-sm text-ink transition-colors duration-200 hover:border-faint sm:inline-flex"
+            aria-label="AgentDiff on GitHub"
           >
             <Github className="h-4 w-4" aria-hidden="true" />
             GitHub
+          </a>
+          <a
+            href={APP_URL}
+            className="hidden text-sm text-muted transition-colors duration-200 hover:text-ink sm:inline"
+          >
+            Sign in
+          </a>
+          <a
+            href={APP_URL}
+            className="inline-flex items-center rounded-sm border border-ink bg-ink px-3 py-1.5 text-sm font-medium text-shell transition-colors duration-200 hover:bg-[#22262D]"
+          >
+            Get started
           </a>
         </div>
       </nav>

@@ -302,7 +302,7 @@ agentdiff doctor     Validate config, runner imports, git refs, hook status, and
 agentdiff hook       Manage the optional autoload hook: status/install/uninstall.
 agentdiff structure  Refresh structure.yaml, merging in added/removed functions
                      while preserving user-edited display names.
-agentdiff replay     Replay captured tool calls (stub in v0).
+agentdiff replay     Deterministically re-run the runner against a recorded HTTP cassette.
 ```
 
 `agentdiff compare` also supports hardened release settings:

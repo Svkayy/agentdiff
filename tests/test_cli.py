@@ -23,11 +23,11 @@ def test_help_lists_all_commands():
         assert cmd in result.output
 
 
-def test_replay_stub_runs():
+def test_replay_requires_cassette_option():
     runner = CliRunner()
-    result = runner.invoke(cli, ["replay"], catch_exceptions=False)
-    assert result.exit_code == 0
-    assert "not implemented in v0" in result.output
+    result = runner.invoke(cli, ["replay"])
+    assert result.exit_code == 2
+    assert "--cassette" in result.output
 
 
 def test_init_writes_config_scaffolding(tmp_path):

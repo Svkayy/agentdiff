@@ -41,7 +41,7 @@ export function onUnauthorized(): void {
   if (handling) return;
   handling = true;
   toast("Session expired — please sign in again", "error");
-  const redirectUrl = "/";
+  const redirectUrl = "/projects";
   if (clerkSignOut) {
     void clerkSignOut({ redirectUrl }).catch(() => {
       if (typeof window !== "undefined") window.location.href = redirectUrl;

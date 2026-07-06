@@ -1527,7 +1527,7 @@ function ProjectHeader({
     try {
       await deleteProject(projectId, getToken);
       toast("Project deleted");
-      navigate("/");
+      navigate("/projects");
     } catch (e) {
       toast(e instanceof Error ? e.message : "Failed to delete project", "error");
       setDeleting(false);
@@ -1669,7 +1669,7 @@ export function ProjectPage() {
     return (
       <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
         <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
-          <Link to="/" className="transition-colors hover:text-ink-dark">Projects</Link>
+          <Link to="/projects" className="transition-colors hover:text-ink-dark">Projects</Link>
           <span>/</span>
           <span className="text-ink-dark">{projectId.slice(0, 8)}…</span>
         </div>
@@ -1682,7 +1682,7 @@ export function ProjectPage() {
     return (
       <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
         <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
-          <Link to="/" className="transition-colors hover:text-ink-dark">Projects</Link>
+          <Link to="/projects" className="transition-colors hover:text-ink-dark">Projects</Link>
           <span>/</span>
           <span className="text-ink-dark">{projectId.slice(0, 8)}…</span>
         </div>
@@ -1698,7 +1698,7 @@ export function ProjectPage() {
             was not found in your organisation, or it was deleted.
           </p>
           <Link
-            to="/"
+            to="/projects"
             className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
           >
             Back to Projects
@@ -1712,7 +1712,7 @@ export function ProjectPage() {
     <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
       {/* Breadcrumb */}
       <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
-        <Link to="/" className="transition-colors hover:text-ink-dark">
+        <Link to="/projects" className="transition-colors hover:text-ink-dark">
           Projects
         </Link>
         <span>/</span>

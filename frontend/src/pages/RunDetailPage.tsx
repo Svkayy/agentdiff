@@ -62,7 +62,7 @@ function NotFoundCard({ runId }: { runId: string }) {
         logged into the correct organisation.
       </p>
       <Link
-        to="/"
+        to="/projects"
         className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
       >
         Back to Projects
@@ -386,7 +386,7 @@ export function RunDetailPage() {
     <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
       {/* Breadcrumb */}
       <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
-        <Link to="/" className="transition-colors hover:text-ink-dark">
+        <Link to="/projects" className="transition-colors hover:text-ink-dark">
           Projects
         </Link>
         <span>/</span>

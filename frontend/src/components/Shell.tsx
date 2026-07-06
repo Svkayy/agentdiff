@@ -8,7 +8,7 @@ interface ShellProps {
 }
 
 export function Shell({ children }: ShellProps) {
-  const onProjects = useMatch("/");
+  const onProjects = useMatch("/projects");
   const { getToken } = useAuth();
   const [orgName, setOrgName] = useState<string | null>(null);
 
@@ -32,7 +32,7 @@ export function Shell({ children }: ShellProps) {
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-hairline bg-white px-xl">
         <div className="flex items-center gap-md">
           <Link
-            to="/"
+            to="/projects"
             className="font-display text-h2 font-bold tracking-tight text-ink-dark"
           >
             AgentDiff
@@ -41,7 +41,7 @@ export function Shell({ children }: ShellProps) {
             <>
               <span className="h-4 w-px bg-hairline" />
               <Link
-                to="/"
+                to="/projects"
                 className="text-small text-neutral-muted transition-colors hover:text-ink-dark"
               >
                 Projects
@@ -56,6 +56,7 @@ export function Shell({ children }: ShellProps) {
               {orgName}
             </span>
           )}
+          {/* Intentional: signed-out users land on the marketing home, not /projects */}
           <UserButton afterSignOutUrl="/" />
         </div>
       </header>

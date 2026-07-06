@@ -192,7 +192,10 @@ toggle.
     hue-rotate/translate stutter, used sparingly on marquee logo blocks to
     sell the "signal noise" motif. Never on primary content.
   - `.animate-marquee` (`@keyframes marquee`, 30s linear infinite) — the
-    provider-ecosystem logo strip's continuous horizontal scroll.
+    provider-ecosystem logo strip's continuous horizontal scroll. The
+    keyframes translate to `-50%`, so the strip MUST render its item list
+    duplicated back-to-back (`[...ITEMS, ...ITEMS]`, `w-max`) — a single
+    un-duplicated list produces a visible jump-cut when the loop restarts.
   - `.animate-blink` (`@keyframes blink`, 1s step-end infinite) — the
     small square "live" indicator dot used in section labels and status
     lines.

@@ -3,6 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      // Pre-paint theme application: read the persisted theme and set the
+      // `dark` class before React mounts, so a dark-mode reload never paints
+      // a light frame first. Kept inline and dependency-free by design.
+      (function () {
+        try {
+          if (localStorage.getItem("agentdiff-theme") === "dark") {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {
+          /* storage unavailable (private mode) — default light */
+        }
+      })();
+    </script>
     <title>AgentDiff — Behavioral CI gate for AI agents</title>
     <meta
       name="description"

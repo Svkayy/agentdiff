@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import { PUBLIC_SECONDARY_CTA } from "@/lib/publicCtas";
 import { WorkflowDiagram } from "./WorkflowDiagram";
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -8,7 +9,7 @@ const ease = [0.22, 1, 0.36, 1] as const;
 /**
  * Brutalist hero — ported from the reference template's `hero-section.tsx`.
  * Pixel headline split around the central WorkflowDiagram, a truthful
- * AgentDiff sub-headline, and the split-arrow "Open Dashboard" CTA.
+ * AgentDiff sub-headline, and public CTAs.
  */
 export function HeroSection() {
   return (
@@ -76,10 +77,10 @@ export function HeroSection() {
             </motion.span>
           </Link>
           <Link
-            to="/projects"
+            to={PUBLIC_SECONDARY_CTA.path}
             className="inline-flex h-10 items-center border-2 border-foreground bg-background px-5 font-mono text-sm uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
           >
-            Open Dashboard
+            {PUBLIC_SECONDARY_CTA.label}
           </Link>
         </motion.div>
       </div>

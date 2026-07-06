@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Cpu } from "lucide-react";
 import { motion } from "framer-motion";
 import { ThemeToggle } from "@/components/system/ThemeToggle";
+import { PUBLIC_DASHBOARD_CTA, PUBLIC_SIGN_IN_CTA } from "@/lib/publicCtas";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -17,7 +18,7 @@ const LINKS: { label: string; href: string; kind: "route" | "anchor" | "external
 /**
  * Brutalist top bar — ported from the reference template's `navbar.tsx`.
  * Bordered rectangle, Cpu mark + AGENTDIFF wordmark, center mono links,
- * ThemeToggle, and a solid "Open Dashboard" CTA into the gated app.
+ * ThemeToggle, and a solid public CTA.
  */
 export function Navbar() {
   return (
@@ -86,19 +87,21 @@ export function Navbar() {
             className="flex items-center gap-4"
           >
             <ThemeToggle />
-            <Link
-              to="/projects"
-              className="hidden sm:block text-xs font-mono tracking-widest uppercase text-muted-foreground hover:text-foreground transition-colors duration-200"
-            >
-              Sign In
-            </Link>
-            <Link to="/projects">
+            {PUBLIC_SIGN_IN_CTA && (
+              <Link
+                to={PUBLIC_SIGN_IN_CTA.path}
+                className="hidden sm:block text-xs font-mono tracking-widest uppercase text-muted-foreground hover:text-foreground transition-colors duration-200"
+              >
+                {PUBLIC_SIGN_IN_CTA.label}
+              </Link>
+            )}
+            <Link to={PUBLIC_DASHBOARD_CTA.path}>
               <motion.span
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className="inline-block bg-foreground text-background px-4 py-2 text-xs font-mono tracking-widest uppercase"
               >
-                Open Dashboard
+                {PUBLIC_DASHBOARD_CTA.label}
               </motion.span>
             </Link>
           </motion.div>

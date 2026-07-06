@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { RunReportPanel } from "@/components/RunReportPanel";
 import { toReportData } from "@/lib/payloadAdapter";
+import { PUBLIC_SECONDARY_CTA } from "@/lib/publicCtas";
 import { SAMPLE } from "@/sample";
 import type { ReportData, Verdict } from "@/types";
 
@@ -255,11 +256,11 @@ export function DemoPage() {
               View Report
             </a>
             <Link
-              to="/projects"
+              to={PUBLIC_SECONDARY_CTA.path}
               className="inline-flex items-center gap-sm border-2 border-foreground bg-background px-lg py-sm font-mono text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
             >
               <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />
-              Open Dashboard
+              {PUBLIC_SECONDARY_CTA.label}
             </Link>
           </div>
         </div>

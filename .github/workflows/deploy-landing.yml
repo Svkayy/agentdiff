@@ -51,6 +51,9 @@ jobs:
           VITE_AGENTDIFF_API_URL: ${{ vars.VITE_AGENTDIFF_API_URL }}
           AGENTDIFF_GITHUB_PAGES: "true"
 
+      - name: Add Pages SPA fallback
+        run: cp frontend/dist/index.html frontend/dist/404.html
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

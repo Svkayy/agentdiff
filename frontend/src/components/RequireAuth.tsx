@@ -11,6 +11,11 @@ import { registerSignOut } from "@/lib/auth";
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as
   | string
   | undefined;
+const APP_BASE =
+  import.meta.env.BASE_URL === "/"
+    ? ""
+    : import.meta.env.BASE_URL.replace(/\/$/, "");
+const DASHBOARD_PATH = `${APP_BASE}/projects`;
 
 /** Shown on gated routes when Clerk is not configured. Marketing routes never
  *  hit this — they render without Clerk entirely. */
@@ -79,8 +84,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return (
     <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}
-      signInFallbackRedirectUrl="/projects"
-      signUpFallbackRedirectUrl="/projects"
+      signInFallbackRedirectUrl={DASHBOARD_PATH}
+      signUpFallbackRedirectUrl={DASHBOARD_PATH}
     >
       <SignedOut>
         <AuthWall />

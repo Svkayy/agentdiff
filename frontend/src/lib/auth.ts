@@ -25,6 +25,12 @@ export function toast(message: string, variant: "info" | "error" = "info"): void
 type SignOut = (opts?: { redirectUrl?: string }) => Promise<void>;
 let clerkSignOut: SignOut | null = null;
 
+const APP_BASE =
+  import.meta.env.BASE_URL === "/"
+    ? ""
+    : import.meta.env.BASE_URL.replace(/\/$/, "");
+const DASHBOARD_PATH = `${APP_BASE}/projects`;
+
 /** Called once from a React effect to hand `auth.ts` a Clerk signOut fn. */
 export function registerSignOut(fn: SignOut): void {
   clerkSignOut = fn;
@@ -41,7 +47,7 @@ export function onUnauthorized(): void {
   if (handling) return;
   handling = true;
   toast("Session expired — please sign in again", "error");
-  const redirectUrl = "/projects";
+  const redirectUrl = DASHBOARD_PATH;
   if (clerkSignOut) {
     void clerkSignOut({ redirectUrl }).catch(() => {
       if (typeof window !== "undefined") window.location.href = redirectUrl;

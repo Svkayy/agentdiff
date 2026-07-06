@@ -355,7 +355,7 @@ export function BehavioralDeltas({ data }: { data: ReportData }) {
   if (tcs.length === 0) {
     return (
       <div className="space-y-lg">
-        <h1 className="font-display text-h1 font-bold text-ink-light">Behavioral Deltas</h1>
+        <h1 className="font-mono text-h1 font-bold uppercase text-ink-light">Behavioral Deltas</h1>
         <p className="text-small text-neutral-faint">No comparison data in this run.</p>
       </div>
     );
@@ -364,7 +364,7 @@ export function BehavioralDeltas({ data }: { data: ReportData }) {
   return (
     <div className="space-y-xl">
       <div>
-        <h1 className="font-display text-h1 font-bold text-ink-light">Behavioral Deltas</h1>
+        <h1 className="font-mono text-h1 font-bold uppercase text-ink-light">Behavioral Deltas</h1>
         <p className="mt-xs text-small text-neutral-faint">
           Per-test-case breakdown of agent invocation rates and tool usage — asterisk (*) denotes
           statistical significance.

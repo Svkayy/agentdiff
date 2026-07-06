@@ -442,7 +442,7 @@ export function RunDetailPage() {
               <div className="mb-sm flex flex-wrap items-center gap-sm">
                 <VerdictBadge verdict={run.verdict} />
                 <KindBadge kind={run.kind} />
-                <span className="font-mono text-micro text-neutral-faint">
+                <span className="font-mono text-micro tabular-nums text-muted-foreground">
                   {new Date(run.created_at).toLocaleString()}
                 </span>
               </div>

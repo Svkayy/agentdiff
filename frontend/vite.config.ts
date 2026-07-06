@@ -5,8 +5,11 @@ import path from "node:path";
 // Default build: a normal, code-split SPA for hosting (Vercel/Pages). This is
 // the unified marketing + dashboard app. The CLI single-file dashboard is a
 // separate build — see vite.cli.config.ts (`npm run build:cli`).
+const isGitHubPagesBuild = process.env.AGENTDIFF_GITHUB_PAGES === "true";
+
 export default defineConfig({
   plugins: [react()],
+  base: isGitHubPagesBuild ? "/agentdiff/" : "/",
   // Load env from the repo root so VITE_CLERK_PUBLISHABLE_KEY in Repo/.env is
   // picked up; only VITE_-prefixed vars are exposed to the client.
   envDir: path.resolve(__dirname, ".."),

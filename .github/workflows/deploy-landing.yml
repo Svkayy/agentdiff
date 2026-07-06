@@ -49,6 +49,7 @@ jobs:
           # API origin for the hosted dashboard. Public marketing/docs render
           # without this, but dashboard API calls need it.
           VITE_AGENTDIFF_API_URL: ${{ vars.VITE_AGENTDIFF_API_URL }}
+          AGENTDIFF_GITHUB_PAGES: "true"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

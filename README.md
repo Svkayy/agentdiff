@@ -5,7 +5,7 @@
 [![CI](https://github.com/Svkayy/agentdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/Svkayy/agentdiff/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-black.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-black.svg)](pyproject.toml)
-[![Version](https://img.shields.io/badge/version-0.1.0-black.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0-black.svg)](CHANGELOG.md)
 
 When you change an agent's prompts, model parameters, or routing code, the final
 output often still looks fine while the *internal* behavior has silently shifted:

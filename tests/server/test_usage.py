@@ -137,7 +137,7 @@ async def test_ingest_quota_exceeded_429(session, _free_project_and_key):
         )
     assert r.status_code == 429
     body = r.json()["detail"]
-    assert body["detail"] == "monthly quota exceeded"
+    assert body["message"] == "monthly quota exceeded"
     assert body["plan"] == "free"
     assert body["used"] == 500
     assert body["limit"] == 500

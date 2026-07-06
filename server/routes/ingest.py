@@ -41,8 +41,11 @@ async def _enforce_quota(session: AsyncSession, project: Project) -> None:
         METRICS.inc("agentdiff_quota_rejections_total")
         raise HTTPException(
             status_code=429,
+            # FastAPI wraps this dict under a top-level "detail" key — keep
+            # the inner shape flat (message, not another "detail") so the
+            # response is {"detail": {"message": ..., "plan": ...}}.
             detail={
-                "detail": "monthly quota exceeded",
+                "message": "monthly quota exceeded",
                 "plan": status.plan,
                 "used": status.used,
                 "limit": status.limit,
@@ -84,7 +87,12 @@ async def create_run(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        # Idempotent replay — never double-count usage.
+        # Idempotent replay — never double-count usage.  If the original
+        # enqueue was lost (crash between commit and enqueue), re-enqueue so
+        # a pending run can't strand forever; process_run's atomic claim
+        # makes duplicate deliveries harmless.
+        if existing.status == "pending":
+            await _maybe_enqueue(request, str(existing.id))
         return RunAccepted(run_id=str(existing.id), status=existing.status)
 
     # Monthly quota enforcement (429 for capped plans past their cap).

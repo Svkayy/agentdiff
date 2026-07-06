@@ -1,6 +1,7 @@
 """Slack notification helper — degrades gracefully on any delivery error."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Callable
 
@@ -130,7 +131,10 @@ async def _deliver(session_or_cfg: Any, run: Any, payload: dict) -> None:
         if cfg.bot_token_encrypted:
             try:
                 token = crypto.decrypt(cfg.bot_token_encrypted)
-                result = SlackClient(token).post_payload(cfg.channel_id, payload)
+                client = SlackClient(token)
+                result = await asyncio.to_thread(
+                    client.post_payload, cfg.channel_id, payload
+                )
                 if result.ok:
                     bot_ok = True
                 else:
@@ -147,7 +151,7 @@ async def _deliver(session_or_cfg: Any, run: Any, payload: dict) -> None:
 
         if cfg.webhook_url_encrypted:
             webhook_url = crypto.decrypt(cfg.webhook_url_encrypted)
-            resp = webhook_post_fn(webhook_url, payload, 10)
+            resp = await asyncio.to_thread(webhook_post_fn, webhook_url, payload, 10)
             if not resp.is_success:
                 raise RuntimeError(f"webhook returned HTTP {resp.status_code}")
 

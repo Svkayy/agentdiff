@@ -660,3 +660,79 @@ def test_run_engine_computes_comparison_once(monkeypatch):
 
     er.run_engine(config, None, traj_data, ["tc1"])
     assert calls["n"] == 1, "compare_all must be computed exactly once per run"
+
+
+# ── CORS origin regex (dev: dynamic localhost ports) ─────────────────────────
+
+def _cors_test_app(origins: str, regex: str):
+    """A minimal app wired with CORSMiddleware exactly as server.main does,
+    driven by an explicit Settings instance."""
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+
+    from server.config import Settings
+
+    settings = Settings(cors_origins=origins, cors_origin_regex=regex)
+    app_ = FastAPI()
+    app_.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins.split(","),
+        allow_origin_regex=settings.cors_origin_regex or None,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=True,
+    )
+
+    @app_.get("/ping")
+    async def ping():  # pragma: no cover - route body irrelevant
+        return {}
+
+    return app_
+
+
+def _preflight(client_app, origin: str):
+    transport = ASGITransport(app=client_app)
+
+    async def go():
+        async with AsyncClient(transport=transport, base_url="http://t") as c:
+            return await c.options(
+                "/ping",
+                headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": "GET",
+                    "Access-Control-Request-Headers": "Authorization",
+                },
+            )
+
+    return go
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cors_origin_regex_allows_dynamic_localhost_ports():
+    """With the dev regex set, any localhost port passes preflight."""
+    app_ = _cors_test_app(
+        "http://localhost:5173", r"^http://(localhost|127\.0\.0\.1):\d+$"
+    )
+    r = await _preflight(app_, "http://localhost:64683")()
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:64683"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cors_origin_regex_still_rejects_foreign_origins():
+    """The regex must not loosen CORS beyond localhost."""
+    app_ = _cors_test_app(
+        "http://localhost:5173", r"^http://(localhost|127\.0\.0\.1):\d+$"
+    )
+    r = await _preflight(app_, "http://evil.example.com")()
+    assert r.headers.get("access-control-allow-origin") is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cors_empty_regex_leaves_static_allowlist_only():
+    """Default (empty) regex disables regex matching entirely — only the
+    static allowlist passes, and dynamic ports are rejected."""
+    app_ = _cors_test_app("http://localhost:5173", "")
+    ok = await _preflight(app_, "http://localhost:5173")()
+    assert ok.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    denied = await _preflight(app_, "http://localhost:64683")()
+    assert denied.headers.get("access-control-allow-origin") is None

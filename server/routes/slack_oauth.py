@@ -1,6 +1,8 @@
 """Slack OAuth routes — install, callback, status, disconnect."""
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 import logging
 import uuid
@@ -8,7 +10,7 @@ from typing import Callable
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,12 +54,18 @@ def _default_join(bot_token: str, channel_id: str) -> dict:
 join_fn: Callable[[str, str], dict] = _default_join
 
 
+def _state_nonce_key(state: str) -> str:
+    """Redis key for the single-use install-state nonce."""
+    return "slack:state:" + hashlib.sha256(state.encode()).hexdigest()
+
+
 # ── Install endpoint ──────────────────────────────────────────────────────────
 
 
 @router.get("/v1/slack/install")
 async def slack_install(
     project_id: uuid.UUID,
+    request: Request,
     ctx: tuple[User, Org] = Depends(get_user_ctx),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
@@ -83,6 +91,14 @@ async def slack_install(
         }
     )
     url = f"https://slack.com/oauth/v2/authorize?{params}"
+
+    # Single-use guard: register a nonce so the unauthenticated callback
+    # accepts each state exactly once — a leaked or replayed install URL
+    # within the 600s TTL can't rebind a project's Slack config.
+    redis_pool = getattr(request.app.state, "redis_pool", None)
+    if redis_pool is not None:
+        await redis_pool.set(_state_nonce_key(state), "1", ex=600)
+
     return {"url": url}
 
 
@@ -91,6 +107,7 @@ async def slack_install(
 
 @router.get("/v1/slack/callback")
 async def slack_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
@@ -106,6 +123,17 @@ async def slack_callback(
         project_id = uuid.UUID(payload["project_id"])
     except Exception:
         raise HTTPException(status_code=400, detail="invalid or expired state")
+
+    # Consume the single-use nonce minted at install (enforced whenever a
+    # Redis pool is wired — i.e. in every real deployment).  A state that
+    # was never minted here, or was already consumed, is rejected even if
+    # its signature and TTL are valid.
+    redis_pool = getattr(request.app.state, "redis_pool", None)
+    if redis_pool is not None:
+        consumed = await redis_pool.getdel(_state_nonce_key(state))
+        if consumed is None:
+            raise HTTPException(status_code=400, detail="invalid or expired state")
+
     actor = payload.get("actor") or _FALLBACK_ACTOR
 
     error_redirect = RedirectResponse(
@@ -119,7 +147,8 @@ async def slack_callback(
 
     # Exchange the code for an access token.
     try:
-        resp = exchange_fn(
+        resp = await asyncio.to_thread(
+            exchange_fn,
             "https://slack.com/api/oauth.v2.access",
             {
                 "client_id": settings.slack_client_id,
@@ -190,7 +219,7 @@ async def slack_callback(
     # Private channels → Slack returns method_not_supported_for_channel_type; we log + continue.
     # The webhook fallback covers channels the bot could not join.
     try:
-        join_result = join_fn(access_token, channel_id)
+        join_result = await asyncio.to_thread(join_fn, access_token, channel_id)
         if not join_result.get("ok"):
             log.info(
                 "Slack conversations.join skipped for channel %s: %s",

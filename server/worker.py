@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from arq import ArqRedis, cron, func
 from arq.connections import RedisSettings
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from server.config import get_settings
 from server.db import async_session
@@ -79,12 +79,26 @@ async def process_run(ctx, run_id: str) -> None:
     """Execute the agentdiff engine for a run and persist findings."""
     factory = _session_factory(ctx)
     async with factory() as session:
+        # Idempotency guard, claimed atomically: a duplicate queue delivery
+        # (or manual re-enqueue) of a completed or in-flight run must be a
+        # no-op — a read-then-write check would let two concurrent workers
+        # both pass and double-insert Finding rows.  Only pending/failed
+        # runs are claimable; failed stays claimable so arq retries work.
+        claim = await session.execute(
+            update(Run)
+            .where(Run.id == run_id, Run.status.in_(("pending", "failed")))
+            .values(status="processing")
+        )
+        await session.commit()
+        if claim.rowcount == 0:
+            log.info(
+                "process_run skipped: run %s already done or claimed", run_id
+            )
+            return
+
         run = (
             await session.execute(select(Run).where(Run.id == run_id))
         ).scalar_one()
-
-        run.status = "processing"
-        await session.commit()
 
         rows = (
             await session.execute(

@@ -424,6 +424,10 @@ async def set_slack(
         cfg.channel_id = body.channel_id
         cfg.bot_token_encrypted = enc
         cfg.enabled = True
+        # Manual reconfigure supersedes any prior OAuth install: clear the
+        # stored webhook so the delivery fallback can't post to the old
+        # OAuth channel, and status stops reporting via="oauth".
+        cfg.webhook_url_encrypted = None
     await record_audit(
         session,
         org.id,

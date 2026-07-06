@@ -514,3 +514,117 @@ async def test_callback_join_raises_still_connected(session, monkeypatch):
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
+
+
+# ── Single-use state nonce (replay defense) ───────────────────────────────────
+
+class _FakeRedis:
+    """Minimal set/getdel fake standing in for the arq Redis pool."""
+
+    def __init__(self):
+        self.store: dict[str, str] = {}
+
+    async def set(self, key, value, ex=None):
+        self.store[key] = value
+
+    async def getdel(self, key):
+        return self.store.pop(key, None)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_callback_rejects_replayed_state(session, monkeypatch):
+    """With a Redis pool wired, a state token is accepted exactly once —
+    replaying the same install URL within its TTL must 400."""
+    monkeypatch.setenv("AGENTDIFF_SLACK_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("AGENTDIFF_SLACK_CLIENT_SECRET", "test-client-secret")
+    from server.config import get_settings
+    get_settings.cache_clear()
+
+    org = Org(name="nonce-org")
+    project = Project(org=org, name="nonce-proj")
+    session.add(project)
+    await session.commit()
+    user = User(org_id=org.id, clerk_user_id="u_nonce", email="n@n")
+    session.add(user)
+    await session.commit()
+
+    fake_redis = _FakeRedis()
+    app.state.redis_pool = fake_redis
+
+    def fake_exchange(url, data, timeout):
+        resp = MagicMock()
+        resp.json.return_value = {
+            "ok": True,
+            "access_token": "xoxb-nonce-token",
+            "incoming_webhook": {
+                "channel_id": "C0NONCE",
+                "url": "https://hooks.slack.com/services/T0/B0/nonce",
+            },
+        }
+        return resp
+
+    monkeypatch.setattr(slack_oauth, "exchange_fn", fake_exchange, raising=False)
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.get(f"/v1/slack/install?project_id={project.id}")
+            assert r.status_code == 200
+            from urllib.parse import urlparse, parse_qs
+            state = parse_qs(urlparse(r.json()["url"]).query)["state"][0]
+            assert len(fake_redis.store) == 1  # nonce minted
+
+            # First callback consumes the nonce.
+            r1 = await c.get(
+                "/v1/slack/callback",
+                params={"code": "c1", "state": state},
+                follow_redirects=False,
+            )
+            assert r1.status_code in (302, 307)
+            assert len(fake_redis.store) == 0  # nonce consumed
+
+            # Replay of the same state must be rejected.
+            r2 = await c.get(
+                "/v1/slack/callback",
+                params={"code": "c2", "state": state},
+                follow_redirects=False,
+            )
+            assert r2.status_code == 400
+    finally:
+        app.dependency_overrides.clear()
+        del app.state.redis_pool
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_callback_rejects_unminted_state(session, monkeypatch):
+    """A validly-signed state that was never minted through /install (no
+    nonce in Redis) is rejected when a pool is wired."""
+    monkeypatch.setenv("AGENTDIFF_SLACK_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("AGENTDIFF_SLACK_CLIENT_SECRET", "test-client-secret")
+    from server.config import get_settings
+    get_settings.cache_clear()
+
+    org = Org(name="unminted-org")
+    project = Project(org=org, name="unminted-proj")
+    session.add(project)
+    await session.commit()
+    user = User(org_id=org.id, clerk_user_id="u_unminted", email="um@um")
+    session.add(user)
+    await session.commit()
+
+    app.state.redis_pool = _FakeRedis()
+    # Forge a signed state directly, bypassing /install (no nonce minted).
+    state = crypto.encrypt(
+        json.dumps({"project_id": str(project.id), "actor": "u_unminted"})
+    )
+
+    try:
+        async with await _client(session, (user, org)) as c:
+            r = await c.get(
+                "/v1/slack/callback",
+                params={"code": "c1", "state": state},
+                follow_redirects=False,
+            )
+            assert r.status_code == 400
+    finally:
+        app.dependency_overrides.clear()
+        del app.state.redis_pool

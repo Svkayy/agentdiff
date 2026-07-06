@@ -65,9 +65,12 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["x-request-id"] = request_id
         # Record request metric.  Use the matched route template (not the raw
-        # path) so per-id URLs don't explode label cardinality.
+        # path) so per-id URLs don't explode label cardinality.  Unmatched
+        # routes (404s) get a fixed sentinel — labeling them with the raw
+        # path would let unauthenticated scanners mint unbounded counter
+        # series in the in-memory registry.
         route = request.scope.get("route")
-        path_label = getattr(route, "path", request.url.path)
+        path_label = getattr(route, "path", None) or "unmatched"
         METRICS.inc(
             "agentdiff_requests_total",
             path=path_label,
@@ -97,6 +100,7 @@ app.add_middleware(RequestIDMiddleware)
 app.add_middleware(                             # outermost (registered last)
     CORSMiddleware,
     allow_origins=settings.cors_origins.split(","),
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,

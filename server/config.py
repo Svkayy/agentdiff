@@ -34,6 +34,10 @@ class Settings(BaseSettings):
 
     # CORS: comma-separated allowed origins.
     cors_origins: str = "http://localhost:5173"
+    # CORS: optional origin regex, matched in addition to cors_origins. Meant
+    # for local dev where the Vite server lands on a dynamic port (e.g.
+    # ^http://localhost:\d+$). Leave empty in production.
+    cors_origin_regex: str = ""
 
     # Slack OAuth (platform-level app — owner registers once).
     slack_client_id: str = ""

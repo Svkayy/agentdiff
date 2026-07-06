@@ -14,17 +14,19 @@ import { RunSummary } from "@/sections/RunSummary";
 
 // ── Verdict / kind badges ─────────────────────────────────────────────────────
 
+// Verdict mapping (DESIGN.md, locked): pass = neutral/foreground chip;
+// warn = orange OUTLINE; fail = solid #ea580c.
 function VerdictBadge({ verdict }: { verdict: string | null }) {
   const styles: Record<string, string> = {
-    pass: "bg-verdict-pass/10 text-verdict-pass border border-verdict-pass/30",
-    warn: "bg-verdict-warn/10 text-verdict-warn border border-verdict-warn/30",
-    fail: "bg-ember/10 text-ember border border-ember/30",
+    pass: "border-2 border-foreground text-foreground",
+    warn: "border-2 border-[#ea580c] text-[#ea580c]",
+    fail: "border-2 border-[#ea580c] bg-[#ea580c] text-background",
   };
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-sm px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
-        verdict ? styles[verdict] ?? "border border-hairline text-neutral-faint" : "text-neutral-faint",
+        "inline-flex items-center px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
+        verdict ? styles[verdict] ?? "border-2 border-border text-muted-foreground" : "text-muted-foreground",
       )}
       title={verdict ?? undefined}
     >
@@ -35,11 +37,11 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
 
 function KindBadge({ kind }: { kind: string }) {
   return kind === "drift" ? (
-    <span className="inline-flex items-center rounded-sm border border-ember/30 px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-ember">
+    <span className="inline-flex items-center border-2 border-[#ea580c] px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-[#ea580c]">
       Live Drift
     </span>
   ) : (
-    <span className="inline-flex items-center rounded-sm border border-hairline px-sm py-2xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <span className="inline-flex items-center border-2 border-border px-sm py-2xs font-mono text-micro uppercase tracking-widest text-muted-foreground">
       CI
     </span>
   );
@@ -49,21 +51,21 @@ function KindBadge({ kind }: { kind: string }) {
 
 function NotFoundCard({ runId }: { runId: string }) {
   return (
-    <div className="rounded-md border border-hairline bg-white p-2xl text-center">
-      <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <div className="border-2 border-foreground bg-background p-2xl text-center">
+      <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
         Run not found
       </div>
-      <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">
+      <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">
         This run isn&apos;t in your project
       </h2>
-      <p className="mb-lg max-w-md mx-auto text-small text-neutral-muted">
-        Run <code className="font-mono text-ink-dark">{runId.slice(0, 8)}…</code>{" "}
+      <p className="mb-lg max-w-md mx-auto font-mono text-small text-muted-foreground">
+        Run <code className="font-mono text-foreground">{runId.slice(0, 8)}…</code>{" "}
         doesn&apos;t belong to your current project, or it was deleted. Check that you&apos;re
         logged into the correct organisation.
       </p>
       <Link
         to="/projects"
-        className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
+        className="inline-block bg-foreground px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-background transition-opacity hover:opacity-80"
       >
         Back to Projects
       </Link>
@@ -137,7 +139,7 @@ function ExportBar({ runId, payload }: { runId: string; payload: unknown }) {
         disabled={!payload}
         aria-label="Download run payload as JSON"
         title="Download run payload as JSON"
-        className="flex items-center gap-xs rounded-sm border border-hairline bg-white px-sm py-2xs font-mono text-micro text-neutral-muted transition-colors hover:border-ink-dark hover:text-ink-dark disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex items-center gap-xs border-2 border-foreground bg-background px-sm py-2xs font-mono text-micro uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background disabled:cursor-not-allowed disabled:opacity-40"
       >
         <DownloadIcon />
         <span>Download JSON</span>
@@ -147,7 +149,7 @@ function ExportBar({ runId, payload }: { runId: string; payload: unknown }) {
         onClick={() => void copyLink()}
         aria-label="Copy link to this run"
         title="Copy link to this run"
-        className="flex items-center gap-xs rounded-sm border border-hairline bg-white px-sm py-2xs font-mono text-micro text-neutral-muted transition-colors hover:border-ink-dark hover:text-ink-dark"
+        className="flex items-center gap-xs border-2 border-foreground bg-background px-sm py-2xs font-mono text-micro uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
       >
         <LinkIcon />
         <span>{copied ? "Copied!" : "Copy link"}</span>
@@ -163,13 +165,13 @@ function RigorBanners({ data }: { data: ReportData }) {
   if (data.warnings.length === 0 && skippedCount === 0) return null;
 
   return (
-    <div className="mb-xl space-y-sm">
+    <div className="mb-xl mt-xl space-y-sm">
       {data.warnings.length > 0 && (
-        <div className="rounded-md border border-verdict-warn/30 bg-verdict-warn/5 px-lg py-md">
-          <div className="mb-xs font-mono text-micro font-bold uppercase tracking-widest text-verdict-warn">
+        <div className="border-2 border-[#ea580c] bg-background px-lg py-md">
+          <div className="mb-xs font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#ea580c]">
             Low statistical power
           </div>
-          <ul className="list-inside list-disc space-y-2xs text-small text-ink-dark">
+          <ul className="list-inside list-disc space-y-2xs font-mono text-small text-foreground">
             {data.warnings.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
@@ -177,11 +179,11 @@ function RigorBanners({ data }: { data: ReportData }) {
         </div>
       )}
       {skippedCount > 0 && (
-        <div className="rounded-md border border-verdict-warn/30 bg-verdict-warn/5 px-lg py-md">
-          <div className="mb-xs font-mono text-micro font-bold uppercase tracking-widest text-verdict-warn">
+        <div className="border-2 border-[#ea580c] bg-background px-lg py-md">
+          <div className="mb-xs font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#ea580c]">
             Evaluation incomplete
           </div>
-          <ul className="list-inside list-disc space-y-2xs text-small text-ink-dark">
+          <ul className="list-inside list-disc space-y-2xs font-mono text-small text-foreground">
             {data.outputEvals.flatMap((e) =>
               e.skipped_checks.map((s, i) => (
                 <li key={`${e.test_case_id}-${s.check}-${i}`}>
@@ -200,19 +202,23 @@ function RigorBanners({ data }: { data: ReportData }) {
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "deltas", label: "Behavioral Deltas" },
-  { id: "attribution", label: "Attribution" },
-  { id: "timeline", label: "Timeline" },
-  { id: "summary", label: "Summary" },
+  { id: "overview", label: "Overview", file: "overview.sys" },
+  { id: "deltas", label: "Behavioral Deltas", file: "behavioral_deltas.log" },
+  { id: "attribution", label: "Attribution", file: "attribution.map" },
+  { id: "timeline", label: "Timeline", file: "trajectory.log" },
+  { id: "summary", label: "Summary", file: "run_summary.md" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
 function TabBar({ active, onChange }: { active: TabId; onChange: (id: TabId) => void }) {
   return (
-    <div role="tablist" aria-label="Run report sections" className="flex flex-wrap gap-xs border-b border-hairline">
-      {TABS.map((tab) => {
+    <div
+      role="tablist"
+      aria-label="Run report sections"
+      className="flex flex-wrap border-2 border-foreground"
+    >
+      {TABS.map((tab, i) => {
         const isActive = tab.id === active;
         return (
           <button
@@ -224,10 +230,11 @@ function TabBar({ active, onChange }: { active: TabId; onChange: (id: TabId) => 
             id={`tab-${tab.id}`}
             onClick={() => onChange(tab.id)}
             className={cn(
-              "rounded-t-sm px-md py-sm font-mono text-small transition-colors duration-[80ms] -mb-px",
+              "px-md py-sm font-mono text-micro uppercase tracking-widest transition-colors duration-[80ms]",
+              i > 0 && "border-l-2 border-foreground",
               isActive
-                ? "border-b-2 border-ink-dark text-ink-dark"
-                : "text-neutral-faint hover:text-ink-dark",
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
             )}
           >
             {tab.label}
@@ -240,23 +247,35 @@ function TabBar({ active, onChange }: { active: TabId; onChange: (id: TabId) => 
 
 function ReportPanel({ data }: { data: ReportData }) {
   const [active, setActive] = useState<TabId>("overview");
+  const activeTab = TABS.find((t) => t.id === active) ?? TABS[0];
 
   return (
     <div>
       <TabBar active={active} onChange={setActive} />
       <RigorBanners data={data} />
-      <div
-        role="tabpanel"
-        id={`panel-${active}`}
-        aria-labelledby={`tab-${active}`}
-        className="rounded-lg border border-node-border p-xl"
-        style={{ background: "#0E1116" }}
-      >
-        {active === "overview" && <Overview data={data} />}
-        {active === "deltas" && <BehavioralDeltas data={data} />}
-        {active === "attribution" && <Attribution data={data} />}
-        {active === "timeline" && <Timeline data={data} />}
-        {active === "summary" && <RunSummary data={data} />}
+      {/* Header-bar card: `file.ext` nameplate + section index */}
+      <div className="mt-xl border-2 border-node-border">
+        <div className="flex items-center justify-between border-b-2 border-node-border bg-canvas px-5 py-3">
+          <span className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">
+            {activeTab.file}
+          </span>
+          <span className="font-mono text-xs tracking-[0.2em] text-neutral-faint opacity-50">
+            {String(TABS.findIndex((t) => t.id === active) + 1).padStart(3, "0")}
+          </span>
+        </div>
+        <div
+          role="tabpanel"
+          id={`panel-${active}`}
+          aria-labelledby={`tab-${active}`}
+          className="p-xl"
+          style={{ background: "#0E1116" }}
+        >
+          {active === "overview" && <Overview data={data} />}
+          {active === "deltas" && <BehavioralDeltas data={data} />}
+          {active === "attribution" && <Attribution data={data} />}
+          {active === "timeline" && <Timeline data={data} />}
+          {active === "summary" && <RunSummary data={data} />}
+        </div>
       </div>
     </div>
   );
@@ -385,24 +404,24 @@ export function RunDetailPage() {
   return (
     <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
       {/* Breadcrumb */}
-      <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
-        <Link to="/projects" className="transition-colors hover:text-ink-dark">
+      <div className="mb-xl flex items-center gap-xs font-mono text-micro uppercase tracking-wider text-muted-foreground">
+        <Link to="/projects" className="transition-colors hover:text-foreground">
           Projects
         </Link>
         <span>/</span>
         {run && (
           <>
-            <span className="text-ink-dark">Run</span>
+            <span className="text-foreground">Run</span>
             <span>/</span>
           </>
         )}
-        <span className="text-ink-dark">{runId.slice(0, 8)}…</span>
+        <span className="text-foreground">{runId.slice(0, 8)}…</span>
       </div>
 
       {loading && (
         <div className="space-y-md">
-          <div className="h-10 w-64 animate-pulse rounded-sm border border-hairline bg-hairline" />
-          <div className="h-64 animate-pulse rounded-md border border-hairline bg-hairline" />
+          <div className="h-10 w-64 animate-pulse border-2 border-foreground bg-muted" />
+          <div className="h-64 animate-pulse border-2 border-foreground bg-muted" />
         </div>
       )}
 
@@ -410,7 +429,7 @@ export function RunDetailPage() {
       {!loading && notFound && <NotFoundCard runId={runId} />}
 
       {!loading && error && (
-        <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
+        <div className="border-2 border-[#ea580c] bg-background px-md py-sm font-mono text-small text-[#ea580c]">
           {error}
         </div>
       )}
@@ -427,13 +446,13 @@ export function RunDetailPage() {
                   {new Date(run.created_at).toLocaleString()}
                 </span>
               </div>
-              <h1 className="font-display text-h1 font-bold text-ink-dark">Run detail</h1>
-              <div className="mt-xs font-mono text-micro text-neutral-faint">
-                <span className="text-ink-dark">{run.baseline_ref}</span>
+              <h1 className="font-mono text-2xl font-bold uppercase tracking-tight text-foreground">Run detail</h1>
+              <div className="mt-xs font-mono text-micro text-muted-foreground">
+                <span className="text-foreground">{run.baseline_ref}</span>
                 <span className="mx-xs">→</span>
-                <span className="text-ink-dark">{run.candidate_ref}</span>
-                <span className="mx-sm text-neutral-faint">·</span>
-                <span>
+                <span className="text-foreground">{run.candidate_ref}</span>
+                <span className="mx-sm text-muted-foreground">·</span>
+                <span className="tabular-nums">
                   n={run.baseline_samples} vs {run.candidate_samples} samples
                 </span>
               </div>
@@ -443,11 +462,11 @@ export function RunDetailPage() {
 
           {/* Failed run banner — show engine error prominently before the report */}
           {run.status === "failed" && run.error && (
-            <div className="mb-2xl rounded-md border border-ember/30 bg-ember/5 p-lg">
-              <div className="mb-xs font-mono text-micro font-bold uppercase tracking-widest text-ember">
+            <div className="mb-2xl border-2 border-[#ea580c] bg-background p-lg">
+              <div className="mb-xs font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#ea580c]">
                 Run failed
               </div>
-              <pre className="whitespace-pre-wrap font-mono text-micro text-ember">
+              <pre className="whitespace-pre-wrap font-mono text-micro text-[#ea580c]">
                 {run.error}
               </pre>
             </div>
@@ -457,32 +476,32 @@ export function RunDetailPage() {
           {run.status !== "failed" && (
             <>
               {payloadPending && (
-                <div className="rounded-md border border-hairline bg-white p-2xl text-center">
-                  <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+                <div className="border-2 border-foreground bg-background p-2xl text-center">
+                  <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
                     Processing
                   </div>
-                  <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">
+                  <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">
                     Report isn&apos;t ready yet
                   </h2>
-                  <p className="text-small text-neutral-muted">
+                  <p className="font-mono text-small text-muted-foreground">
                     This run is still being processed — checking again every 5 seconds.
                   </p>
                 </div>
               )}
 
               {!payloadPending && payloadError && (
-                <div className="rounded-md border border-ember/30 bg-ember/5 p-2xl text-center">
-                  <div className="mb-xs font-mono text-micro uppercase tracking-widest text-ember">
+                <div className="border-2 border-[#ea580c] bg-background p-2xl text-center">
+                  <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-[#ea580c]">
                     Error
                   </div>
-                  <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">
+                  <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">
                     Report unavailable
                   </h2>
-                  <p className="mb-lg text-small text-neutral-muted">{payloadError}</p>
+                  <p className="mb-lg font-mono text-small text-muted-foreground">{payloadError}</p>
                   <button
                     type="button"
                     onClick={() => setPayloadRetryKey((k) => k + 1)}
-                    className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
+                    className="bg-foreground px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-background transition-opacity hover:opacity-80"
                   >
                     Retry
                   </button>
@@ -495,11 +514,11 @@ export function RunDetailPage() {
 
           {/* Engine error on non-failed runs (e.g. partial error) */}
           {run.status !== "failed" && run.error && (
-            <div className="mt-2xl rounded-sm border border-ember/30 bg-ember/5 px-md py-sm">
-              <div className="mb-xs font-mono text-micro uppercase tracking-widest text-ember">
+            <div className="mt-2xl border-2 border-[#ea580c] bg-background px-md py-sm">
+              <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-[#ea580c]">
                 Run error
               </div>
-              <pre className="whitespace-pre-wrap font-mono text-micro text-ember">
+              <pre className="whitespace-pre-wrap font-mono text-micro text-[#ea580c]">
                 {run.error}
               </pre>
             </div>

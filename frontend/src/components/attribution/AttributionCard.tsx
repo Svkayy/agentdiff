@@ -3,15 +3,17 @@ import { CardSpotlight } from "@/components/aceternity/CardSpotlight";
 import { DiffHunk } from "@/components/attribution/DiffHunk";
 import type { AttributionConfidence, AttributionEntry, Verdict } from "@/types";
 
+// Verdict mapping (DESIGN.md, locked): pass = neutral cream; warn = orange
+// OUTLINE; fail = solid orange.
 function VerdictBadge({ verdict }: { verdict: Verdict }) {
   const styles: Record<Verdict, string> = {
-    fail: "border-ember/30 bg-ember/10 text-ember",
-    warn: "border-verdict-warn/30 bg-verdict-warn/10 text-verdict-warn",
-    pass: "border-verdict-pass/30 bg-verdict-pass/10 text-verdict-pass",
+    fail: "border-[#ea580c] bg-[#ea580c] text-background",
+    warn: "border-[#ea580c] text-[#ea580c]",
+    pass: "border-node-border text-ink-light",
   };
   return (
     <Badge
-      className={`font-mono text-micro font-bold uppercase tracking-widest ${styles[verdict]}`}
+      className={`rounded-none border-2 font-mono text-micro font-bold uppercase tracking-widest ${styles[verdict]}`}
       variant="outline"
     >
       {verdict}
@@ -34,15 +36,18 @@ function confidenceLabel(confidence: AttributionConfidence): string {
   return "low-confidence heuristic";
 }
 
+// Confidence is styled mono/uppercase; low-confidence heuristics get the orange
+// outline treatment so a best-guess cause is visually flagged, high/medium are
+// neutral cream (a confident cause needs no signal).
 function ConfidenceBadge({ confidence }: { confidence: AttributionConfidence }) {
   const styles: Record<AttributionConfidence, string> = {
-    high: "border-verdict-pass/30 bg-verdict-pass/10 text-verdict-pass",
-    medium: "border-verdict-warn/30 bg-verdict-warn/10 text-verdict-warn",
-    low: "border-neutral-faint/30 bg-node-fill text-neutral-faint",
+    high: "border-node-border text-ink-light",
+    medium: "border-node-border text-neutral-faint",
+    low: "border-[#ea580c] text-[#ea580c]",
   };
   return (
     <span
-      className={`rounded-sm border px-xs py-2xs font-mono text-micro uppercase tracking-widest ${styles[confidence]}`}
+      className={`border-2 px-xs py-2xs font-mono text-micro uppercase tracking-widest ${styles[confidence]}`}
     >
       {confidenceLabel(confidence)}
     </span>
@@ -55,7 +60,7 @@ export function AttributionCard({ entry }: { entry: AttributionEntry }) {
   const confidencePct = primary ? Math.round(primary.weight * 100) : null;
 
   return (
-    <CardSpotlight className="rounded-md border border-node-border bg-node-fill p-lg space-y-md">
+    <CardSpotlight className="border-2 border-node-border bg-node-fill p-lg space-y-md">
       {/* Card header */}
       <div className="flex items-start justify-between gap-md">
         <div>
@@ -63,8 +68,8 @@ export function AttributionCard({ entry }: { entry: AttributionEntry }) {
             Agent
           </div>
           <div
-            className={`mt-2xs font-display text-h2 font-bold ${
-              verdict === "fail" ? "text-ember" : "text-ink-light"
+            className={`mt-2xs font-mono text-h2 font-bold uppercase ${
+              verdict === "fail" ? "text-[#ea580c]" : "text-ink-light"
             }`}
           >
             {entry.agent_name}
@@ -82,10 +87,10 @@ export function AttributionCard({ entry }: { entry: AttributionEntry }) {
           <div className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
             Primary Cause
           </div>
-          <div className="rounded-sm border border-node-border bg-canvas px-md py-sm space-y-2xs">
+          <div className="border-2 border-node-border bg-canvas px-md py-sm space-y-2xs">
             <div className="flex items-center gap-sm flex-wrap">
               <code className="font-mono text-small text-ink-light">{primary.target_path}</code>
-              <span className="rounded-sm border border-node-border bg-node-fill px-xs py-2xs font-mono text-micro text-neutral-faint">
+              <span className="border-2 border-node-border bg-node-fill px-xs py-2xs font-mono text-micro text-neutral-faint">
                 {primary.rule}
               </span>
               <span className="font-mono text-small font-bold text-ink-light">
@@ -110,7 +115,7 @@ export function AttributionCard({ entry }: { entry: AttributionEntry }) {
 
       {/* Explanation */}
       {entry.explanation && (
-        <div className="rounded-sm border-l-2 border-neutral-muted pl-md">
+        <div className="border-l-2 border-neutral-muted pl-md">
           <p className="text-small italic text-neutral-faint leading-relaxed">
             {entry.explanation}
           </p>
@@ -127,7 +132,7 @@ export function AttributionCard({ entry }: { entry: AttributionEntry }) {
             {entry.alternatives.map((alt, i) => (
               <div
                 key={i}
-                className="flex items-center gap-sm flex-wrap rounded-sm border border-node-border bg-canvas px-md py-sm"
+                className="flex items-center gap-sm flex-wrap border-2 border-node-border bg-canvas px-md py-sm"
               >
                 <code className="font-mono text-micro text-ink-light">{alt.target_path}</code>
                 <span className="font-mono text-micro text-neutral-faint">{alt.rule}</span>

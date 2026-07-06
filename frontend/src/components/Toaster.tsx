@@ -39,8 +39,8 @@ export function Toaster() {
             transition={{ duration: 0.2, ease: "easeOut" }}
             className={
               t.variant === "error"
-                ? "pointer-events-auto max-w-sm rounded-md border border-ember/30 bg-white px-md py-sm text-small text-ember shadow-sm"
-                : "pointer-events-auto max-w-sm rounded-md border border-hairline bg-white px-md py-sm text-small text-ink-dark shadow-sm"
+                ? "pointer-events-auto max-w-sm border-2 border-[#ea580c] bg-background px-md py-sm font-mono text-small text-[#ea580c]"
+                : "pointer-events-auto max-w-sm border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground"
             }
             role="status"
           >

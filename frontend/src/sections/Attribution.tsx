@@ -9,8 +9,8 @@ export function Attribution({ data }: { data: ReportData }) {
   if (!data.attribution || entries.length === 0) {
     return (
       <div className="space-y-lg">
-        <h1 className="font-display text-h1 font-bold text-ink-light">Causal Attribution</h1>
-        <div className="rounded-md border border-node-border bg-node-fill px-lg py-2xl text-center">
+        <h1 className="font-mono text-h1 font-bold uppercase text-ink-light">Causal Attribution</h1>
+        <div className="border-2 border-node-border bg-node-fill px-lg py-2xl text-center">
           <p className="text-small text-neutral-faint">
             No attribution data in this run. Attribution requires at least one non-passing
             behavioral delta.
@@ -23,7 +23,7 @@ export function Attribution({ data }: { data: ReportData }) {
   return (
     <div className="space-y-xl">
       <div>
-        <h1 className="font-display text-h1 font-bold text-ink-light">Causal Attribution</h1>
+        <h1 className="font-mono text-h1 font-bold uppercase text-ink-light">Causal Attribution</h1>
         <p className="mt-xs text-small text-neutral-faint">
           Each non-passing behavioral delta mapped to the specific changed file (and diff hunk) most
           likely responsible. One card per agent, highest-confidence cause shown.

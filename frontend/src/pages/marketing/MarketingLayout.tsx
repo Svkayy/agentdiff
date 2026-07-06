@@ -1,17 +1,19 @@
 import type { ReactNode } from "react";
-import { Nav } from "./components/Nav";
-import { Footer } from "./components/Footer";
+import { Navbar } from "./components/Navbar";
+import { BrutalistFooter } from "./components/BrutalistFooter";
 
 /**
- * Public marketing chrome — Nav + Footer wrapper shared by the home, docs, and
- * legal routes. Renders without Clerk (marketing must work with no env vars).
+ * Public marketing chrome — brutalist Navbar + Footer wrapper shared by the
+ * home, docs, and legal routes. Renders without Clerk (marketing must work
+ * with no env vars). The `dot-grid-bg` shell gives the instrument-panel
+ * texture behind every public page.
  */
 export function MarketingLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-shell text-ink">
-      <Nav />
+    <div className="min-h-screen dot-grid-bg bg-background text-foreground">
+      <Navbar />
       {children}
-      <Footer />
+      <BrutalistFooter />
     </div>
   );
 }

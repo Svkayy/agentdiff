@@ -12,15 +12,17 @@ import { shortRef } from "@/lib/payload";
 import type { OutputEval, ReportData, Verdict } from "@/types";
 
 // ── Verdict badge ─────────────────────────────────────────────────────────────
+// Verdict mapping (DESIGN.md, locked): pass = neutral cream; warn = orange
+// OUTLINE; fail = solid orange.
 function VerdictBadge({ verdict }: { verdict: Verdict }) {
   const styles: Record<Verdict, string> = {
-    fail: "border-ember/30 bg-ember/10 text-ember",
-    warn: "border-verdict-warn/30 bg-verdict-warn/10 text-verdict-warn",
-    pass: "border-verdict-pass/30 bg-verdict-pass/10 text-verdict-pass",
+    fail: "border-[#ea580c] bg-[#ea580c] text-background",
+    warn: "border-[#ea580c] text-[#ea580c]",
+    pass: "border-node-border text-ink-light",
   };
   return (
     <Badge
-      className={`font-mono text-micro font-bold uppercase tracking-widest ${styles[verdict]}`}
+      className={`rounded-none border-2 font-mono text-micro font-bold uppercase tracking-widest ${styles[verdict]}`}
       variant="outline"
     >
       {verdict}
@@ -61,7 +63,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="rounded-sm border border-node-border bg-node-fill px-sm py-2xs font-mono text-micro text-neutral-faint transition-colors hover:bg-node-fill/50 hover:text-ink-light"
+      className="border-2 border-node-border bg-node-fill px-sm py-2xs font-mono text-micro text-neutral-faint transition-colors hover:bg-node-fill/50 hover:text-ink-light"
     >
       {copied ? "Copied!" : "Copy"}
     </button>
@@ -138,7 +140,7 @@ function ThresholdsCard({ data }: { data: ReportData }) {
   ];
 
   return (
-    <div className="rounded-md border border-node-border bg-node-fill p-md">
+    <div className="border-2 border-node-border bg-node-fill p-md">
       <div className="mb-sm font-mono text-micro uppercase tracking-widest text-neutral-faint">
         Thresholds
       </div>
@@ -240,7 +242,7 @@ function ReproBlock({ data }: { data: ReportData }) {
       <div className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
         Reproduction Command
       </div>
-      <div className="flex items-center gap-sm rounded-md border border-node-border bg-canvas px-md py-sm">
+      <div className="flex items-center gap-sm border-2 border-node-border bg-canvas px-md py-sm">
         <code className="flex-1 font-mono text-small text-ink-light break-all">{cmd}</code>
         <CopyButton text={cmd} />
       </div>
@@ -253,7 +255,7 @@ export function RunSummary({ data }: { data: ReportData }) {
   return (
     <div className="space-y-2xl">
       <div>
-        <h1 className="font-display text-h1 font-bold text-ink-light">Run Summary</h1>
+        <h1 className="font-mono text-h1 font-bold uppercase text-ink-light">Run Summary</h1>
         <p className="mt-xs text-small text-neutral-faint">
           Run quality, output evaluation details, and reproduction command.
         </p>
@@ -261,8 +263,8 @@ export function RunSummary({ data }: { data: ReportData }) {
 
       {/* Run quality */}
       <div className="space-y-md">
-        <h2 className="font-display text-h2 font-semibold text-ink-light">Run Quality</h2>
-        <div className="rounded-md border border-node-border bg-node-fill/30">
+        <h2 className="font-mono text-h2 font-bold uppercase text-ink-light">Run Quality</h2>
+        <div className="border-2 border-node-border bg-node-fill/30">
           <RunQualityTable data={data} />
         </div>
         <ThresholdsCard data={data} />
@@ -270,21 +272,21 @@ export function RunSummary({ data }: { data: ReportData }) {
 
       {/* Output evaluation */}
       <div className="space-y-md">
-        <h2 className="font-display text-h2 font-semibold text-ink-light">
+        <h2 className="font-mono text-h2 font-bold uppercase text-ink-light">
           Output Evaluation Details
         </h2>
         <p className="text-small text-neutral-faint">
           Traditional output-level metrics — semantic / structural similarity, length ratio, and
           LLM judge score. Note that these may pass even when behavioral deltas fail.
         </p>
-        <div className="rounded-md border border-node-border bg-node-fill/30 overflow-x-auto">
+        <div className="border-2 border-node-border bg-node-fill/30 overflow-x-auto">
           <OutputEvalTable evals={data.outputEvals} />
         </div>
       </div>
 
       {/* Reproduction */}
       <div className="space-y-md">
-        <h2 className="font-display text-h2 font-semibold text-ink-light">Reproduction</h2>
+        <h2 className="font-mono text-h2 font-bold uppercase text-ink-light">Reproduction</h2>
         <ReproBlock data={data} />
       </div>
     </div>

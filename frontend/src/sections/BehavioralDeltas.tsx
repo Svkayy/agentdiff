@@ -19,15 +19,17 @@ import type {
 } from "@/types";
 
 // ── Verdict badge ─────────────────────────────────────────────────────────────
+// Verdict mapping (DESIGN.md, locked): pass = neutral cream chip;
+// warn = orange OUTLINE; fail = solid orange.
 function VerdictBadge({ verdict }: { verdict: Verdict }) {
   const styles: Record<Verdict, string> = {
-    fail: "border-ember/30 bg-ember/10 text-ember",
-    warn: "border-verdict-warn/30 bg-verdict-warn/10 text-verdict-warn",
-    pass: "border-verdict-pass/30 bg-verdict-pass/10 text-verdict-pass",
+    fail: "border-[#ea580c] bg-[#ea580c] text-background",
+    warn: "border-[#ea580c] text-[#ea580c]",
+    pass: "border-node-border text-ink-light",
   };
   return (
     <Badge
-      className={`font-mono text-micro font-bold uppercase tracking-widest ${styles[verdict]}`}
+      className={`rounded-none border-2 font-mono text-micro font-bold uppercase tracking-widest ${styles[verdict]}`}
       variant="outline"
     >
       {verdict}
@@ -55,7 +57,7 @@ function fmtAvg(avg: number): string {
 // ── Delta display ─────────────────────────────────────────────────────────────
 function DeltaCell({ delta, isEmber }: { delta: number; isEmber: boolean }) {
   const sign = delta > 0 ? "+" : "";
-  const cls = isEmber ? "text-ember font-bold" : delta < 0 ? "text-verdict-warn" : "text-ink-light";
+  const cls = isEmber ? "text-[#ea580c] font-bold" : delta < 0 ? "text-[#ea580c]" : "text-ink-light";
   return (
     <span className={`font-mono tabular-nums ${cls}`}>
       {sign}
@@ -127,19 +129,19 @@ function DeltaTable({ tc }: { tc: TestCaseComparison }) {
               <TableRow
                 key={`agent-${d.agent_name}-${idx}`}
                 className={`border-node-border transition-colors ${
-                  isStopped ? "bg-ember/5" : "hover:bg-node-fill/50"
+                  isStopped ? "bg-[#ea580c]/10" : "hover:bg-node-fill/50"
                 }`}
               >
                 <TableCell className="font-mono text-small text-ink-light">
-                  <span className={isStopped ? "text-ember font-bold" : ""}>{d.agent_name}</span>
+                  <span className={isStopped ? "text-[#ea580c] font-bold" : ""}>{d.agent_name}</span>
                   {isStopped && (
-                    <span className="ml-sm rounded-sm border border-ember/30 bg-ember/10 px-xs py-2xs font-mono text-micro text-ember">
+                    <span className="ml-sm border-2 border-[#ea580c] bg-[#ea580c]/15 px-xs py-2xs font-mono text-micro text-[#ea580c]">
                       STOPPED
                     </span>
                   )}
                 </TableCell>
                 <TableCell>
-                  <span className="rounded-sm border border-node-border bg-node-fill px-xs py-2xs font-mono text-micro text-neutral-faint">
+                  <span className="border-2 border-node-border bg-node-fill px-xs py-2xs font-mono text-micro text-neutral-faint">
                     agent
                   </span>
                 </TableCell>
@@ -148,7 +150,7 @@ function DeltaTable({ tc }: { tc: TestCaseComparison }) {
                 </TableCell>
                 <TableCell
                   className={`text-right font-mono tabular-nums text-small ${
-                    isStopped ? "text-ember font-bold" : "text-ink-light"
+                    isStopped ? "text-[#ea580c] font-bold" : "text-ink-light"
                   }`}
                 >
                   {fmtRate(d.candidate_rate)}
@@ -171,14 +173,14 @@ function DeltaTable({ tc }: { tc: TestCaseComparison }) {
               <TableRow
                 key={`tool-${d.tool_name}-${idx}`}
                 className={`border-node-border transition-colors ${
-                  isStopped ? "bg-ember/5" : "hover:bg-node-fill/50"
+                  isStopped ? "bg-[#ea580c]/10" : "hover:bg-node-fill/50"
                 }`}
               >
                 <TableCell className="font-mono text-small text-ink-light">
-                  <span className={isStopped ? "text-ember font-bold" : ""}>{d.tool_name}</span>
+                  <span className={isStopped ? "text-[#ea580c] font-bold" : ""}>{d.tool_name}</span>
                 </TableCell>
                 <TableCell>
-                  <span className="rounded-sm border border-node-border bg-node-fill px-xs py-2xs font-mono text-micro text-neutral-faint">
+                  <span className="border-2 border-node-border bg-node-fill px-xs py-2xs font-mono text-micro text-neutral-faint">
                     tool
                   </span>
                 </TableCell>
@@ -187,7 +189,7 @@ function DeltaTable({ tc }: { tc: TestCaseComparison }) {
                 </TableCell>
                 <TableCell
                   className={`text-right font-mono tabular-nums text-small ${
-                    isStopped ? "text-ember font-bold" : "text-ink-light"
+                    isStopped ? "text-[#ea580c] font-bold" : "text-ink-light"
                   }`}
                 >
                   {fmtAvg(d.candidate_avg)}
@@ -228,7 +230,7 @@ function RunMetricsTable({ metrics }: { metrics: RunMetricDelta[] }) {
   if (metrics.length === 0) return null;
 
   return (
-    <div className="rounded-md border border-node-border bg-node-fill/30">
+    <div className="border-2 border-node-border bg-node-fill/30">
       <div className="border-b border-node-border px-md py-sm font-mono text-micro uppercase tracking-widest text-neutral-faint">
         Runtime Metrics
       </div>
@@ -264,7 +266,7 @@ function RunMetricsTable({ metrics }: { metrics: RunMetricDelta[] }) {
                   {METRIC_LABELS[m.metric]}
                   {m.low_power && (
                     <span
-                      className="ml-sm rounded-sm border border-verdict-warn/30 bg-verdict-warn/10 px-xs py-2xs font-mono text-micro text-verdict-warn"
+                      className="ml-sm border-2 border-[#ea580c] px-xs py-2xs font-mono text-micro text-[#ea580c]"
                       title="Sample size below the configured minimum — treat this delta cautiously"
                     >
                       low power
@@ -276,7 +278,7 @@ function RunMetricsTable({ metrics }: { metrics: RunMetricDelta[] }) {
                 </TableCell>
                 <TableCell
                   className={`text-right font-mono tabular-nums text-small ${
-                    isEmber ? "text-ember font-bold" : "text-ink-light"
+                    isEmber ? "text-[#ea580c] font-bold" : "text-ink-light"
                   }`}
                 >
                   {fmtMetricValue(m.metric, m.candidate_mean)}
@@ -318,19 +320,21 @@ function CaseTabs({
           <button
             key={tc.test_case_id}
             onClick={() => onChange(tc.test_case_id)}
-            className={`flex items-center gap-xs rounded-t-sm px-md py-sm font-mono text-small transition-colors duration-[80ms] ${
+            className={`flex items-center gap-xs px-md py-sm font-mono text-small transition-colors duration-[80ms] ${
               isActive
                 ? "border-b-2 border-ink-light bg-node-fill text-ink-light -mb-px"
                 : "text-neutral-faint hover:text-ink-light"
             }`}
           >
+            {/* Verdict dot (locked mapping): fail = solid orange; warn = orange
+                outline; pass = neutral cream. */}
             <span
-              className={`h-1.5 w-1.5 rounded-full ${
+              className={`h-2 w-2 ${
                 verdictAccent === "ember"
-                  ? "bg-ember"
+                  ? "bg-[#ea580c]"
                   : verdictAccent === "verdict-warn"
-                    ? "bg-verdict-warn"
-                    : "bg-verdict-pass"
+                    ? "border-2 border-[#ea580c] bg-transparent"
+                    : "bg-ink-light"
               }`}
             />
             {tc.test_case_id}
@@ -388,7 +392,7 @@ export function BehavioralDeltas({ data }: { data: ReportData }) {
             </div>
 
             {/* Delta table */}
-            <div className="rounded-md border border-node-border bg-node-fill/30">
+            <div className="border-2 border-node-border bg-node-fill/30">
               <DeltaTable tc={activeCase} />
             </div>
 

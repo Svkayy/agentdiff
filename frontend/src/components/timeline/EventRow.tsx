@@ -6,7 +6,7 @@ import type { TimelineEvent } from "@/types";
 const AGENT_COLORS: Record<string, string> = {
   orchestrator: "bg-[#4A6CF7]/20 text-[#7B96F8] border-[#4A6CF7]/30",
   retriever: "bg-[#3FB27F]/20 text-[#3FB27F] border-[#3FB27F]/30",
-  fact_checker: "bg-ember/20 text-ember border-ember/30",
+  fact_checker: "bg-[#ea580c]/20 text-[#ea580c] border-[#ea580c]",
   summarizer: "bg-[#E8A33D]/20 text-[#E8A33D] border-[#E8A33D]/30",
 };
 
@@ -35,14 +35,14 @@ function KindGlyph({ kind }: { kind: string }) {
   }
   if (kind === "local_tool_invoked") {
     return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-verdict-warn/30 bg-verdict-warn/10 font-mono text-micro text-verdict-warn">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[#ea580c] bg-[#ea580c]/10 font-mono text-micro text-[#ea580c]">
         ⚙
       </span>
     );
   }
   if (kind === "local_tool_returned") {
     return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-verdict-warn/30 bg-verdict-warn/10 font-mono text-micro text-verdict-warn">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[#ea580c] bg-[#ea580c]/10 font-mono text-micro text-[#ea580c]">
         ✓
       </span>
     );
@@ -68,7 +68,7 @@ export function EventRow({ event }: { event: TimelineEvent }) {
   return (
     <div
       className={cn(
-        "rounded-sm border border-node-border bg-node-fill/30 px-md py-sm transition-colors",
+        "border-2 border-node-border bg-node-fill/30 px-md py-sm transition-colors",
         hasPreview && "cursor-pointer hover:bg-node-fill/60",
       )}
       onClick={() => hasPreview && setExpanded((v) => !v)}
@@ -85,7 +85,7 @@ export function EventRow({ event }: { event: TimelineEvent }) {
         {/* Agent chip */}
         <span
           className={cn(
-            "shrink-0 rounded-sm border px-xs py-2xs font-mono text-micro",
+            "shrink-0 border-2 px-xs py-2xs font-mono text-micro",
             agentColor(event.inferred_agent),
           )}
         >
@@ -132,7 +132,7 @@ export function EventRow({ event }: { event: TimelineEvent }) {
               <div className="mb-2xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
                 Request
               </div>
-              <pre className="overflow-x-auto rounded-sm bg-canvas p-sm font-mono text-micro text-ink-light whitespace-pre-wrap leading-relaxed">
+              <pre className="overflow-x-auto border-2 border-node-border bg-canvas p-sm font-mono text-micro text-ink-light whitespace-pre-wrap leading-relaxed">
                 {truncate(event.request_preview, 300)}
               </pre>
             </div>
@@ -142,7 +142,7 @@ export function EventRow({ event }: { event: TimelineEvent }) {
               <div className="mb-2xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
                 Response
               </div>
-              <pre className="overflow-x-auto rounded-sm bg-canvas p-sm font-mono text-micro text-ink-light whitespace-pre-wrap leading-relaxed">
+              <pre className="overflow-x-auto border-2 border-node-border bg-canvas p-sm font-mono text-micro text-ink-light whitespace-pre-wrap leading-relaxed">
                 {truncate(event.response_preview, 300)}
               </pre>
             </div>
@@ -152,7 +152,7 @@ export function EventRow({ event }: { event: TimelineEvent }) {
               <div className="mb-2xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
                 Args
               </div>
-              <pre className="overflow-x-auto rounded-sm bg-canvas p-sm font-mono text-micro text-ink-light whitespace-pre-wrap leading-relaxed">
+              <pre className="overflow-x-auto border-2 border-node-border bg-canvas p-sm font-mono text-micro text-ink-light whitespace-pre-wrap leading-relaxed">
                 {truncate(event.request_preview, 300)}
               </pre>
             </div>

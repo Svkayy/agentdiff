@@ -16,74 +16,34 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as
  *  hit this — they render without Clerk entirely. */
 function MissingClerkConfig() {
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#FAFAF8",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 440,
-          border: "1px solid #E6E3DD",
-          borderRadius: 14,
-          background: "#fff",
-          padding: "40px 36px",
-        }}
-      >
-        <div
-          style={{
-            fontFamily: "monospace",
-            fontSize: 11,
-            textTransform: "uppercase",
-            letterSpacing: "0.14em",
-            color: "#8A929C",
-            marginBottom: 12,
-          }}
-        >
-          Configuration required
+    <div className="dot-grid-bg flex min-h-screen items-center justify-center bg-background px-6">
+      <div className="w-full max-w-[440px] border-2 border-foreground bg-background">
+        {/* Header-bar nameplate */}
+        <div className="flex items-center justify-between border-b-2 border-foreground px-5 py-3">
+          <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            config.env
+          </span>
+          <span className="h-2 w-2 bg-[#ea580c]" aria-hidden="true" />
         </div>
-        <h1
-          style={{
-            fontWeight: 700,
-            fontSize: "1.25rem",
-            color: "#15181D",
-            margin: "0 0 12px",
-          }}
-        >
-          Clerk not configured
-        </h1>
-        <p style={{ color: "#5B6470", margin: "0 0 20px", lineHeight: 1.5 }}>
-          Set{" "}
-          <code
-            style={{
-              fontFamily: "monospace",
-              background: "#F4F2EE",
-              borderRadius: 4,
-              padding: "2px 6px",
-            }}
-          >
-            VITE_CLERK_PUBLISHABLE_KEY
-          </code>{" "}
-          in your <code style={{ fontFamily: "monospace" }}>.env</code> file and
-          restart the dev server.
-        </p>
-        <pre
-          style={{
-            background: "#F4F2EE",
-            borderRadius: 6,
-            padding: "12px 14px",
-            fontSize: 12,
-            color: "#15181D",
-            overflowX: "auto",
-          }}
-        >
-          {`VITE_CLERK_PUBLISHABLE_KEY=pk_test_...`}
-        </pre>
+        <div className="px-6 py-8">
+          <div className="mb-md font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            Configuration required
+          </div>
+          <h1 className="mb-md font-mono text-xl font-bold uppercase text-foreground">
+            Clerk not configured
+          </h1>
+          <p className="mb-lg font-mono text-sm leading-relaxed text-muted-foreground">
+            Set{" "}
+            <code className="border border-border bg-muted px-1.5 py-0.5 font-mono text-foreground">
+              VITE_CLERK_PUBLISHABLE_KEY
+            </code>{" "}
+            in your <code className="font-mono text-foreground">.env</code> file and restart the
+            dev server.
+          </p>
+          <pre className="overflow-x-auto border-2 border-foreground bg-foreground px-3.5 py-3 font-mono text-xs text-background">
+            {`VITE_CLERK_PUBLISHABLE_KEY=pk_test_...`}
+          </pre>
+        </div>
       </div>
     </div>
   );
@@ -100,7 +60,7 @@ function SignOutBridge() {
 
 function AuthWall() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-shell-bg">
+    <div className="dot-grid-bg flex min-h-screen items-center justify-center bg-background">
       <SignIn />
     </div>
   );

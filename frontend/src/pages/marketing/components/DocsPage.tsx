@@ -93,13 +93,13 @@ function Sidebar({ activeSlug }: { activeSlug: string | null }) {
   return (
     <nav
       aria-label="Docs"
-      className="w-full shrink-0 border-b border-hairline pb-6 lg:w-60 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-6"
+      className="w-full shrink-0 border-b-2 border-foreground pb-6 lg:w-60 lg:border-b-0 lg:border-r-2 lg:pb-0 lg:pr-6"
     >
       <ul className="space-y-6">
         {docGroups.map((group) => (
           <li key={group.title}>
-            <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-faint">
-              {group.title}
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              {`// ${group.title}`}
             </p>
             <ul className="space-y-0.5">
               {group.docs.map((doc) => {
@@ -110,10 +110,10 @@ function Sidebar({ activeSlug }: { activeSlug: string | null }) {
                       to={`/docs/${doc.slug}`}
                       aria-current={active ? "page" : undefined}
                       className={
-                        "block rounded-sm px-2 py-1 text-sm transition-colors duration-200 " +
+                        "block border-l-2 px-3 py-1 font-mono text-sm transition-colors duration-200 " +
                         (active
-                          ? "bg-card font-medium text-ink shadow-[inset_2px_0_0_0_#15181D]"
-                          : "text-muted hover:text-ink")
+                          ? "border-[#ea580c] font-bold text-foreground"
+                          : "border-transparent text-muted-foreground hover:border-foreground hover:text-foreground")
                       }
                     >
                       {doc.title}
@@ -135,16 +135,16 @@ function OnThisPage({ slug, headings }: { slug: string; headings: Heading[] }) {
   return (
     <aside className="hidden w-48 shrink-0 xl:block">
       <div className="sticky top-20">
-        <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-faint">
-          On this page
+        <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          {"// ON THIS PAGE"}
         </p>
-        <ul className="space-y-1 border-l border-hairline">
+        <ul className="space-y-1 border-l-2 border-border">
           {headings.map((h) => (
             <li key={h.id}>
               <Link
                 to={`/docs/${slug}#${h.id}`}
                 className={
-                  "block border-l border-transparent py-0.5 text-sm text-muted transition-colors duration-200 hover:text-ink " +
+                  "-ml-0.5 block border-l-2 border-transparent py-0.5 font-mono text-sm text-muted-foreground transition-colors duration-200 hover:border-foreground hover:text-foreground " +
                   (h.level === 3 ? "pl-6" : "pl-3")
                 }
               >
@@ -165,17 +165,17 @@ function PrevNext({ slug }: { slug: string }) {
   return (
     <nav
       aria-label="Pagination"
-      className="mt-12 grid gap-4 border-t border-hairline pt-6 sm:grid-cols-2"
+      className="mt-12 grid gap-4 border-t-2 border-foreground pt-6 sm:grid-cols-2"
     >
       {prev ? (
         <Link
           to={`/docs/${prev.slug}`}
-          className="group flex flex-col rounded-md border border-hairline bg-card p-4 transition-colors duration-200 hover:border-faint"
+          className="group flex flex-col border-2 border-foreground bg-background p-4 transition-colors duration-200 hover:border-[#ea580c]"
         >
-          <span className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em] text-faint">
+          <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             <ArrowLeft className="h-3 w-3" aria-hidden="true" /> Previous
           </span>
-          <span className="mt-1 text-sm font-medium text-ink">{prev.title}</span>
+          <span className="mt-1 font-mono text-sm font-bold text-foreground">{prev.title}</span>
         </Link>
       ) : (
         <span />
@@ -183,12 +183,12 @@ function PrevNext({ slug }: { slug: string }) {
       {next ? (
         <Link
           to={`/docs/${next.slug}`}
-          className="group flex flex-col items-end rounded-md border border-hairline bg-card p-4 text-right transition-colors duration-200 hover:border-faint"
+          className="group flex flex-col items-end border-2 border-foreground bg-background p-4 text-right transition-colors duration-200 hover:border-[#ea580c]"
         >
-          <span className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em] text-faint">
+          <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             Next <ArrowRight className="h-3 w-3" aria-hidden="true" />
           </span>
-          <span className="mt-1 text-sm font-medium text-ink">{next.title}</span>
+          <span className="mt-1 font-mono text-sm font-bold text-foreground">{next.title}</span>
         </Link>
       ) : (
         <span />
@@ -201,32 +201,34 @@ function PrevNext({ slug }: { slug: string }) {
 function DocsIndex() {
   return (
     <div>
-      <p className="font-mono text-[12px] uppercase tracking-[0.16em] text-muted">
-        Documentation
+      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+        {"// DOCUMENTATION"}
       </p>
-      <h1 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-ink">
+      <h1 className="mt-3 font-mono text-3xl font-bold uppercase tracking-tight text-foreground">
         AgentDiff docs
       </h1>
-      <p className="mt-3 max-w-2xl text-lg leading-relaxed text-muted">
+      <p className="mt-3 max-w-2xl font-mono text-sm leading-relaxed text-muted-foreground">
         Everything to install AgentDiff, read a behavioral diff, wire the CI gate,
         and run the hosted platform.
       </p>
       <div className="mt-8 space-y-8">
         {docGroups.map((group) => (
           <section key={group.title}>
-            <h2 className="font-display text-lg font-bold text-ink">{group.title}</h2>
-            <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+            <h2 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-foreground">
+              {group.title}
+            </h2>
+            <ul className="mt-3 grid gap-0 border-2 border-foreground sm:grid-cols-2">
               {group.docs.map((doc) => (
-                <li key={doc.slug}>
+                <li key={doc.slug} className="border-b-2 border-foreground last:border-b-0 sm:[&:nth-last-child(-n+1)]:border-b-0">
                   <Link
                     to={`/docs/${doc.slug}`}
-                    className="flex items-start gap-3 rounded-md border border-hairline bg-card p-4 transition-colors duration-200 hover:border-faint"
+                    className="flex h-full items-start gap-3 p-4 transition-colors duration-200 hover:bg-foreground/5"
                   >
                     <BookOpen
-                      className="mt-0.5 h-4 w-4 shrink-0 text-faint"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-[#ea580c]"
                       aria-hidden="true"
                     />
-                    <span className="text-sm font-medium text-ink">{doc.title}</span>
+                    <span className="font-mono text-sm font-medium text-foreground">{doc.title}</span>
                   </Link>
                 </li>
               ))}
@@ -248,8 +250,8 @@ function DocArticle({ doc }: { doc: DocEntry }) {
   return (
     <div className="flex gap-10">
       <article className="min-w-0 flex-1">
-        <p className="font-mono text-[12px] uppercase tracking-[0.16em] text-muted">
-          {doc.group}
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          {`// ${doc.group}`}
         </p>
         <div
           className="doc-prose mt-4"
@@ -300,12 +302,12 @@ export function DocsPage({ slug }: DocsPageProps) {
             <DocArticle doc={doc} />
           ) : (
             <div>
-              <h1 className="font-display text-2xl font-bold text-ink">
+              <h1 className="font-mono text-2xl font-bold uppercase text-foreground">
                 Doc not found
               </h1>
-              <p className="mt-3 text-muted">
+              <p className="mt-3 font-mono text-sm text-muted-foreground">
                 That page doesn&rsquo;t exist yet.{" "}
-                <Link className="text-ink underline" to="/docs">
+                <Link className="text-foreground underline" to="/docs">
                   Back to docs
                 </Link>
                 .

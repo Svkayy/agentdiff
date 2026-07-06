@@ -58,7 +58,7 @@ export function AgentGraph({
         className: broken ? "stopped" : undefined,
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: broken ? "#FF4D2E" : "#7dd3fc",
+          color: broken ? "#ea580c" : "#7dd3fc",
           width: 18,
           height: 18,
         },

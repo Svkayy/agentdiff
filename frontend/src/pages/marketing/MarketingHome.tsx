@@ -1,18 +1,16 @@
-import { Hero } from "./components/Hero";
-import { SlackBrief } from "./components/SlackBrief";
-import { Features } from "./components/Features";
-import { HowItWorks } from "./components/HowItWorks";
-import { Integrations } from "./components/Integrations";
+import { HeroSection } from "./components/HeroSection";
+import { FeatureGrid } from "./components/FeatureGrid";
+import { AboutSection } from "./components/AboutSection";
+import { GlitchMarquee } from "./components/GlitchMarquee";
 
-/** Marketing landing home — the public "/" route. */
+/** Brutalist marketing landing home — the public "/" route. */
 export function MarketingHome() {
   return (
     <main>
-      <Hero />
-      <SlackBrief />
-      <Features />
-      <HowItWorks />
-      <Integrations />
+      <HeroSection />
+      <FeatureGrid />
+      <AboutSection />
+      <GlitchMarquee />
     </main>
   );
 }

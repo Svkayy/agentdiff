@@ -2,17 +2,19 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 import { fetchProjects, createProject, type Project } from "@/lib/api";
-import { Spotlight } from "@/components/aceternity/Spotlight";
 import { useSkipEntrance } from "@/lib/utils";
+
+const ease = [0.22, 1, 0.36, 1] as const;
 
 function Skeleton() {
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+    <div className="grid grid-cols-1 gap-0 border-2 border-foreground md:grid-cols-3">
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="h-36 animate-pulse rounded-md border border-hairline bg-hairline"
+          className="h-36 animate-pulse bg-muted md:border-r-2 md:border-foreground md:last:border-r-0"
         />
       ))}
     </div>
@@ -21,23 +23,28 @@ function Skeleton() {
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-3xl text-center">
-      <div className="mb-md font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <div className="flex flex-col items-center justify-center border-2 border-foreground py-3xl text-center">
+      <div className="mb-md font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
         No projects yet
       </div>
-      <h2 className="mb-sm font-display text-h1 font-bold text-ink-dark">
+      <h2 className="mb-sm font-mono text-2xl font-bold uppercase tracking-tight text-foreground">
         Create your first project
       </h2>
-      <p className="mb-lg max-w-md text-small text-neutral-muted">
+      <p className="mb-lg max-w-md font-mono text-small text-muted-foreground">
         A project holds your runs, API keys, and Slack alerts. Create one to get
         started with the AgentDiff CI gate or live drift collector.
       </p>
-      <button
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.97 }}
         onClick={onCreate}
-        className="rounded-sm border border-ink-dark bg-ink-dark px-lg py-sm text-small font-medium text-white transition-colors hover:bg-neutral-muted"
+        className="group flex items-center gap-0 font-mono text-xs uppercase tracking-wider text-background"
       >
-        Create project
-      </button>
+        <span className="flex h-9 w-9 items-center justify-center bg-[#ea580c]">
+          <ArrowRight size={14} strokeWidth={2} className="text-background" />
+        </span>
+        <span className="bg-foreground px-lg py-2.5">Create project</span>
+      </motion.button>
     </div>
   );
 }
@@ -52,46 +59,45 @@ function ProjectCard({
   onClick: () => void;
 }) {
   const skip = useSkipEntrance();
-  const [hovered, setHovered] = useState(false);
+
+  // Turn a display name into a `name.proj`-style mono label.
+  const slug = project.name.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9._-]/g, "");
 
   return (
-    <motion.div
+    <motion.button
       initial={skip ? false : { y: 12, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.32, ease: "easeOut", delay: index * 0.07 }}
-      className="relative"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      transition={{ duration: 0.32, ease, delay: index * 0.07 }}
+      onClick={onClick}
+      className="group flex h-full w-full flex-col border-2 border-foreground bg-background text-left transition-colors hover:bg-foreground/[0.03]"
     >
-      <AnimatePresence>
-        {hovered && (
-          <motion.span
-            layoutId="project-card-slab"
-            className="absolute -inset-1.5 rounded-lg bg-[#EFEDE8]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1, transition: { duration: 0.2, ease: "easeOut" } }}
-            exit={{ opacity: 0, transition: { duration: 0.2, ease: "easeIn" } }}
-          />
-        )}
-      </AnimatePresence>
-      <button
-        onClick={onClick}
-        className="relative flex h-full w-full flex-col rounded-md border border-hairline bg-white p-6 text-left transition-shadow hover:shadow-sm"
-      >
-        <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
-          Project
-        </div>
-        <h3 className="font-display text-lg font-bold leading-tight text-ink-dark">
+      {/* Header bar */}
+      <div className="flex items-center justify-between border-b-2 border-foreground px-5 py-3">
+        <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+          {slug ? `${slug}.proj` : "project.proj"}
+        </span>
+        <span className="font-mono text-xs tracking-[0.2em] text-muted-foreground opacity-50">
+          {String(index + 1).padStart(2, "0")}
+        </span>
+      </div>
+      {/* Body */}
+      <div className="flex flex-1 flex-col px-5 py-4">
+        <h3 className="font-mono text-lg font-bold uppercase leading-tight tracking-tight text-foreground">
           {project.name}
         </h3>
-        <p className="mt-2 text-small leading-relaxed text-neutral-muted">
+        <p className="mt-2 font-mono text-small leading-relaxed text-muted-foreground">
           View runs, manage API keys, and configure Slack alerts.
         </p>
-        <div className="mt-auto pt-md text-micro text-neutral-faint">
-          →
+        <div className="mt-auto pt-md">
+          <ArrowRight
+            size={14}
+            strokeWidth={2}
+            className="text-[#ea580c] transition-transform group-hover:translate-x-1"
+            aria-hidden="true"
+          />
         </div>
-      </button>
-    </motion.div>
+      </div>
+    </motion.button>
   );
 }
 
@@ -153,15 +159,15 @@ export function ProjectsPage() {
 
   return (
     <div className="relative mx-auto w-full max-w-[1240px] px-xl py-2xl">
-      <Spotlight className="left-0 top-0 h-full w-full" />
-
       {/* Header */}
       <div className="relative mb-2xl flex items-end justify-between">
         <div>
-          <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
-            Projects
+          <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            {"// PROJECTS"}
           </div>
-          <h1 className="font-display text-h1 font-bold text-ink-dark">Your projects</h1>
+          <h1 className="font-mono text-2xl font-bold uppercase tracking-tight text-foreground">
+            Your projects
+          </h1>
         </div>
         <div className="flex items-center gap-md">
           <input
@@ -169,11 +175,11 @@ export function ProjectsPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search projects…"
             aria-label="Search projects"
-            className="w-56 rounded-sm border border-hairline bg-white px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
+            className="w-56 border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
           />
           <button
             onClick={() => setShowCreate((v) => !v)}
-            className="rounded-sm border border-hairline bg-white px-md py-sm text-small font-medium text-ink-dark transition-colors hover:border-ink-dark"
+            className="border-2 border-foreground bg-background px-md py-sm font-mono text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
           >
             {showCreate ? "Cancel" : "+ New project"}
           </button>
@@ -182,11 +188,11 @@ export function ProjectsPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="mb-lg flex items-center justify-between rounded-sm border border-ember/30 bg-ember/5 px-md py-sm">
-          <span className="text-small text-ember">{error}</span>
+        <div className="mb-lg flex items-center justify-between border-2 border-[#ea580c] bg-background px-md py-sm">
+          <span className="font-mono text-small text-[#ea580c]">{error}</span>
           <button
             onClick={() => void load()}
-            className="ml-md text-small font-medium text-ember underline"
+            className="ml-md font-mono text-small font-medium text-[#ea580c] underline"
           >
             Retry
           </button>
@@ -201,12 +207,12 @@ export function ProjectsPage() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            transition={{ duration: 0.2, ease }}
             onSubmit={(e) => void handleCreate(e)}
-            className="mb-xl flex items-end gap-md rounded-md border border-hairline bg-white p-lg"
+            className="mb-xl flex items-end gap-md border-2 border-foreground bg-background p-lg"
           >
             <div className="flex-1">
-              <label className="mb-xs block font-mono text-micro uppercase tracking-widest text-neutral-faint">
+              <label className="mb-xs block font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 Project name
               </label>
               <input
@@ -214,13 +220,13 @@ export function ProjectsPage() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="my-agent-project"
-                className="w-full rounded-sm border border-hairline bg-shell-bg px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
+                className="w-full border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
               />
             </div>
             <button
               type="submit"
               disabled={creating || !newName.trim()}
-              className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity disabled:opacity-40"
+              className="bg-foreground px-lg py-sm font-mono text-xs uppercase tracking-wider text-background transition-opacity disabled:opacity-40"
             >
               {creating ? "Creating…" : "Create"}
             </button>
@@ -232,9 +238,9 @@ export function ProjectsPage() {
       {loading ? (
         <Skeleton />
       ) : projects.length === 0 && search.trim() ? (
-        <div className="rounded-md border border-hairline bg-white py-2xl text-center text-small text-neutral-muted">
+        <div className="border-2 border-foreground bg-background py-2xl text-center font-mono text-small text-muted-foreground">
           No projects match{" "}
-          <span className="font-mono text-ink-dark">&ldquo;{search.trim()}&rdquo;</span>.
+          <span className="font-mono text-foreground">&ldquo;{search.trim()}&rdquo;</span>.
         </div>
       ) : projects.length === 0 ? (
         <EmptyState onCreate={() => setShowCreate(true)} />

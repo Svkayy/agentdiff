@@ -18,13 +18,13 @@ function RigorBanners({ data }: { data: ReportData }) {
   if (data.warnings.length === 0 && skippedCount === 0) return null;
 
   return (
-    <div className="mb-xl space-y-sm">
+    <div className="mb-xl mt-xl space-y-sm">
       {data.warnings.length > 0 && (
-        <div className="rounded-md border border-verdict-warn/30 bg-verdict-warn/5 px-lg py-md">
-          <div className="mb-xs font-mono text-micro font-bold uppercase tracking-widest text-verdict-warn">
+        <div className="border-2 border-[#ea580c] bg-background px-lg py-md">
+          <div className="mb-xs font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#ea580c]">
             Low statistical power
           </div>
-          <ul className="list-inside list-disc space-y-2xs text-small text-ink-dark">
+          <ul className="list-inside list-disc space-y-2xs font-mono text-small text-foreground">
             {data.warnings.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
@@ -32,11 +32,11 @@ function RigorBanners({ data }: { data: ReportData }) {
         </div>
       )}
       {skippedCount > 0 && (
-        <div className="rounded-md border border-verdict-warn/30 bg-verdict-warn/5 px-lg py-md">
-          <div className="mb-xs font-mono text-micro font-bold uppercase tracking-widest text-verdict-warn">
+        <div className="border-2 border-[#ea580c] bg-background px-lg py-md">
+          <div className="mb-xs font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#ea580c]">
             Evaluation incomplete
           </div>
-          <ul className="list-inside list-disc space-y-2xs text-small text-ink-dark">
+          <ul className="list-inside list-disc space-y-2xs font-mono text-small text-foreground">
             {data.outputEvals.flatMap((e) =>
               e.skipped_checks.map((s, i) => (
                 <li key={`${e.test_case_id}-${s.check}-${i}`}>
@@ -53,11 +53,11 @@ function RigorBanners({ data }: { data: ReportData }) {
 }
 
 const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "deltas", label: "Behavioral Deltas" },
-  { id: "attribution", label: "Attribution" },
-  { id: "timeline", label: "Timeline" },
-  { id: "summary", label: "Summary" },
+  { id: "overview", label: "Overview", file: "overview.sys" },
+  { id: "deltas", label: "Behavioral Deltas", file: "behavioral_deltas.log" },
+  { id: "attribution", label: "Attribution", file: "attribution.map" },
+  { id: "timeline", label: "Timeline", file: "trajectory.log" },
+  { id: "summary", label: "Summary", file: "run_summary.md" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -73,9 +73,9 @@ function TabBar({
     <div
       role="tablist"
       aria-label="Run report sections"
-      className="flex flex-wrap gap-xs border-b border-hairline"
+      className="flex flex-wrap border-2 border-foreground"
     >
-      {TABS.map((tab) => {
+      {TABS.map((tab, i) => {
         const isActive = tab.id === active;
         return (
           <button
@@ -87,10 +87,11 @@ function TabBar({
             id={`tab-${tab.id}`}
             onClick={() => onChange(tab.id)}
             className={cn(
-              "rounded-t-sm px-md py-sm font-mono text-small transition-colors duration-[80ms] -mb-px",
+              "px-md py-sm font-mono text-micro uppercase tracking-widest transition-colors duration-[80ms]",
+              i > 0 && "border-l-2 border-foreground",
               isActive
-                ? "border-b-2 border-ink-dark text-ink-dark"
-                : "text-neutral-faint hover:text-ink-dark",
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
             )}
           >
             {tab.label}
@@ -109,31 +110,43 @@ function TabBar({
 export function CliReport() {
   const data = useReportData();
   const [active, setActive] = useState<TabId>("overview");
+  const activeTab = TABS.find((t) => t.id === active) ?? TABS[0];
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
+    <div className="dot-grid-bg mx-auto w-full max-w-[1240px] px-xl py-2xl">
       <div className="mb-xl">
-        <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
-          AgentDiff report
+        <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+          {"// AGENTDIFF REPORT"}
         </div>
-        <h1 className="font-display text-h1 font-bold text-ink-dark">
+        <h1 className="font-mono text-2xl font-bold uppercase tracking-tight text-foreground">
           Behavioral diff
         </h1>
       </div>
       <TabBar active={active} onChange={setActive} />
       <RigorBanners data={data} />
-      <div
-        role="tabpanel"
-        id={`panel-${active}`}
-        aria-labelledby={`tab-${active}`}
-        className="rounded-lg border border-node-border p-xl"
-        style={{ background: "#0E1116" }}
-      >
-        {active === "overview" && <Overview data={data} />}
-        {active === "deltas" && <BehavioralDeltas data={data} />}
-        {active === "attribution" && <Attribution data={data} />}
-        {active === "timeline" && <Timeline data={data} />}
-        {active === "summary" && <RunSummary data={data} />}
+      {/* Header-bar card: `file.ext` nameplate + section index */}
+      <div className="mt-xl border-2 border-node-border">
+        <div className="flex items-center justify-between border-b-2 border-node-border bg-canvas px-5 py-3">
+          <span className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">
+            {activeTab.file}
+          </span>
+          <span className="font-mono text-xs tracking-[0.2em] text-neutral-faint opacity-50">
+            {String(TABS.findIndex((t) => t.id === active) + 1).padStart(3, "0")}
+          </span>
+        </div>
+        <div
+          role="tabpanel"
+          id={`panel-${active}`}
+          aria-labelledby={`tab-${active}`}
+          className="p-xl"
+          style={{ background: "#0E1116" }}
+        >
+          {active === "overview" && <Overview data={data} />}
+          {active === "deltas" && <BehavioralDeltas data={data} />}
+          {active === "attribution" && <Attribution data={data} />}
+          {active === "timeline" && <Timeline data={data} />}
+          {active === "summary" && <RunSummary data={data} />}
+        </div>
       </div>
     </div>
   );

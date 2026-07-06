@@ -50,17 +50,19 @@ export function verdictLabel(verdict: string | null): string {
   return verdict ?? "—";
 }
 
+// Verdict mapping (DESIGN.md, locked): pass = neutral/foreground chip;
+// warn = orange OUTLINE (border only, no fill); fail = solid #ea580c.
 function VerdictBadge({ verdict }: { verdict: string | null }) {
   const styles: Record<string, string> = {
-    pass: "bg-verdict-pass/10 text-verdict-pass border border-verdict-pass/30",
-    warn: "bg-verdict-warn/10 text-verdict-warn border border-verdict-warn/30",
-    fail: "bg-ember/10 text-ember border border-ember/30",
+    pass: "border-2 border-foreground text-foreground",
+    warn: "border-2 border-[#ea580c] text-[#ea580c]",
+    fail: "border-2 border-[#ea580c] bg-[#ea580c] text-background",
   };
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-sm px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
-        verdict ? styles[verdict] ?? "border border-hairline text-neutral-faint" : "text-neutral-faint",
+        "inline-flex items-center px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
+        verdict ? styles[verdict] ?? "border-2 border-border text-muted-foreground" : "text-muted-foreground",
       )}
       title={verdict ?? undefined}
     >
@@ -71,11 +73,11 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
 
 function KindBadge({ kind }: { kind: string }) {
   return kind === "drift" ? (
-    <span className="inline-flex items-center rounded-sm border border-ember/30 px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-ember">
+    <span className="inline-flex items-center border-2 border-[#ea580c] px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-[#ea580c]">
       Live Drift
     </span>
   ) : (
-    <span className="inline-flex items-center rounded-sm border border-hairline px-sm py-2xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <span className="inline-flex items-center border-2 border-border px-sm py-2xs font-mono text-micro uppercase tracking-widest text-muted-foreground">
       CI
     </span>
   );
@@ -102,14 +104,14 @@ function StatChip({
   ember?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-2xs">
-      <span className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <div className="flex flex-col gap-1 border-2 border-foreground px-4 py-3">
+      <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
         {label}
       </span>
       <span
         className={cn(
-          "font-mono text-small font-medium tabular-nums",
-          ember ? "text-ember" : "text-ink-dark",
+          "font-mono text-small font-bold tabular-nums",
+          ember ? "text-[#ea580c]" : "text-foreground",
         )}
       >
         {value}
@@ -127,21 +129,24 @@ function VerdictDot({
   runId: string;
   createdAt: string;
 }) {
-  const color =
+  // Verdict mapping (locked): pass = solid foreground; warn = orange outline;
+  // fail = solid orange. Kept as distinct fills/borders so the strip stays
+  // readable at a glance and without color vision.
+  const style =
     verdict === "pass"
-      ? "bg-verdict-pass"
+      ? "bg-foreground"
       : verdict === "warn"
-        ? "bg-verdict-warn"
+        ? "border-2 border-[#ea580c] bg-transparent"
         : verdict === "fail"
-          ? "bg-ember"
-          : "bg-hairline";
+          ? "bg-[#ea580c]"
+          : "border-2 border-border bg-transparent";
   return (
     <a
       href={`/runs/${runId}`}
       title={`${verdictLabel(verdict)} · ${new Date(createdAt).toLocaleDateString()}`}
       className={cn(
-        "inline-block h-4 w-4 flex-shrink-0 rounded-sm transition-opacity hover:opacity-70",
-        color,
+        "inline-block h-4 w-4 flex-shrink-0 transition-opacity hover:opacity-70",
+        style,
       )}
     />
   );
@@ -175,11 +180,11 @@ function StatsBar({ projectId }: { projectId: string }) {
   // Visible error state with retry — never an infinite skeleton.
   if (!stats && error) {
     return (
-      <div className="mb-xl flex items-center justify-between rounded-md border border-ember/30 bg-ember/5 px-lg py-md">
-        <span className="text-small text-ember">{error}</span>
+      <div className="mb-xl flex items-center justify-between border-2 border-[#ea580c] bg-background px-lg py-md">
+        <span className="font-mono text-small text-[#ea580c]">{error}</span>
         <button
           onClick={() => load()}
-          className="ml-md rounded-sm border border-ember/40 px-md py-2xs text-small font-medium text-ember transition-colors hover:bg-ember/10"
+          className="ml-md border-2 border-[#ea580c] px-md py-2xs font-mono text-small font-medium text-[#ea580c] transition-colors hover:bg-[#ea580c] hover:text-background"
         >
           Retry
         </button>
@@ -190,9 +195,9 @@ function StatsBar({ projectId }: { projectId: string }) {
   if (!stats) {
     // Loading skeleton — shown only on first load (stats is null, no error yet)
     return (
-      <div className="mb-xl flex flex-wrap gap-xl">
+      <div className="mb-xl flex flex-wrap gap-md">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="h-10 w-24 animate-pulse rounded-sm border border-hairline bg-hairline" />
+          <div key={i} className="h-14 w-28 animate-pulse border-2 border-foreground bg-muted" />
         ))}
       </div>
     );
@@ -206,7 +211,7 @@ function StatsBar({ projectId }: { projectId: string }) {
   return (
     <div className="mb-xl space-y-lg">
       {/* Chips row */}
-      <div className="flex flex-wrap gap-xl rounded-md border border-hairline bg-white px-lg py-md">
+      <div className="flex flex-wrap gap-md">
         <StatChip label="Pass rate (30)" value={passRateStr} />
         <StatChip
           label="Alert streak"
@@ -223,7 +228,7 @@ function StatsBar({ projectId }: { projectId: string }) {
       {/* Verdict strip */}
       {stats.recent.length > 0 && (
         <div className="flex items-center gap-xs">
-          <span className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+          <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
             Recent
           </span>
           <div className="flex flex-wrap gap-1">
@@ -365,18 +370,19 @@ function RunsTab({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-lg">
-      {/* Filter bar */}
+      {/* Filter bar (bordered segmented) */}
       <div className="flex flex-wrap items-center justify-between gap-md">
-        <div className="flex flex-wrap items-center gap-xs">
-          {VERDICT_FILTERS.map((f) => (
+        <div className="flex flex-wrap items-center border-2 border-foreground">
+          {VERDICT_FILTERS.map((f, i) => (
             <button
               key={f.value || "all"}
               onClick={() => setVerdict(f.value)}
               className={cn(
-                "rounded-sm border px-md py-2xs font-mono text-micro uppercase tracking-widest transition-colors",
+                "px-md py-sm font-mono text-micro uppercase tracking-widest transition-colors",
+                i > 0 && "border-l-2 border-foreground",
                 verdict === f.value
-                  ? "border-ink-dark bg-ink-dark text-white"
-                  : "border-hairline text-neutral-muted hover:border-ink-dark",
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
               )}
             >
               {f.label}
@@ -388,62 +394,62 @@ function RunsTab({ projectId }: { projectId: string }) {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search runs…"
           aria-label="Search runs"
-          className="w-56 rounded-sm border border-hairline bg-white px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
+          className="w-56 border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
         />
       </div>
 
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-14 animate-pulse rounded-sm border border-hairline bg-hairline" />
+            <div key={i} className="h-14 animate-pulse border-2 border-foreground bg-muted" />
           ))}
         </div>
       ) : error ? (
-        <div className="flex items-center justify-between rounded-sm border border-ember/30 bg-ember/5 px-md py-sm">
-          <span className="text-small text-ember">{error}</span>
+        <div className="flex items-center justify-between border-2 border-[#ea580c] bg-background px-md py-sm">
+          <span className="font-mono text-small text-[#ea580c]">{error}</span>
           <button
             onClick={() => void loadFirst()}
-            className="ml-md text-small font-medium text-ember underline"
+            className="ml-md font-mono text-small font-medium text-[#ea580c] underline"
           >
             Retry
           </button>
         </div>
       ) : runs.length === 0 && filtersActive ? (
-        <div className="rounded-md border border-hairline bg-white py-2xl text-center text-small text-neutral-muted">
+        <div className="border-2 border-foreground bg-background py-2xl text-center font-mono text-small text-muted-foreground">
           No runs match your filters.
         </div>
       ) : runs.length === 0 ? (
-        <div className="rounded-md border border-hairline bg-white py-2xl text-center">
-          <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        <div className="border-2 border-foreground bg-background py-2xl text-center">
+          <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
             No runs yet
           </div>
-          <h3 className="mb-sm font-display text-h2 font-bold text-ink-dark">No runs yet</h3>
-          <p className="mx-auto mb-lg max-w-md text-small text-neutral-muted">
+          <h3 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">No runs yet</h3>
+          <p className="mx-auto mb-lg max-w-md font-mono text-small text-muted-foreground">
             Run the CI gate or start the live collector to see results here.
           </p>
-          <pre className="mx-auto inline-block rounded-sm border border-hairline bg-shell-bg px-lg py-md text-left font-mono text-micro text-ink-dark">
+          <pre className="mx-auto inline-block border-2 border-foreground bg-foreground px-lg py-md text-left font-mono text-micro text-background">
             {`agentdiff run --project $PROJECT_ID`}
           </pre>
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-md border border-hairline bg-white">
+          <div className="border-2 border-foreground bg-background">
             <table className="w-full text-small">
               <thead>
-                <tr className="border-b border-hairline">
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                <tr className="border-b-2 border-foreground">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Verdict
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Kind
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Status
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Refs
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Created
                   </th>
                   <th className="px-md py-sm" />
@@ -454,7 +460,7 @@ function RunsTab({ projectId }: { projectId: string }) {
                   <tr
                     key={r.id}
                     onClick={() => navigate(`/runs/${r.id}`)}
-                    className="group cursor-pointer border-b border-hairline last:border-0 transition-colors hover:bg-shell-bg"
+                    className="group cursor-pointer border-b border-border last:border-0 transition-colors hover:bg-foreground/[0.04]"
                   >
                     <td className="px-md py-sm">
                       <VerdictBadge verdict={r.verdict} />
@@ -462,15 +468,15 @@ function RunsTab({ projectId }: { projectId: string }) {
                     <td className="px-md py-sm">
                       <KindBadge kind={r.kind} />
                     </td>
-                    <td className="px-md py-sm font-mono text-micro text-neutral-muted">
+                    <td className="px-md py-sm font-mono text-micro uppercase text-muted-foreground">
                       {r.status}
                     </td>
-                    <td className="px-md py-sm font-mono text-micro text-neutral-muted">
-                      <span className="text-ink-dark">{(r.baseline_ref ?? "?").slice(0, 7)}</span>
-                      <span className="mx-xs text-neutral-faint">→</span>
-                      <span className="text-ink-dark">{(r.candidate_ref ?? "?").slice(0, 7)}</span>
+                    <td className="px-md py-sm font-mono text-micro text-muted-foreground">
+                      <span className="text-foreground">{(r.baseline_ref ?? "?").slice(0, 7)}</span>
+                      <span className="mx-xs text-muted-foreground">→</span>
+                      <span className="text-foreground">{(r.candidate_ref ?? "?").slice(0, 7)}</span>
                     </td>
-                    <td className="px-md py-sm font-mono text-micro text-neutral-faint">
+                    <td className="px-md py-sm font-mono text-micro tabular-nums text-muted-foreground">
                       {new Date(r.created_at).toLocaleString()}
                     </td>
                     <td className="px-md py-sm text-right">
@@ -479,7 +485,7 @@ function RunsTab({ projectId }: { projectId: string }) {
                           e.stopPropagation();
                           setConfirmDelete(r.id);
                         }}
-                        className="text-micro text-neutral-faint opacity-0 transition-opacity hover:text-ember group-hover:opacity-100"
+                        className="font-mono text-micro uppercase tracking-wider text-muted-foreground opacity-0 transition-opacity hover:text-[#ea580c] group-hover:opacity-100"
                         aria-label="Delete run"
                       >
                         Delete
@@ -493,14 +499,14 @@ function RunsTab({ projectId }: { projectId: string }) {
 
           {/* Load more / count */}
           <div className="flex items-center justify-between">
-            <span className="font-mono text-micro text-neutral-faint">
+            <span className="font-mono text-micro tabular-nums text-muted-foreground">
               {runs.length} of {total}
             </span>
             {runs.length < total && (
               <button
                 onClick={() => void loadMore()}
                 disabled={loadingMore}
-                className="rounded-sm border border-hairline bg-white px-lg py-sm text-small font-medium text-ink-dark transition-colors hover:border-ink-dark disabled:opacity-40"
+                className="border-2 border-foreground bg-background px-lg py-sm font-mono text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background disabled:opacity-40"
               >
                 {loadingMore ? "Loading…" : "Load more"}
               </button>
@@ -511,23 +517,23 @@ function RunsTab({ projectId }: { projectId: string }) {
 
       {/* Delete run confirmation */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-dark/40 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-sm rounded-lg border border-hairline bg-white p-xl shadow-xl">
-            <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">Delete run?</h2>
-            <p className="mb-lg text-small text-neutral-muted">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm border-2 border-foreground bg-background p-xl">
+            <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">Delete run?</h2>
+            <p className="mb-lg font-mono text-small text-muted-foreground">
               This permanently removes the run and its report. This cannot be undone.
             </p>
             <div className="flex gap-md">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="flex-1 rounded-sm border border-hairline px-md py-sm text-small font-medium text-ink-dark"
+                className="flex-1 border-2 border-foreground px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void handleDelete(confirmDelete)}
                 disabled={deleting === confirmDelete}
-                className="flex-1 rounded-sm bg-ember px-md py-sm text-small font-medium text-white disabled:opacity-40"
+                className="flex-1 bg-[#ea580c] px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-background disabled:opacity-40"
               >
                 {deleting === confirmDelete ? "Deleting…" : "Delete"}
               </button>
@@ -551,7 +557,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={copy}
-      className="rounded-sm border border-hairline bg-shell-bg px-sm py-2xs font-mono text-micro text-neutral-muted transition-colors hover:border-ink-dark hover:text-ink-dark"
+      className="border-2 border-foreground bg-background px-sm py-2xs font-mono text-micro uppercase tracking-wider text-muted-foreground transition-colors hover:bg-foreground hover:text-background"
     >
       {copied ? "Copied!" : "Copy"}
     </button>
@@ -560,14 +566,15 @@ function CopyButton({ text }: { text: string }) {
 
 function CodeBlock({ code, label }: { code: string; label: string }) {
   return (
-    <div className="rounded-md border border-hairline bg-white">
-      <div className="flex items-center justify-between border-b border-hairline px-md py-sm">
-        <span className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <div className="border-2 border-foreground bg-background">
+      <div className="flex items-center justify-between border-b-2 border-foreground px-md py-sm">
+        <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
           {label}
         </span>
         <CopyButton text={code} />
       </div>
-      <pre className="overflow-x-auto px-md py-md font-mono text-micro text-ink-dark">
+      {/* Terminal-style body: dark plate, cream text */}
+      <pre className="overflow-x-auto bg-foreground px-md py-md font-mono text-micro text-background">
         {code}
       </pre>
     </div>
@@ -589,32 +596,32 @@ function RevealKeyModal({ minted, onClose }: { minted: MintedKey; onClose: () =>
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-dark/40 backdrop-blur-sm">
-      <div className="mx-4 w-full max-w-md rounded-lg border border-hairline bg-white p-xl shadow-xl">
-        <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
+      <div className="mx-4 w-full max-w-md border-2 border-foreground bg-background p-xl">
+        <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
           API Key Created
         </div>
-        <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">
+        <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">
           Copy your key now
         </h2>
-        <p className="mb-lg text-small text-neutral-muted">
+        <p className="mb-lg font-mono text-small text-muted-foreground">
           You won't be able to see this key again after closing this dialog.
         </p>
-        <div className="mb-lg flex items-center gap-sm rounded-sm border border-hairline bg-shell-bg px-md py-sm">
-          <code className="flex-1 break-all font-mono text-micro text-ink-dark">
+        <div className="mb-lg flex items-center gap-sm border-2 border-foreground bg-foreground px-md py-sm">
+          <code className="flex-1 break-all font-mono text-micro text-background">
             {minted.key}
           </code>
           <button
             onClick={copy}
             aria-label="Copy API key to clipboard"
-            className="shrink-0 rounded-sm border border-hairline bg-white px-sm py-2xs font-mono text-micro text-neutral-muted transition-colors hover:border-ink-dark"
+            className="shrink-0 border-2 border-background bg-foreground px-sm py-2xs font-mono text-micro uppercase tracking-wider text-background transition-colors hover:bg-background hover:text-foreground"
           >
             {copied ? "Copied!" : "Copy"}
           </button>
         </div>
-        <div className="mb-lg flex items-start gap-sm rounded-sm border border-verdict-warn/30 bg-verdict-warn/5 px-md py-sm">
-          <span className="mt-0.5 text-verdict-warn">⚠</span>
-          <p className="text-small text-verdict-warn">
+        <div className="mb-lg flex items-start gap-sm border-2 border-[#ea580c] bg-background px-md py-sm">
+          <span className="mt-0.5 text-[#ea580c]">⚠</span>
+          <p className="font-mono text-small text-[#ea580c]">
             Store this key securely. It will not be shown again.
           </p>
         </div>
@@ -622,25 +629,25 @@ function RevealKeyModal({ minted, onClose }: { minted: MintedKey; onClose: () =>
         {!confirmingClose ? (
           <button
             onClick={() => setConfirmingClose(true)}
-            className="w-full rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white"
+            className="w-full bg-foreground px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-background"
           >
             I've saved my key
           </button>
         ) : (
-          <div className="space-y-sm rounded-sm border border-hairline bg-shell-bg p-md">
-            <p className="text-small font-medium text-ink-dark">
+          <div className="space-y-sm border-2 border-foreground bg-background p-md">
+            <p className="font-mono text-small font-medium text-foreground">
               Did you save it? This is the only time it will be shown.
             </p>
             <div className="flex gap-sm">
               <button
                 onClick={() => setConfirmingClose(false)}
-                className="flex-1 rounded-sm border border-hairline bg-white px-lg py-sm text-small font-medium text-ink-dark transition-colors hover:border-ink-dark"
+                className="flex-1 border-2 border-foreground bg-background px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
               >
                 Go back
               </button>
               <button
                 onClick={onClose}
-                className="flex-1 rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white"
+                className="flex-1 bg-foreground px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-background"
               >
                 Yes, I saved it
               </button>
@@ -667,27 +674,31 @@ function UsageBar({
   const pct = unlimited || limit === 0 ? 0 : Math.min(100, Math.round((used / limit) * 100));
   const over = !unlimited && limit > 0 && used >= limit;
   const near = !unlimited && pct >= 80;
-  const barColor = over ? "bg-ember" : near ? "bg-verdict-warn" : "bg-ink-dark";
+  // Verdict-aligned fill: over-limit = solid orange (fail); near = orange
+  // outline family isn't available for a solid fill, so use a mid orange amber;
+  // normal = solid foreground.
+  const barColor = over ? "bg-[#ea580c]" : near ? "bg-[#b45309]" : "bg-foreground";
   return (
     <div>
       <div className="mb-xs flex items-baseline justify-between">
-        <span className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
           {label}
         </span>
-        <span className="font-mono text-small tabular-nums text-ink-dark">
+        <span className="font-mono text-small tabular-nums text-foreground">
           {used.toLocaleString()}
-          <span className="text-neutral-faint">
+          <span className="text-muted-foreground">
             {" / "}
             {unlimited ? "∞" : limit.toLocaleString()}
           </span>
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-hairline">
+      {/* Throughput-bar: h-2 bordered, solid fill; hatch for unlimited */}
+      <div className="h-3 w-full overflow-hidden border-2 border-foreground bg-background">
         {unlimited ? (
-          <div className="h-full w-full bg-[repeating-linear-gradient(45deg,#E6E3DD_0,#E6E3DD_6px,transparent_6px,transparent_12px)]" />
+          <div className="h-full w-full bg-[repeating-linear-gradient(45deg,hsl(var(--foreground))_0,hsl(var(--foreground))_4px,transparent_4px,transparent_8px)]" />
         ) : (
           <div
-            className={cn("h-full rounded-full transition-all", barColor)}
+            className={cn("h-full transition-all", barColor)}
             style={{ width: `${pct}%` }}
           />
         )}
@@ -718,29 +729,29 @@ function UsagePanel() {
 
   return (
     <section>
-      <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+      <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
         Billing
       </div>
-      <h2 className="mb-lg font-display text-h2 font-bold text-ink-dark">Usage</h2>
+      <h2 className="mb-lg font-mono text-xl font-bold uppercase text-foreground">Usage</h2>
       {error ? (
-        <div className="flex items-center justify-between rounded-md border border-ember/30 bg-ember/5 px-lg py-md">
-          <span className="text-small text-ember">{error}</span>
+        <div className="flex items-center justify-between border-2 border-[#ea580c] bg-background px-lg py-md">
+          <span className="font-mono text-small text-[#ea580c]">{error}</span>
           <button
             onClick={() => load()}
-            className="ml-md rounded-sm border border-ember/40 px-md py-2xs text-small font-medium text-ember transition-colors hover:bg-ember/10"
+            className="ml-md border-2 border-[#ea580c] px-md py-2xs font-mono text-small font-medium text-[#ea580c] transition-colors hover:bg-[#ea580c] hover:text-background"
           >
             Retry
           </button>
         </div>
       ) : !usage ? (
-        <div className="h-28 animate-pulse rounded-md border border-hairline bg-hairline" />
+        <div className="h-28 animate-pulse border-2 border-foreground bg-muted" />
       ) : (
-        <div className="rounded-md border border-hairline bg-white p-lg">
+        <div className="border-2 border-foreground bg-background p-lg">
           <div className="mb-lg flex items-center justify-between">
-            <span className="inline-flex items-center rounded-sm border border-hairline px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-ink-dark">
+            <span className="inline-flex items-center border-2 border-foreground px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-foreground">
               {usage.plan}
             </span>
-            <span className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+            <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
               Period {usage.period}
             </span>
           </div>
@@ -805,57 +816,57 @@ function AuditPanel({ projectId }: { projectId: string }) {
 
   return (
     <section>
-      <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+      <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
         Activity
       </div>
-      <h2 className="mb-lg font-display text-h2 font-bold text-ink-dark">Audit log</h2>
+      <h2 className="mb-lg font-mono text-xl font-bold uppercase text-foreground">Audit log</h2>
       {loading ? (
-        <div className="h-24 animate-pulse rounded-md border border-hairline bg-hairline" />
+        <div className="h-24 animate-pulse border-2 border-foreground bg-muted" />
       ) : error ? (
-        <div className="flex items-center justify-between rounded-sm border border-ember/30 bg-ember/5 px-md py-sm">
-          <span className="text-small text-ember">{error}</span>
+        <div className="flex items-center justify-between border-2 border-[#ea580c] bg-background px-md py-sm">
+          <span className="font-mono text-small text-[#ea580c]">{error}</span>
           <button
             onClick={() => void loadFirst()}
-            className="ml-md text-small font-medium text-ember underline"
+            className="ml-md font-mono text-small font-medium text-[#ea580c] underline"
           >
             Retry
           </button>
         </div>
       ) : entries.length === 0 ? (
-        <div className="rounded-md border border-hairline bg-white py-lg text-center text-small text-neutral-muted">
+        <div className="border-2 border-foreground bg-background py-lg text-center font-mono text-small text-muted-foreground">
           No activity recorded yet.
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-md border border-hairline bg-white">
+          <div className="border-2 border-foreground bg-background">
             <table className="w-full text-small">
               <thead>
-                <tr className="border-b border-hairline">
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                <tr className="border-b-2 border-foreground">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     When
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Actor
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Action
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Target
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {entries.map((a) => (
-                  <tr key={a.id} className="border-b border-hairline last:border-0">
-                    <td className="px-md py-sm font-mono text-micro text-neutral-faint">
+                  <tr key={a.id} className="border-b border-border last:border-0">
+                    <td className="px-md py-sm font-mono text-micro tabular-nums text-muted-foreground">
                       {new Date(a.created_at).toLocaleString()}
                     </td>
-                    <td className="px-md py-sm text-small text-ink-dark">{a.actor}</td>
-                    <td className="px-md py-sm font-mono text-micro text-ink-dark">{a.action}</td>
-                    <td className="px-md py-sm font-mono text-micro text-neutral-muted">
+                    <td className="px-md py-sm font-mono text-small text-foreground">{a.actor}</td>
+                    <td className="px-md py-sm font-mono text-micro text-foreground">{a.action}</td>
+                    <td className="px-md py-sm font-mono text-micro text-muted-foreground">
                       {a.target_type}
-                      <span className="text-neutral-faint"> · {a.target_id.slice(0, 8)}</span>
+                      <span className="text-muted-foreground/70"> · {a.target_id.slice(0, 8)}</span>
                     </td>
                   </tr>
                 ))}
@@ -863,14 +874,14 @@ function AuditPanel({ projectId }: { projectId: string }) {
             </table>
           </div>
           <div className="mt-md flex items-center justify-between">
-            <span className="font-mono text-micro text-neutral-faint">
+            <span className="font-mono text-micro tabular-nums text-muted-foreground">
               {entries.length} of {total}
             </span>
             {entries.length < total && (
               <button
                 onClick={() => void loadMore()}
                 disabled={loadingMore}
-                className="rounded-sm border border-hairline bg-white px-lg py-sm text-small font-medium text-ink-dark transition-colors hover:border-ink-dark disabled:opacity-40"
+                className="border-2 border-foreground bg-background px-lg py-sm font-mono text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background disabled:opacity-40"
               >
                 {loadingMore ? "Loading…" : "Load more"}
               </button>
@@ -967,25 +978,25 @@ AGENTDIFF_API_KEY=<your-key>`;
 
       {/* Confirm revoke dialog */}
       {confirmRevoke && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-dark/40 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-sm rounded-lg border border-hairline bg-white p-xl shadow-xl">
-            <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm border-2 border-foreground bg-background p-xl">
+            <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">
               Revoke API key?
             </h2>
-            <p className="mb-lg text-small text-neutral-muted">
+            <p className="mb-lg font-mono text-small text-muted-foreground">
               This is irreversible. Any systems using this key will stop working.
             </p>
             <div className="flex gap-md">
               <button
                 onClick={() => setConfirmRevoke(null)}
-                className="flex-1 rounded-sm border border-hairline px-md py-sm text-small font-medium text-ink-dark"
+                className="flex-1 border-2 border-foreground px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void handleRevoke(confirmRevoke)}
                 disabled={revoking === confirmRevoke}
-                className="flex-1 rounded-sm bg-ink text-white hover:bg-[#2A2E35] px-md py-sm text-small font-medium disabled:opacity-40"
+                className="flex-1 bg-[#ea580c] px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-background disabled:opacity-40"
               >
                 {revoking === confirmRevoke ? "Revoking…" : "Revoke"}
               </button>
@@ -996,41 +1007,41 @@ AGENTDIFF_API_KEY=<your-key>`;
 
       {/* Name-your-key dialog */}
       {namingKey && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-dark/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void handleMint();
             }}
-            className="mx-4 w-full max-w-md rounded-lg border border-hairline bg-white p-xl shadow-xl"
+            className="mx-4 w-full max-w-md border-2 border-foreground bg-background p-xl"
           >
-            <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+            <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
               New API key
             </div>
-            <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">Name this key</h2>
-            <p className="mb-lg text-small text-neutral-muted">
+            <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">Name this key</h2>
+            <p className="mb-lg font-mono text-small text-muted-foreground">
               Give the key a label so you can tell it apart later (e.g.{" "}
-              <code className="font-mono text-ink-dark">ci-github</code>). Optional.
+              <code className="font-mono text-foreground">ci-github</code>). Optional.
             </p>
             <input
               autoFocus
               value={keyName}
               onChange={(e) => setKeyName(e.target.value)}
               placeholder="ci-github"
-              className="mb-lg w-full rounded-sm border border-hairline bg-shell-bg px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
+              className="mb-lg w-full border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
             />
             <div className="flex gap-md">
               <button
                 type="button"
                 onClick={() => setNamingKey(false)}
-                className="flex-1 rounded-sm border border-hairline px-md py-sm text-small font-medium text-ink-dark"
+                className="flex-1 border-2 border-foreground px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={minting}
-                className="flex-1 rounded-sm bg-ink-dark px-md py-sm text-small font-medium text-white disabled:opacity-40"
+                className="flex-1 bg-foreground px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-background disabled:opacity-40"
               >
                 {minting ? "Creating…" : "Create key"}
               </button>
@@ -1040,7 +1051,7 @@ AGENTDIFF_API_KEY=<your-key>`;
       )}
 
       {error && (
-        <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
+        <div className="border-2 border-[#ea580c] bg-background px-md py-sm font-mono text-small text-[#ea580c]">
           {error}
         </div>
       )}
@@ -1049,10 +1060,10 @@ AGENTDIFF_API_KEY=<your-key>`;
       <section>
         <div className="mb-lg flex items-center justify-between">
           <div>
-            <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+            <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
               Authentication
             </div>
-            <h2 className="font-display text-h2 font-bold text-ink-dark">API Keys</h2>
+            <h2 className="font-mono text-xl font-bold uppercase text-foreground">API Keys</h2>
           </div>
           <button
             onClick={() => {
@@ -1060,36 +1071,36 @@ AGENTDIFF_API_KEY=<your-key>`;
               setNamingKey(true);
             }}
             disabled={minting}
-            className="rounded-sm bg-ink-dark px-md py-sm text-small font-medium text-white transition-opacity disabled:opacity-40"
+            className="bg-foreground px-md py-sm font-mono text-xs uppercase tracking-wider text-background transition-opacity disabled:opacity-40"
           >
             {minting ? "Creating…" : "+ New API key"}
           </button>
         </div>
 
         {keysLoading ? (
-          <div className="h-20 animate-pulse rounded-sm border border-hairline bg-hairline" />
+          <div className="h-20 animate-pulse border-2 border-foreground bg-muted" />
         ) : keys.length === 0 ? (
-          <div className="rounded-md border border-hairline bg-white py-lg text-center text-small text-neutral-muted">
+          <div className="border-2 border-foreground bg-background py-lg text-center font-mono text-small text-muted-foreground">
             No API keys yet — create one above.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-md border border-hairline bg-white">
+          <div className="border-2 border-foreground bg-background">
             <table className="w-full text-small">
               <thead>
-                <tr className="border-b border-hairline">
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                <tr className="border-b-2 border-foreground">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Name
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Prefix
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Created
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Last used
                   </th>
-                  <th className="px-md py-sm text-left font-mono text-micro font-medium uppercase tracking-widest text-neutral-faint">
+                  <th className="px-md py-sm text-left font-mono text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Status
                   </th>
                   <th className="px-md py-sm" />
@@ -1099,32 +1110,32 @@ AGENTDIFF_API_KEY=<your-key>`;
                 {keys.map((k) => (
                   <tr
                     key={k.id}
-                    className="border-b border-hairline last:border-0"
+                    className="border-b border-border last:border-0"
                   >
-                    <td className="px-md py-sm text-small text-ink-dark">
-                      {k.name || <span className="text-neutral-faint">—</span>}
+                    <td className="px-md py-sm font-mono text-small text-foreground">
+                      {k.name || <span className="text-muted-foreground">—</span>}
                     </td>
-                    <td className="px-md py-sm font-mono text-micro text-ink-dark">
+                    <td className="px-md py-sm font-mono text-micro text-foreground">
                       {k.prefix}…
                     </td>
-                    <td className="px-md py-sm font-mono text-micro text-neutral-faint">
+                    <td className="px-md py-sm font-mono text-micro tabular-nums text-muted-foreground">
                       {new Date(k.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-md py-sm font-mono text-micro text-neutral-faint">
+                    <td className="px-md py-sm font-mono text-micro tabular-nums text-muted-foreground">
                       {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : "—"}
                     </td>
                     <td className="px-md py-sm">
                       {k.revoked_at ? (
-                        <span className="font-mono text-micro text-muted line-through">Revoked</span>
+                        <span className="font-mono text-micro uppercase tracking-wider text-muted-foreground line-through">Revoked</span>
                       ) : (
-                        <span className="font-mono text-micro text-verdict-pass">Active</span>
+                        <span className="font-mono text-micro uppercase tracking-wider text-foreground">Active</span>
                       )}
                     </td>
                     <td className="px-md py-sm text-right">
                       {!k.revoked_at && (
                         <button
                           onClick={() => setConfirmRevoke(k.id)}
-                          className="text-micro text-neutral-faint transition-colors hover:text-ember"
+                          className="font-mono text-micro uppercase tracking-wider text-muted-foreground transition-colors hover:text-[#ea580c]"
                         >
                           Revoke
                         </button>
@@ -1140,10 +1151,10 @@ AGENTDIFF_API_KEY=<your-key>`;
 
       {/* Installation snippets */}
       <section>
-        <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
           Install
         </div>
-        <h2 className="mb-lg font-display text-h2 font-bold text-ink-dark">
+        <h2 className="mb-lg font-mono text-xl font-bold uppercase text-foreground">
           Quick start
         </h2>
         <div className="space-y-md">
@@ -1279,11 +1290,11 @@ function SlackTab({ projectId }: { projectId: string }) {
     <div className="max-w-lg space-y-lg">
       {/* Header */}
       <div>
-        <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
           Notifications
         </div>
-        <h2 className="font-display text-h2 font-bold text-ink-dark">Slack alerts</h2>
-        <p className="mt-sm text-small text-neutral-muted">
+        <h2 className="font-mono text-xl font-bold uppercase text-foreground">Slack alerts</h2>
+        <p className="mt-sm font-mono text-small text-muted-foreground">
           AgentDiff posts a verdict card to your Slack channel whenever a CI run
           completes or a live drift anomaly is detected.
         </p>
@@ -1291,36 +1302,36 @@ function SlackTab({ projectId }: { projectId: string }) {
 
       {/* Banners from OAuth redirect */}
       {oauthBanner === "connected" && (
-        <div className="rounded-sm border border-verdict-pass/30 bg-verdict-pass/5 px-md py-sm text-small text-verdict-pass">
+        <div className="border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground">
           Slack connected successfully.
         </div>
       )}
       {oauthBanner === "error" && (
-        <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
+        <div className="border-2 border-[#ea580c] bg-background px-md py-sm font-mono text-small text-[#ea580c]">
           Slack connection failed. Please try again.
         </div>
       )}
 
       {/* Status card */}
-      <div className="rounded-md border border-hairline bg-white p-lg">
+      <div className="border-2 border-foreground bg-background p-lg">
         {statusLoading ? (
-          <div className="h-10 animate-pulse rounded-sm border border-hairline bg-hairline" />
+          <div className="h-10 animate-pulse border-2 border-foreground bg-muted" />
         ) : status?.connected ? (
           <div className="flex items-center justify-between gap-md">
             <div>
-              <div className="mb-2xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+              <div className="mb-2xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 Connected
               </div>
               <div className="flex items-center gap-sm">
-                <span className="font-mono text-small text-ink-dark">
+                <span className="font-mono text-small text-foreground">
                   {status.channel_id ?? "—"}
                 </span>
                 <span
                   className={cn(
-                    "inline-flex items-center rounded-sm border px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
+                    "inline-flex items-center border-2 px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
                     status.via === "oauth"
-                      ? "border-verdict-pass/30 text-verdict-pass"
-                      : "border-hairline text-neutral-faint",
+                      ? "border-foreground text-foreground"
+                      : "border-border text-muted-foreground",
                   )}
                 >
                   {status.via ?? "—"}
@@ -1330,23 +1341,23 @@ function SlackTab({ projectId }: { projectId: string }) {
             {!confirmDisconnect ? (
               <button
                 onClick={() => setConfirmDisconnect(true)}
-                className="rounded-sm border border-hairline px-md py-sm text-small font-medium text-neutral-muted transition-colors hover:border-ember hover:text-ember"
+                className="border-2 border-foreground px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-[#ea580c] hover:text-[#ea580c]"
               >
                 Disconnect
               </button>
             ) : (
               <div className="flex items-center gap-sm">
-                <span className="text-small text-neutral-muted">Confirm?</span>
+                <span className="font-mono text-small text-muted-foreground">Confirm?</span>
                 <button
                   onClick={() => setConfirmDisconnect(false)}
-                  className="rounded-sm border border-hairline px-sm py-2xs text-small text-ink-dark"
+                  className="border-2 border-foreground px-sm py-2xs font-mono text-small text-foreground"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => void handleDisconnect()}
                   disabled={disconnecting}
-                  className="rounded-sm bg-ember px-sm py-2xs text-small font-medium text-white disabled:opacity-40"
+                  className="bg-[#ea580c] px-sm py-2xs font-mono text-small font-medium uppercase tracking-wider text-background disabled:opacity-40"
                 >
                   {disconnecting ? "Removing…" : "Remove"}
                 </button>
@@ -1355,19 +1366,19 @@ function SlackTab({ projectId }: { projectId: string }) {
           </div>
         ) : (
           <div className="space-y-md">
-            <p className="text-small text-neutral-muted">
+            <p className="font-mono text-small text-muted-foreground">
               Click <strong>Add to Slack</strong> to connect your workspace. You'll pick a
               channel in Slack's native consent screen — no manual token setup required.
             </p>
             {installError && (
-              <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
+              <div className="border-2 border-[#ea580c] bg-background px-md py-sm font-mono text-small text-[#ea580c]">
                 {installError}
               </div>
             )}
             <button
               onClick={() => void handleAddToSlack()}
               disabled={installing}
-              className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity disabled:opacity-40"
+              className="bg-foreground px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-background transition-opacity disabled:opacity-40"
             >
               {installing ? "Redirecting…" : "Add to Slack"}
             </button>
@@ -1380,7 +1391,7 @@ function SlackTab({ projectId }: { projectId: string }) {
         <button
           onClick={() => setAdvancedOpen((v) => !v)}
           aria-expanded={advancedOpen}
-          className="flex items-center gap-xs font-mono text-micro uppercase tracking-widest text-neutral-faint transition-colors hover:text-neutral-muted"
+          className="flex items-center gap-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground"
         >
           <span aria-hidden="true">{advancedOpen ? "▾" : "▸"}</span>
           Advanced: manual setup
@@ -1389,15 +1400,15 @@ function SlackTab({ projectId }: { projectId: string }) {
         {/* Success/error banners persist even after the form collapses on
             success, so the confirmation isn't lost the moment it appears. */}
         {manualSuccess && !advancedOpen && (
-          <div className="mt-md rounded-sm border border-verdict-pass/30 bg-verdict-pass/5 px-md py-sm text-small text-verdict-pass">
+          <div className="mt-md border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground">
             Slack configuration saved.
           </div>
         )}
 
         {advancedOpen && (
           <div className="mt-md space-y-md">
-            <div className="rounded-md border border-hairline bg-white p-lg text-small text-neutral-muted">
-              <p className="mb-sm font-medium text-ink-dark">How to create the Slack app:</p>
+            <div className="border-2 border-foreground bg-background p-lg font-mono text-small text-muted-foreground">
+              <p className="mb-sm font-medium text-foreground">How to create the Slack app:</p>
               <ol className="list-inside list-decimal space-y-xs text-small">
                 <li>Go to api.slack.com/apps → Create New App → From scratch</li>
                 <li>
@@ -1414,31 +1425,31 @@ function SlackTab({ projectId }: { projectId: string }) {
             </div>
 
             {manualSuccess && (
-              <div className="rounded-sm border border-verdict-pass/30 bg-verdict-pass/5 px-md py-sm text-small text-verdict-pass">
+              <div className="border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground">
                 Slack configuration saved.
               </div>
             )}
 
             {manualError && (
-              <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
+              <div className="border-2 border-[#ea580c] bg-background px-md py-sm font-mono text-small text-[#ea580c]">
                 {manualError}
               </div>
             )}
 
             <form onSubmit={(e) => void handleManualSubmit(e)} className="space-y-md">
               <div>
-                <label className="mb-xs block font-mono text-micro uppercase tracking-widest text-neutral-faint">
+                <label className="mb-xs block font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
                   Channel ID
                 </label>
                 <input
                   value={channelId}
                   onChange={(e) => setChannelId(e.target.value)}
                   placeholder="C0123ABC456"
-                  className="w-full rounded-sm border border-hairline bg-shell-bg px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
+                  className="w-full border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                 />
               </div>
               <div>
-                <label className="mb-xs block font-mono text-micro uppercase tracking-widest text-neutral-faint">
+                <label className="mb-xs block font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
                   Bot token
                 </label>
                 <input
@@ -1446,13 +1457,13 @@ function SlackTab({ projectId }: { projectId: string }) {
                   value={botToken}
                   onChange={(e) => setBotToken(e.target.value)}
                   placeholder="xoxb-…"
-                  className="w-full rounded-sm border border-hairline bg-shell-bg px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ink-dark focus:outline-none"
+                  className="w-full border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                 />
               </div>
               <button
                 type="submit"
                 disabled={saving || !channelId.trim() || !botToken.trim()}
-                className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity disabled:opacity-40"
+                className="bg-foreground px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-background transition-opacity disabled:opacity-40"
               >
                 {saving ? "Saving…" : "Save"}
               </button>
@@ -1549,25 +1560,25 @@ function ProjectHeader({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => void save()}
-            className="rounded-sm border border-hairline bg-white px-md py-sm font-display text-h1 font-bold text-ink-dark focus:border-ink-dark focus:outline-none"
+            className="border-2 border-foreground bg-background px-md py-sm font-mono text-2xl font-bold uppercase text-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
           />
           <button
             type="submit"
             disabled={saving}
-            className="rounded-sm bg-ink-dark px-md py-sm text-small font-medium text-white disabled:opacity-40"
+            className="bg-foreground px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-background disabled:opacity-40"
           >
             {saving ? "Saving…" : "Save"}
           </button>
         </form>
       ) : (
         <div className="group flex items-center gap-sm">
-          <h1 className="font-display text-h1 font-bold text-ink-dark">{displayName}</h1>
+          <h1 className="font-mono text-2xl font-bold uppercase tracking-tight text-foreground">{displayName}</h1>
           <button
             onClick={() => {
               setDraft(name ?? "");
               setEditing(true);
             }}
-            className="font-mono text-micro uppercase tracking-widest text-neutral-faint opacity-0 transition-opacity hover:text-ink-dark group-hover:opacity-100"
+            className="font-mono text-micro uppercase tracking-wider text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
           >
             Rename
           </button>
@@ -1579,21 +1590,21 @@ function ProjectHeader({
           setConfirmText("");
           setConfirmDelete(true);
         }}
-        className="mt-xs rounded-sm border border-hairline px-md py-sm text-small font-medium text-neutral-muted transition-colors hover:border-ember hover:text-ember"
+        className="mt-xs border-2 border-foreground px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-[#ea580c] hover:text-[#ea580c]"
       >
         Delete project
       </button>
 
       {/* Typed-confirmation delete modal */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-dark/40 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-md rounded-lg border border-hairline bg-white p-xl shadow-xl">
-            <div className="mb-xs font-mono text-micro uppercase tracking-widest text-ember">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md border-2 border-foreground bg-background p-xl">
+            <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-[#ea580c]">
               Danger
             </div>
-            <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">Delete project?</h2>
-            <p className="mb-lg text-small text-neutral-muted">
-              This permanently deletes <strong className="text-ink-dark">{displayName}</strong>{" "}
+            <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">Delete project?</h2>
+            <p className="mb-lg font-mono text-small text-muted-foreground">
+              This permanently deletes <strong className="text-foreground">{displayName}</strong>{" "}
               and every run, key, and setting it holds. This cannot be undone. Type the project
               name to confirm.
             </p>
@@ -1602,19 +1613,19 @@ function ProjectHeader({
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder={displayName}
-              className="mb-lg w-full rounded-sm border border-hairline bg-shell-bg px-md py-sm text-small text-ink-dark placeholder:text-neutral-faint focus:border-ember focus:outline-none"
+              className="mb-lg w-full border-2 border-foreground bg-background px-md py-sm font-mono text-small text-foreground placeholder:text-muted-foreground focus:border-[#ea580c] focus:outline-none"
             />
             <div className="flex gap-md">
               <button
                 onClick={() => setConfirmDelete(false)}
-                className="flex-1 rounded-sm border border-hairline px-md py-sm text-small font-medium text-ink-dark"
+                className="flex-1 border-2 border-foreground px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void doDelete()}
                 disabled={deleting || confirmText.trim() !== displayName}
-                className="flex-1 rounded-sm bg-ember px-md py-sm text-small font-medium text-white disabled:opacity-40"
+                className="flex-1 bg-[#ea580c] px-md py-sm font-mono text-small font-medium uppercase tracking-wider text-background disabled:opacity-40"
               >
                 {deleting ? "Deleting…" : "Delete forever"}
               </button>
@@ -1668,12 +1679,12 @@ export function ProjectPage() {
   if (probe === "pending") {
     return (
       <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
-        <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
-          <Link to="/projects" className="transition-colors hover:text-ink-dark">Projects</Link>
+        <div className="mb-xl flex items-center gap-xs font-mono text-micro uppercase tracking-wider text-muted-foreground">
+          <Link to="/projects" className="transition-colors hover:text-foreground">Projects</Link>
           <span>/</span>
-          <span className="text-ink-dark">{projectId.slice(0, 8)}…</span>
+          <span className="text-foreground">{projectId.slice(0, 8)}…</span>
         </div>
-        <div className="h-40 animate-pulse rounded-md border border-hairline bg-white/50" />
+        <div className="h-40 animate-pulse border-2 border-foreground bg-muted" />
       </div>
     );
   }
@@ -1681,25 +1692,25 @@ export function ProjectPage() {
   if (probe === "notfound") {
     return (
       <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
-        <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
-          <Link to="/projects" className="transition-colors hover:text-ink-dark">Projects</Link>
+        <div className="mb-xl flex items-center gap-xs font-mono text-micro uppercase tracking-wider text-muted-foreground">
+          <Link to="/projects" className="transition-colors hover:text-foreground">Projects</Link>
           <span>/</span>
-          <span className="text-ink-dark">{projectId.slice(0, 8)}…</span>
+          <span className="text-foreground">{projectId.slice(0, 8)}…</span>
         </div>
-        <div className="rounded-md border border-hairline bg-white p-2xl text-center">
-          <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        <div className="border-2 border-foreground bg-background p-2xl text-center">
+          <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
             Project not found
           </div>
-          <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">
+          <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">
             This project doesn&apos;t exist
           </h2>
-          <p className="mb-lg max-w-md mx-auto text-small text-neutral-muted">
-            Project <code className="font-mono text-ink-dark">{projectId.slice(0, 8)}…</code>{" "}
+          <p className="mb-lg max-w-md mx-auto font-mono text-small text-muted-foreground">
+            Project <code className="font-mono text-foreground">{projectId.slice(0, 8)}…</code>{" "}
             was not found in your organisation, or it was deleted.
           </p>
           <Link
             to="/projects"
-            className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
+            className="inline-block bg-foreground px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-background transition-opacity hover:opacity-80"
           >
             Back to Projects
           </Link>
@@ -1711,12 +1722,12 @@ export function ProjectPage() {
   return (
     <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
       {/* Breadcrumb */}
-      <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
-        <Link to="/projects" className="transition-colors hover:text-ink-dark">
+      <div className="mb-xl flex items-center gap-xs font-mono text-micro uppercase tracking-wider text-muted-foreground">
+        <Link to="/projects" className="transition-colors hover:text-foreground">
           Projects
         </Link>
         <span>/</span>
-        <span className="text-ink-dark">{projectName ?? `${projectId.slice(0, 8)}…`}</span>
+        <span className="text-foreground">{projectName ?? `${projectId.slice(0, 8)}…`}</span>
       </div>
 
       <ProjectHeader
@@ -1726,16 +1737,17 @@ export function ProjectPage() {
       />
 
       <Tabs.Root value={tab} onValueChange={setTab}>
-        <Tabs.List className="mb-xl flex gap-xs border-b border-hairline">
-          {(["runs", "setup", "slack"] as const).map((t) => (
+        <Tabs.List className="mb-xl flex w-fit border-2 border-foreground">
+          {(["runs", "setup", "slack"] as const).map((t, i) => (
             <Tabs.Trigger
               key={t}
               value={t}
               className={cn(
-                "border-b-2 px-md pb-sm pt-2xs font-mono text-micro uppercase tracking-widest transition-colors",
+                "px-md py-sm font-mono text-micro uppercase tracking-widest transition-colors",
+                i > 0 && "border-l-2 border-foreground",
                 tab === t
-                  ? "border-ink-dark text-ink-dark"
-                  : "border-transparent text-neutral-faint hover:text-neutral-muted",
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
               )}
             >
               {t === "runs" ? "Runs" : t === "setup" ? "Setup" : "Slack"}

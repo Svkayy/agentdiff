@@ -10,18 +10,18 @@ function Chip({
   value: string | number;
   accent?: "ember" | "pass" | "warn";
 }) {
+  // Verdict mapping (DESIGN.md, locked): fail/warn = orange signal; pass and
+  // neutral stats = cream (no color signal) so the orange stays meaningful.
   const accentClass =
     accent === "ember"
-      ? "text-ember"
-      : accent === "pass"
-        ? "text-verdict-pass"
-        : accent === "warn"
-          ? "text-verdict-warn"
-          : "text-ink-light";
+      ? "text-[#ea580c]"
+      : accent === "warn"
+        ? "text-[#ea580c]"
+        : "text-ink-light";
 
   return (
-    <div className="flex flex-col gap-2xs rounded-md border border-node-border bg-node-fill px-lg py-md">
-      <span className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <div className="flex flex-col gap-2xs border-2 border-node-border bg-node-fill px-lg py-md">
+      <span className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">
         {label}
       </span>
       <span className={`tnum font-mono text-h2 font-bold ${accentClass}`}>{value}</span>

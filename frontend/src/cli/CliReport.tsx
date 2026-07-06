@@ -139,7 +139,7 @@ export function CliReport() {
           id={`panel-${active}`}
           aria-labelledby={`tab-${active}`}
           className="p-xl"
-          style={{ background: "#0E1116" }}
+          style={{ background: "var(--color-canvas)" }}
         >
           {active === "overview" && <Overview data={data} />}
           {active === "deltas" && <BehavioralDeltas data={data} />}

@@ -335,25 +335,25 @@
    ink/muted/hairline palette. Used by the marketing DocsPage. */
 @layer components {
   .doc-prose {
-    @apply max-w-2xl text-[15px] leading-7 text-ink;
+    @apply max-w-2xl text-[15px] leading-7 text-foreground;
   }
   .doc-prose h1 {
-    @apply mt-0 font-display text-3xl font-extrabold leading-tight tracking-tight text-ink;
+    @apply mt-0 font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground;
   }
   .doc-prose h2 {
-    @apply mt-10 scroll-mt-20 border-t border-hairline pt-8 font-display text-xl font-bold tracking-tight text-ink;
+    @apply mt-10 scroll-mt-20 border-t border-hairline pt-8 font-display text-xl font-bold tracking-tight text-foreground;
   }
   .doc-prose h3 {
-    @apply mt-8 scroll-mt-20 font-display text-base font-bold text-ink;
+    @apply mt-8 scroll-mt-20 font-display text-base font-bold text-foreground;
   }
   .doc-prose h4 {
-    @apply mt-6 font-body text-sm font-semibold uppercase tracking-wide text-muted;
+    @apply mt-6 font-body text-sm font-semibold uppercase tracking-wide text-muted-foreground;
   }
   .doc-prose p {
-    @apply mt-4 text-muted;
+    @apply mt-4 text-muted-foreground;
   }
   .doc-prose a {
-    @apply font-medium text-ink underline decoration-hairline underline-offset-2 transition-colors duration-200 hover:decoration-ink;
+    @apply font-medium text-foreground underline decoration-hairline underline-offset-2 transition-colors duration-200 hover:decoration-foreground;
   }
   .doc-prose h1 > .doc-anchor,
   .doc-prose h2 > .doc-anchor,
@@ -366,20 +366,20 @@
     @apply opacity-100;
   }
   .doc-prose ul {
-    @apply mt-4 list-disc space-y-1.5 pl-5 text-muted;
+    @apply mt-4 list-disc space-y-1.5 pl-5 text-muted-foreground;
   }
   .doc-prose ol {
-    @apply mt-4 list-decimal space-y-1.5 pl-5 text-muted;
+    @apply mt-4 list-decimal space-y-1.5 pl-5 text-muted-foreground;
   }
   .doc-prose li > ul,
   .doc-prose li > ol {
     @apply mt-1.5;
   }
   .doc-prose strong {
-    @apply font-semibold text-ink;
+    @apply font-semibold text-foreground;
   }
   .doc-prose code {
-    @apply rounded-sm border border-hairline bg-card px-1.5 py-0.5 font-mono text-[13px] text-ink;
+    @apply rounded-sm border border-hairline bg-card px-1.5 py-0.5 font-mono text-[13px] text-foreground;
   }
   .doc-prose pre {
     @apply mt-4 overflow-x-auto rounded-md border border-hairline bg-canvas p-4;
@@ -388,7 +388,7 @@
     @apply border-0 bg-transparent p-0 font-mono text-[13px] leading-6 text-canvastext;
   }
   .doc-prose blockquote {
-    @apply mt-4 border-l-2 border-hairline pl-4 italic text-muted;
+    @apply mt-4 border-l-2 border-hairline pl-4 italic text-muted-foreground;
   }
   .doc-prose hr {
     @apply my-8 border-hairline;
@@ -397,10 +397,10 @@
     @apply mt-4 block w-full max-w-full overflow-x-auto border-collapse text-sm;
   }
   .doc-prose th {
-    @apply border border-hairline bg-card px-3 py-2 text-left font-semibold text-ink;
+    @apply border border-hairline bg-card px-3 py-2 text-left font-semibold text-foreground;
   }
   .doc-prose td {
-    @apply border border-hairline px-3 py-2 align-top text-muted;
+    @apply border border-hairline px-3 py-2 align-top text-muted-foreground;
   }
   .doc-prose img {
     @apply mt-4 max-w-full rounded-md border border-hairline;
@@ -429,7 +429,7 @@
    exclusively for the regression/fail signal, never as a decorative UI
    accent). */
 .react-flow__node:focus-visible {
-  outline: 2px solid #38bdf8;
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 3px;
   border-radius: 0; /* brutalist: square focus ring to match square node cards */
 }

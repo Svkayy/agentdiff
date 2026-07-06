@@ -5,7 +5,7 @@ import { ThemeToggle } from "@/components/system/ThemeToggle";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
-const GITHUB_URL = "https://github.com/sandeepvinay/agentdiff";
+const GITHUB_URL = "https://github.com/Svkayy/agentdiff";
 
 // Center links: Docs is a real route, GitHub is the external repo.
 const LINKS: { label: string; href: string; kind: "route" | "anchor" | "external" }[] = [

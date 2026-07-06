@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -133,8 +133,14 @@ export function ProjectsPage() {
     void load();
   }, [load]);
 
-  // Debounced server-side search.
+  // Debounced server-side search — skips the initial mount so the page
+  // doesn't double-fetch (the initial-load effect above owns the first call).
+  const didMount = useRef(false);
   useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
     const t = setTimeout(() => void load(search), 300);
     return () => clearTimeout(t);
   }, [search, load]);

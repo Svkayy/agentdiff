@@ -268,7 +268,7 @@ function ReportPanel({ data }: { data: ReportData }) {
           id={`panel-${active}`}
           aria-labelledby={`tab-${active}`}
           className="p-xl"
-          style={{ background: "#0E1116" }}
+          style={{ background: "var(--color-canvas)" }}
         >
           {active === "overview" && <Overview data={data} />}
           {active === "deltas" && <BehavioralDeltas data={data} />}
@@ -288,7 +288,7 @@ const POLL_MS = 5000;
 /** Bound on in-progress polling so a stuck "processing" run doesn't poll forever. */
 const MAX_POLL_ATTEMPTS = 200; // ~16.6 minutes at 5s intervals
 
-function usePayload(
+export function usePayload(
   runId: string,
   status: string | null,
   getToken: () => Promise<string | null>,

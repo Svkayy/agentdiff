@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
-const GITHUB_URL = "https://github.com/sandeepvinay/agentdiff";
+const GITHUB_URL = "https://github.com/Svkayy/agentdiff";
 
 const LINKS: { label: string; href: string; kind: "route" | "external" }[] = [
   { label: "Privacy", href: "/privacy", kind: "route" },

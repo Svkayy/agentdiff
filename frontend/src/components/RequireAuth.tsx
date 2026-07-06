@@ -77,7 +77,11 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     return <MissingClerkConfig />;
   }
   return (
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      signInFallbackRedirectUrl="/projects"
+      signUpFallbackRedirectUrl="/projects"
+    >
       <SignedOut>
         <AuthWall />
       </SignedOut>

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, Outlet } from "react-router-dom";
 import { Shell } from "@/components/Shell";
 import { Toaster } from "@/components/Toaster";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -19,47 +19,55 @@ function DocDetailRoute() {
 function NotFoundPage() {
   return (
     <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
-      <div className="rounded-md border border-hairline bg-white p-2xl text-center">
-        <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
-          404 Not Found
+      <div className="border-2 border-foreground bg-background">
+        {/* Header-bar nameplate (DESIGN.md card pattern) */}
+        <div className="flex items-center justify-between border-b-2 border-foreground px-5 py-3">
+          <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            error.404
+          </span>
+          <span className="h-2 w-2 bg-[#ea580c]" aria-hidden="true" />
         </div>
-        <h1 className="mb-sm font-display text-h1 font-bold text-ink-dark">
-          Page not found
-        </h1>
-        <p className="mb-lg max-w-md mx-auto text-small text-neutral-muted">
-          The page you&apos;re looking for doesn&apos;t exist or has been moved.
-        </p>
-        <Link
-          to="/projects"
-          className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
-        >
-          Back to Projects
-        </Link>
+        <div className="px-6 py-2xl text-center">
+          <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            404 Not Found
+          </div>
+          <h1 className="mb-sm font-mono text-2xl font-bold uppercase tracking-tight text-foreground">
+            Page not found
+          </h1>
+          <p className="mb-lg mx-auto max-w-md font-mono text-small text-muted-foreground">
+            The page you&apos;re looking for doesn&apos;t exist or has been moved.
+          </p>
+          <Link
+            to="/projects"
+            className="inline-block bg-foreground px-lg py-sm font-mono text-xs uppercase tracking-wider text-background transition-opacity hover:opacity-80"
+          >
+            Back to Projects
+          </Link>
+        </div>
       </div>
     </div>
   );
 }
 
-/** The Clerk-gated dashboard subtree, mounted once under one ClerkProvider. */
-function DashboardRoutes() {
+/** The Clerk-gated dashboard layout, mounted once under one ClerkProvider.
+ *  A layout route (not a descendant <Routes>): the parent routes below have no
+ *  trailing splat, so a nested <Routes> would never match and every dashboard
+ *  URL would fall through to the 404. Children render via <Outlet>. */
+function DashboardLayout() {
   return (
     <RequireAuth>
       <Shell>
-        <Routes>
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:id" element={<ProjectPage />} />
-          <Route path="/runs/:id" element={<RunDetailPage />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+        <Outlet />
       </Shell>
     </RequireAuth>
   );
 }
 
-export default function App() {
+/** Route table, exported without a router so tests can mount it in a
+ *  MemoryRouter. */
+export function AppRoutes() {
   return (
-    <BrowserRouter>
-      <Routes>
+    <Routes>
         {/* ── Public marketing + docs (render without Clerk) ─────────────── */}
         <Route
           path="/"
@@ -103,10 +111,29 @@ export default function App() {
         />
 
         {/* ── Clerk-gated dashboard ──────────────────────────────────────── */}
-        <Route path="/projects" element={<DashboardRoutes />} />
-        <Route path="/projects/:id" element={<DashboardRoutes />} />
-        <Route path="/runs/:id" element={<DashboardRoutes />} />
-      </Routes>
+        <Route element={<DashboardLayout />}>
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/:id" element={<ProjectPage />} />
+          <Route path="/runs/:id" element={<RunDetailPage />} />
+        </Route>
+
+        {/* ── Global 404 ─────────────────────────────────────────────────── */}
+        <Route
+          path="*"
+          element={
+            <MarketingLayout>
+              <NotFoundPage />
+            </MarketingLayout>
+          }
+        />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
       <Toaster />
     </BrowserRouter>
   );

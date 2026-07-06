@@ -33,24 +33,23 @@ export function Shell({ children }: ShellProps) {
       {/* ── Top bar (bordered navbar per DESIGN.md) ──────────────────────── */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b-2 border-foreground bg-background px-xl">
         <div className="flex items-center gap-md">
+          {/* Wordmark → marketing home (same convention as the public navbar). */}
           <Link
-            to="/projects"
+            to="/"
             className="flex items-center gap-sm font-mono text-xs font-bold uppercase tracking-[0.15em] text-foreground"
           >
             <GitCompareArrows size={16} strokeWidth={1.5} aria-hidden="true" />
             AGENTDIFF
           </Link>
-          {!onProjects && (
-            <>
-              <span className="h-4 w-px bg-border" />
-              <Link
-                to="/projects"
-                className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Projects
-              </Link>
-            </>
-          )}
+          <span className="h-4 w-px bg-border" />
+          <Link
+            to="/projects"
+            className={`font-mono text-xs uppercase tracking-[0.2em] transition-colors hover:text-foreground ${
+              onProjects ? "text-foreground" : "text-muted-foreground"
+            }`}
+          >
+            Projects
+          </Link>
         </div>
         <div className="flex items-center gap-md">
           {orgName && (

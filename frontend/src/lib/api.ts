@@ -2,7 +2,6 @@ import type {
   AgentGraph,
   Attribution,
   Comparison,
-  ReportData,
   StatisticalEvidence,
 } from "@/types";
 import { onUnauthorized } from "./auth";
@@ -205,9 +204,14 @@ export function fetchRun(runId: string, getToken: GetToken): Promise<RunDetail> 
   return authed(`/v1/runs/${runId}`, getToken) as Promise<RunDetail>;
 }
 
-/** The full report payload for a run (rendered by Task 14). */
-export function fetchRunPayload(runId: string, getToken: GetToken): Promise<ReportData> {
-  return authed(`/v1/runs/${runId}/payload`, getToken) as Promise<ReportData>;
+/**
+ * The full report payload for a run (rendered by Task 14).
+ * Returns the raw server JSON, unmapped — callers pass it through
+ * `toReportData` (see payloadAdapter.ts) to get the typed `ReportData`
+ * shape, or keep the raw value for e.g. JSON export.
+ */
+export function fetchRunPayload(runId: string, getToken: GetToken): Promise<unknown> {
+  return authed(`/v1/runs/${runId}/payload`, getToken);
 }
 
 export function fetchProjects(getToken: GetToken, q?: string): Promise<Page<Project>> {

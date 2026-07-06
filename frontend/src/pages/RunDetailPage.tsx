@@ -101,7 +101,7 @@ function LinkIcon() {
   );
 }
 
-function ExportBar({ runId, payload }: { runId: string; payload: ReportData | null }) {
+function ExportBar({ runId, payload }: { runId: string; payload: unknown }) {
   const [copied, setCopied] = useState(false);
 
   const downloadJson = useCallback(() => {
@@ -266,8 +266,17 @@ function ReportPanel({ data }: { data: ReportData }) {
 
 const POLL_MS = 5000;
 
-function usePayload(runId: string, status: string | null, getToken: () => Promise<string | null>) {
+/** Bound on in-progress polling so a stuck "processing" run doesn't poll forever. */
+const MAX_POLL_ATTEMPTS = 200; // ~16.6 minutes at 5s intervals
+
+function usePayload(
+  runId: string,
+  status: string | null,
+  getToken: () => Promise<string | null>,
+  retryKey = 0,
+) {
   const [payload, setPayload] = useState<ReportData | null>(null);
+  const [rawPayload, setRawPayload] = useState<unknown>(null);
   const [payloadPending, setPayloadPending] = useState(false);
   const [payloadError, setPayloadError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -275,6 +284,7 @@ function usePayload(runId: string, status: string | null, getToken: () => Promis
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
+    let attempts = 0;
 
     const clearTimer = () => {
       if (timerRef.current) {
@@ -287,6 +297,7 @@ function usePayload(runId: string, status: string | null, getToken: () => Promis
       fetchRunPayload(runId, getToken)
         .then((raw) => {
           if (cancelled) return;
+          setRawPayload(raw);
           setPayload(toReportData(raw));
           setPayloadPending(false);
           setPayloadError(null);
@@ -294,17 +305,31 @@ function usePayload(runId: string, status: string | null, getToken: () => Promis
         .catch((e: unknown) => {
           if (cancelled) return;
           const notReady = e instanceof ApiError && e.status === 404;
-          if (notReady && (status === "pending" || status === "processing")) {
+          const inProgress = status === "pending" || status === "processing";
+
+          if (notReady && inProgress) {
+            attempts += 1;
+            if (attempts >= MAX_POLL_ATTEMPTS) {
+              // Give up after a bounded number of retries rather than polling forever.
+              setPayloadPending(false);
+              setPayloadError("Report data is unavailable for this run.");
+              return;
+            }
             setPayloadPending(true);
             setPayloadError(null);
             timerRef.current = setTimeout(load, POLL_MS);
             return;
           }
+
           if (notReady) {
-            setPayloadPending(true);
-            setPayloadError(null);
+            // Run is in a terminal state (completed/failed/unknown) but the payload
+            // still 404s — this is a real error, not "not ready yet". No further
+            // polling: nothing will make a terminal run's missing payload appear.
+            setPayloadPending(false);
+            setPayloadError("Report data is unavailable for this run.");
             return;
           }
+
           setPayloadPending(false);
           setPayloadError(e instanceof Error ? e.message : "Failed to load run report");
         });
@@ -315,9 +340,9 @@ function usePayload(runId: string, status: string | null, getToken: () => Promis
       cancelled = true;
       clearTimer();
     };
-  }, [runId, status, getToken]);
+  }, [runId, status, getToken, retryKey]);
 
-  return { payload, payloadPending, payloadError };
+  return { payload, rawPayload, payloadPending, payloadError };
 }
 
 // ── RunDetailPage ─────────────────────────────────────────────────────────────
@@ -349,7 +374,13 @@ export function RunDetailPage() {
       .finally(() => setLoading(false));
   }, [runId, getToken]);
 
-  const { payload, payloadPending, payloadError } = usePayload(runId, run?.status ?? null, getToken);
+  const [payloadRetryKey, setPayloadRetryKey] = useState(0);
+  const { payload, rawPayload, payloadPending, payloadError } = usePayload(
+    runId,
+    run?.status ?? null,
+    getToken,
+    payloadRetryKey,
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
@@ -407,7 +438,7 @@ export function RunDetailPage() {
                 </span>
               </div>
             </div>
-            <ExportBar runId={runId} payload={payload} />
+            <ExportBar runId={runId} payload={rawPayload} />
           </div>
 
           {/* Failed run banner — show engine error prominently before the report */}
@@ -440,8 +471,21 @@ export function RunDetailPage() {
               )}
 
               {!payloadPending && payloadError && (
-                <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
-                  {payloadError}
+                <div className="rounded-md border border-ember/30 bg-ember/5 p-2xl text-center">
+                  <div className="mb-xs font-mono text-micro uppercase tracking-widest text-ember">
+                    Error
+                  </div>
+                  <h2 className="mb-sm font-display text-h2 font-bold text-ink-dark">
+                    Report unavailable
+                  </h2>
+                  <p className="mb-lg text-small text-neutral-muted">{payloadError}</p>
+                  <button
+                    type="button"
+                    onClick={() => setPayloadRetryKey((k) => k + 1)}
+                    className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
+                  >
+                    Retry
+                  </button>
                 </div>
               )}
 

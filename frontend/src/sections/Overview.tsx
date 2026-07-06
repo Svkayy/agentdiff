@@ -42,16 +42,16 @@ function VerdictBanner({ verdict, baseRef, candRef }: {
 
   return (
     <div className={`px-xl py-lg ${borderClass}`}>
-      <div className="flex items-start justify-between gap-lg">
+      <div className="flex flex-col gap-lg sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className={`font-mono text-display font-bold uppercase leading-tight ${accentClass}`}>
             {label}
           </h1>
           <p className="mt-xs font-mono text-body text-neutral-faint">{sub}</p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="shrink-0 text-left sm:text-right">
           <div className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">Compare</div>
-          <div className="mt-2xs font-mono text-small text-ink-light">
+          <div className="mt-2xs break-all font-mono text-small text-ink-light">
             <span>{baseRef}</span>
             <span className="mx-xs text-neutral-faint">→</span>
             <span>{candRef}</span>
@@ -74,7 +74,7 @@ function GraphPlate({
 }) {
   return (
     <div
-      className="relative min-w-0 overflow-x-auto overflow-y-hidden border-2 border-node-border"
+      className="relative min-w-0 overflow-hidden border-2 border-node-border"
       style={{ background: "#0E1116", height: "480px" }}
     >
       {/* Plate label (header-bar nameplate style) */}
@@ -219,7 +219,7 @@ export function Overview({ data }: { data: ReportData }) {
       <StatChips data={data} />
 
       {/* Graph plate + node detail */}
-      <div className="grid grid-cols-1 gap-lg xl:grid-cols-[1fr_320px]">
+      <div className="grid min-w-0 grid-cols-1 gap-lg xl:grid-cols-[1fr_320px]">
         <GraphPlate
           data={data}
           selectedId={selected?.id ?? null}

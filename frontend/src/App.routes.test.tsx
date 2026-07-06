@@ -22,6 +22,9 @@ vi.mock("@/pages/ProjectPage", () => ({
 vi.mock("@/pages/RunDetailPage", () => ({
   RunDetailPage: () => <div>RUN_DETAIL_PAGE</div>,
 }));
+vi.mock("@/pages/DemoPage", () => ({
+  DemoPage: () => <div>DEMO_PAGE</div>,
+}));
 vi.mock("@/pages/marketing/MarketingLayout", () => ({
   MarketingLayout: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -66,6 +69,12 @@ describe("AppRoutes", () => {
   it("renders the marketing home at /", () => {
     const html = renderAt("/");
     expect(html).toContain("MARKETING_HOME");
+  });
+
+  it("renders the public demo at /demo without auth", () => {
+    const html = renderAt("/demo");
+    expect(html).toContain("DEMO_PAGE");
+    expect(html).not.toContain("Page not found");
   });
 
   it("renders the 404 for unknown URLs", () => {

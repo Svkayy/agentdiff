@@ -9,6 +9,7 @@ const GITHUB_URL = "https://github.com/Svkayy/agentdiff";
 
 // Center links: Docs is a real route, GitHub is the external repo.
 const LINKS: { label: string; href: string; kind: "route" | "anchor" | "external" }[] = [
+  { label: "Demo", href: "/demo", kind: "route" },
   { label: "Docs", href: "/docs", kind: "route" },
   { label: "GitHub", href: GITHUB_URL, kind: "external" },
 ];

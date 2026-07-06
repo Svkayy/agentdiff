@@ -57,22 +57,31 @@ export function HeroSection() {
           that caused it. Any provider, any framework — none required.
         </motion.p>
 
-        {/* CTA Button — split-arrow, into the gated dashboard */}
-        <Link to="/projects">
-          <motion.span
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.6, ease }}
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            className="group inline-flex items-center gap-0 bg-foreground text-background text-sm font-mono tracking-wider uppercase"
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.6, ease }}
+          className="flex flex-wrap items-center justify-center gap-3"
+        >
+          <Link to="/demo">
+            <motion.span
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="group inline-flex items-center gap-0 bg-foreground text-background text-sm font-mono tracking-wider uppercase"
+            >
+              <span className="flex items-center justify-center w-10 h-10 bg-[#ea580c]">
+                <ArrowRight size={16} strokeWidth={2} className="text-background" />
+              </span>
+              <span className="px-5 py-2.5">View Demo</span>
+            </motion.span>
+          </Link>
+          <Link
+            to="/projects"
+            className="inline-flex h-10 items-center border-2 border-foreground bg-background px-5 font-mono text-sm uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
           >
-            <span className="flex items-center justify-center w-10 h-10 bg-[#ea580c]">
-              <ArrowRight size={16} strokeWidth={2} className="text-background" />
-            </span>
-            <span className="px-5 py-2.5">Open Dashboard</span>
-          </motion.span>
-        </Link>
+            Open Dashboard
+          </Link>
+        </motion.div>
       </div>
     </section>
   );

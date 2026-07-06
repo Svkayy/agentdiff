@@ -6,6 +6,7 @@ const ease = [0.22, 1, 0.36, 1] as const;
 const GITHUB_URL = "https://github.com/Svkayy/agentdiff";
 
 const LINKS: { label: string; href: string; kind: "route" | "external" }[] = [
+  { label: "Demo", href: "/demo", kind: "route" },
   { label: "Privacy", href: "/privacy", kind: "route" },
   { label: "Terms", href: "/terms", kind: "route" },
   { label: "Docs", href: "/docs", kind: "route" },

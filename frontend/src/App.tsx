@@ -5,6 +5,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
 import { RunDetailPage } from "@/pages/RunDetailPage";
+import { DemoPage } from "@/pages/DemoPage";
 import { MarketingLayout } from "@/pages/marketing/MarketingLayout";
 import { MarketingHome } from "@/pages/marketing/MarketingHome";
 import { DocsPage } from "@/pages/marketing/components/DocsPage";
@@ -74,6 +75,14 @@ export function AppRoutes() {
           element={
             <MarketingLayout>
               <MarketingHome />
+            </MarketingLayout>
+          }
+        />
+        <Route
+          path="/demo"
+          element={
+            <MarketingLayout>
+              <DemoPage />
             </MarketingLayout>
           }
         />

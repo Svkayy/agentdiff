@@ -41,11 +41,14 @@ _SECRET_SAMPLES = [
     ("openai", "sk-" + "A" * 20 + "abcdefghij"),
     ("openai_short_boundary", "sk-" + "a1B2c3D4e5" * 2),
     ("anthropic", "sk-ant-api03-" + "a" * 40),
-    ("slack_bot", "xoxb-123456789012-123456789012-abcdefghijklmnopqrstuvwx"),
-    ("slack_user", "xoxp-123456789012-123456789012-abcdefghijklmnopqrstuvwx"),
-    ("slack_app", "xoxa-123456789012-123456789012-abcdefghijklmnopqrstuvwx"),
-    ("slack_refresh", "xoxr-123456789012-123456789012-abcdefghijklmnopqrstuvwx"),
-    ("slack_service", "xoxs-123456789012-123456789012-abcdefghijklmnopqrstuvwx"),
+    # Slack samples are concatenated so secret scanners (e.g. GitHub push
+    # protection) don't flag this synthetic regression corpus as a live
+    # credential — the runtime values are unchanged.
+    ("slack_bot", "xoxb-" + "123456789012-123456789012-" + "abcdefghijklmnopqrstuvwx"),
+    ("slack_user", "xoxp-" + "123456789012-123456789012-" + "abcdefghijklmnopqrstuvwx"),
+    ("slack_app", "xoxa-" + "123456789012-123456789012-" + "abcdefghijklmnopqrstuvwx"),
+    ("slack_refresh", "xoxr-" + "123456789012-123456789012-" + "abcdefghijklmnopqrstuvwx"),
+    ("slack_service", "xoxs-" + "123456789012-123456789012-" + "abcdefghijklmnopqrstuvwx"),
     ("bearer", "Bearer abcdefghijklmnopqrstuvwxyz0123456789"),
     ("aws_akia", "AKIAABCDEFGHIJKLMNOP"),
     ("generic_api_key_colon", "api_key: abcdef0123456789"),

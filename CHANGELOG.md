@@ -43,7 +43,10 @@ Initial public release.
   computed alongside behavioral deltas and rendered in the report's Runtime
   Deltas section and the dashboard payload.
 - **Statistical rigor**: Benjamini-Hochberg multiple-comparison correction
-  and low-sample-size warnings on every comparison run.
+  and low-sample-size warnings on every comparison run. Note: because the
+  correction now also applies to the zero-config `agentdiff diff` path, a
+  multi-delta `diff` may report a softer verdict than in a pre-0.1.0 build;
+  set `stats.correction: none` to restore the uncorrected behavior.
 - **Default-on secret redaction** across all capture shims, with `standard`
   (pattern masking + credential header stripping), `strict` (content
   digests), and `off` modes — see `docs/data-handling.md`.

@@ -89,7 +89,7 @@ class Run(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     verdict: Mapped[str | None] = mapped_column(String(16), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
     project: Mapped[Project] = relationship(back_populates="runs")
     trajectories: Mapped[list["Trajectory"]] = relationship(back_populates="run", cascade="all, delete-orphan")
     findings: Mapped[list["Finding"]] = relationship(back_populates="run", cascade="all, delete-orphan")
@@ -98,7 +98,7 @@ class Run(Base):
 class Trajectory(Base):
     __tablename__ = "trajectories"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
-    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id"))
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id"), index=True)
     side: Mapped[str] = mapped_column(String(16))
     test_case_id: Mapped[str] = mapped_column(String(255))
     payload: Mapped[dict] = mapped_column(JSONB)
@@ -108,7 +108,7 @@ class Trajectory(Base):
 class Finding(Base):
     __tablename__ = "findings"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
-    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id"))
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id"), index=True)
     test_case_id: Mapped[str] = mapped_column(String(255))
     title: Mapped[str] = mapped_column(Text)
     verdict: Mapped[str] = mapped_column(String(16))

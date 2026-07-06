@@ -1,14 +1,22 @@
 /** @type {import('tailwindcss').Config} */
-// Tokens from DESIGN.md — AgentDiff design system.
-// Extends the existing keys so current components keep compiling.
+// Tokens from DESIGN.md — AgentDiff brutalist ("SYS.INT"-derived) design
+// system (T2). Primary palette is the HSL var set in src/index.css
+// (background/foreground/card/muted/accent/border/ring, radius 0). Legacy
+// flat keys (ink, shell, hairline, ember, verdict-*, neutral-*, ...) are kept
+// and re-mapped onto the new palette so existing components keep compiling.
 export default {
   darkMode: ["class"],
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
-      // ── Legacy keys (keep existing components compiling) ──────────────────
+      // ── LEGACY KEYS (T2 — re-mapped onto the brutalist palette) ────────────
+      // These names are kept verbatim (not deleted, not renamed) so every
+      // pre-existing dashboard/marketing component keeps compiling. Their
+      // VALUES now come from the `--color-*` CSS vars defined in index.css
+      // (:root + .dark), which are themselves derived from the new
+      // cream/black/orange system. See t2-ui-report.md for the full
+      // legacy → new mapping table.
       colors: {
-        // Legacy palette (kept for backward-compat)
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
@@ -19,64 +27,63 @@ export default {
         "text-main": "hsl(var(--foreground))",
         "text-muted": "hsl(var(--muted-foreground))",
 
-        // ── DESIGN.md signal ──────────────────────────────────────────────
-        ember: "#FF4D2E",
+        // ── Signal color: was #FF4D2E (ember/red-orange) → now the
+        // brutalist signal orange #ea580c (--color-ember). ────────────────
+        ember: "var(--color-ember)",
 
-        // ── DESIGN.md verdicts ────────────────────────────────────────────
+        // ── Verdicts — pass/warn/fail must stay visually distinguishable.
+        // pass: calm green (kept, distinguishable from the orange family);
+        // warn: warm amber-orange (outline-ish, distinct from solid fail);
+        // fail: solid signal orange (= ember). ─────────────────────────────
         verdict: {
-          pass: "#3FB27F",
-          warn: "#E8A33D",
-          fail: "#FF4D2E", // = ember
+          pass: "var(--color-pass)",
+          warn: "var(--color-warn)",
+          fail: "var(--color-ember)",
         },
 
-        // ── DESIGN.md ink (text) ──────────────────────────────────────────
-        // DEFAULT lets the ported marketing components use the flat `text-ink`
-        // token; -dark/-light keep the dashboard classes working.
+        // ── ink (text) → foreground family. DEFAULT/dark = ink on light
+        // shell; light = ink on the dark graph canvas. ─────────────────────
         ink: {
-          DEFAULT: "#15181D",
-          dark: "#15181D",   // on light backgrounds
-          light: "#E8EBEF",  // on dark graph canvas
+          DEFAULT: "var(--color-ink-dark)",
+          dark: "var(--color-ink-dark)",
+          light: "var(--color-ink-light)",
         },
 
-        // ── DESIGN.md graph canvas ────────────────────────────────────────
-        canvas: "#0E1116",
-        "node-fill": "#1B2027",
-        "node-border": "#2A313B",
-        // Flat aliases the ported marketing GraphPlate expects.
-        node: "#1B2027",
-        nodeborder: "#2A313B",
-        canvastext: "#E8EBEF",
+        // ── Graph canvas — dark surface family (independent of the
+        // light/dark theme toggle; the graph plate is always dark). ───────
+        canvas: "var(--color-canvas)",
+        "node-fill": "var(--color-node-fill)",
+        "node-border": "var(--color-node-border)",
+        node: "var(--color-node-fill)",
+        nodeborder: "var(--color-node-border)",
+        canvastext: "var(--color-ink-light)",
 
-        // ── DESIGN.md surfaces (light shell) ─────────────────────────────
-        // DEFAULT = the light shell so marketing `bg-shell`/`text-shell` work;
-        // -bg/-card/-dark keep the dashboard classes working.
+        // ── shell → background family (was #FAFAF8/#14161A). ───────────────
         shell: {
-          DEFAULT: "#FAFAF8",  // warm off-white (marketing bg)
-          bg: "#FAFAF8",
-          card: "#FFFFFF",
-          dark: "#14161A",     // dark shell
+          DEFAULT: "var(--color-shell-bg)",
+          bg: "var(--color-shell-bg)",
+          card: "hsl(var(--card))",
+          dark: "var(--color-shell-dark)",
         },
-        hairline: "#E6E3DD",
-        // Flat marketing neutrals (landing palette). `muted` is defined on the
-        // shadcn object below (DEFAULT #5B6470) so it isn't duplicated here.
-        faint: "#8A929C",
-        // Marketing verdict tints (flat) — the landing components use these.
-        pass: "#3FB27F",
-        warn: "#E8A33D",
+        hairline: "var(--color-hairline)",
+        faint: "var(--color-neutral-faint)",
+        pass: "var(--color-pass)",
+        warn: "var(--color-warn)",
 
-        // ── DESIGN.md neutrals ────────────────────────────────────────────
+        // ── neutrals → muted-foreground family. ────────────────────────────
         neutral: {
-          muted: "#5B6470",
-          faint: "#8A929C",
+          muted: "var(--color-neutral-muted)",
+          faint: "var(--color-neutral-faint)",
         },
 
-        // ── shadcn/ui CSS-variable-backed colors ──────────────────────────
+        // ── Brutalist design-system colors (T2) — CSS-variable-backed,
+        // HSL token set ported from the reference template. These are now
+        // the PRIMARY palette; legacy flat hex keys above remain as aliases
+        // so pre-T3/T4 components keep compiling and looking coherent.
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
-          // DEFAULT is the light marketing card (#FFFFFF); -foreground stays
-          // CSS-var-backed for the shadcn dashboard components.
-          DEFAULT: "#FFFFFF",
+          DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
         popover: {
@@ -88,10 +95,7 @@ export default {
           foreground: "hsl(var(--secondary-foreground))",
         },
         muted: {
-          // DEFAULT is the flat marketing muted-text (#5B6470) so the ported
-          // landing components read correctly on the light shell; -foreground
-          // stays CSS-var-backed for the shadcn dashboard components.
-          DEFAULT: "#5B6470",
+          DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
         },
         accent: {
@@ -124,18 +128,38 @@ export default {
         enter: "cubic-bezier(0.16, 1, 0.3, 1)",
       },
 
-      // ── DESIGN.md border radii ────────────────────────────────────────────
+      // ── Brutalist border radii (T2) — 0-based scale, sharp/square by
+      // default. `DEFAULT`/`lg`/`md`/`sm` derive from `--radius` (0rem) per
+      // the reference template. Legacy `full` (status dots) is kept as the
+      // one exception — fully-round dots/pills still need `rounded-full`.
       borderRadius: {
-        sm: "6px",   // chips, inputs
-        md: "10px",  // cards, nodes
-        lg: "14px",  // the plate
-        full: "9999px", // status dots
-        // Keep shadcn defaults (CSS var-backed)
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 2px)",
+        full: "9999px", // status dots (legacy — intentionally exempt from 0-radius)
         DEFAULT: "var(--radius)",
       },
 
-      // ── DESIGN.md font families ───────────────────────────────────────────
+      // ── Brutalist font families (T2) ──────────────────────────────────────
       fontFamily: {
+        // Body / UI mono — JetBrains Mono (self-hosted via
+        // @fontsource/jetbrains-mono). This is now the default body font
+        // (see `body { @apply font-mono }` in index.css).
+        mono: [
+          '"JetBrains Mono"',
+          "ui-monospace",
+          "monospace",
+        ],
+        // Display / pixel headline face — Silkscreen (self-hosted via
+        // @fontsource/silkscreen). See index.css header comment for why
+        // Silkscreen was chosen over the `geist` package's pixel woff2s
+        // (those are wrapped in next/font/local and don't resolve under Vite).
+        pixel: [
+          '"Silkscreen"',
+          '"JetBrains Mono"',
+          "monospace",
+        ],
+        // ── Legacy display/sans/body — kept for pre-T3/T4 components ───────
         // Display / hero — Cabinet Grotesk (self-hosted TTF); fallback to Geist
         display: [
           '"Cabinet Grotesk"',
@@ -157,12 +181,6 @@ export default {
           '"Geist"',
           "system-ui",
           "sans-serif",
-        ],
-        // Data / code — JetBrains Mono (self-hosted via @fontsource/jetbrains-mono)
-        mono: [
-          '"JetBrains Mono"',
-          "ui-monospace",
-          "monospace",
         ],
       },
 
@@ -195,8 +213,8 @@ export default {
         },
         // DESIGN.md: one ember halo pulse on load for the stopped node
         "ember-pulse": {
-          "0%, 100%": { boxShadow: "0 0 0 0 rgba(255,77,46,0)" },
-          "50%": { boxShadow: "0 0 0 12px rgba(255,77,46,0.25)" },
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(234,88,12,0)" },
+          "50%": { boxShadow: "0 0 0 12px rgba(234,88,12,0.25)" },
         },
       },
       animation: {

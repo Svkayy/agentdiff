@@ -29,7 +29,7 @@ export function HeroSection() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.15, ease }}
-          className="w-full max-w-2xl my-4 lg:my-6"
+          className="w-full max-w-4xl my-4 lg:my-6"
         >
           <WorkflowDiagram />
         </motion.div>

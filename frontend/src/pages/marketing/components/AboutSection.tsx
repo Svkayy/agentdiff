@@ -34,49 +34,77 @@ function SessionTick() {
  * tool leaf hangs off retriever + fact_checker. In the CANDIDATE (after)
  * column the `fact_checker` sub-agent has STOPPED firing (solid #ea580c) — the
  * exact regression the terminal card attributes to `agents/router.py:42`.
+ *
+ * Interactive: hovering (or tapping, which pins) a node highlights it in BOTH
+ * columns, dims unrelated edges, and swaps the bottom nameplate readout to
+ * that node's baseline → candidate invocation rate. Rates match the terminal
+ * card in RAW_DATA (fact_checker 0.98 → 0.10).
  */
-function TopologyColumn({ stopped }: { stopped: boolean }) {
-  // Node layout in a 200×360 column.
-  const NODES: { id: string; label: string; x: number; y: number; stop?: boolean }[] = [
-    { id: "orchestrator", label: "orchestrator", x: 100, y: 44 },
-    { id: "retriever", label: "retriever", x: 50, y: 150 },
-    { id: "fact_checker", label: "fact_checker", x: 150, y: 150, stop: true },
-    { id: "summarizer", label: "summarizer", x: 100, y: 256 },
-    { id: "search", label: "search()", x: 100, y: 336 },
-  ];
-  const EDGES: [string, string][] = [
-    ["orchestrator", "retriever"],
-    ["orchestrator", "fact_checker"],
-    ["retriever", "summarizer"],
-    ["fact_checker", "summarizer"],
-    ["retriever", "search"],
-    ["fact_checker", "search"],
-  ];
-  const byId = (id: string) => NODES.find((n) => n.id === id)!;
+type TopologyNode = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  base: number;
+  cand: number;
+  status: "OK" | "STOPPED" | "DEGRADED";
+  stop?: boolean;
+};
+
+// Node layout in a 200×360 column.
+const NODES: TopologyNode[] = [
+  { id: "orchestrator", label: "orchestrator", x: 100, y: 44, base: 1.0, cand: 1.0, status: "OK" },
+  { id: "retriever", label: "retriever", x: 50, y: 150, base: 0.98, cand: 0.98, status: "OK" },
+  { id: "fact_checker", label: "fact_checker", x: 150, y: 150, base: 0.98, cand: 0.1, status: "STOPPED", stop: true },
+  { id: "summarizer", label: "summarizer", x: 100, y: 256, base: 1.0, cand: 1.0, status: "OK" },
+  { id: "search", label: "search()", x: 100, y: 336, base: 0.86, cand: 0.44, status: "DEGRADED" },
+];
+const EDGES: [string, string][] = [
+  ["orchestrator", "retriever"],
+  ["orchestrator", "fact_checker"],
+  ["retriever", "summarizer"],
+  ["fact_checker", "summarizer"],
+  ["retriever", "search"],
+  ["fact_checker", "search"],
+];
+const nodeById = (id: string) => NODES.find((n) => n.id === id)!;
+
+function TopologyColumn({
+  stopped,
+  active,
+  onHover,
+  onPin,
+}: {
+  stopped: boolean;
+  active: string | null;
+  onHover: (id: string | null) => void;
+  onPin: (id: string) => void;
+}) {
   const nodeW = 88;
   const nodeH = 30;
-  const cx = (n: { x: number }) => n.x;
-  const cy = (n: { y: number }) => n.y;
 
   return (
     <g>
       {/* edges */}
       {EDGES.map(([f, t], i) => {
-        const from = byId(f);
-        const to = byId(t);
+        const from = nodeById(f);
+        const to = nodeById(t);
         // An edge into the stopped node reads as severed in the candidate.
         const severed = stopped && (t === "fact_checker" || f === "fact_checker");
+        const touched = active !== null && (f === active || t === active);
+        const dimmed = active !== null && !touched;
         return (
           <line
             key={i}
-            x1={cx(from)}
-            y1={cy(from)}
-            x2={cx(to)}
-            y2={cy(to)}
+            x1={from.x}
+            y1={from.y}
+            x2={to.x}
+            y2={to.y}
             stroke={severed ? "#ea580c" : "hsl(var(--background))"}
-            strokeWidth={severed ? 1.5 : 1}
+            strokeWidth={severed || touched ? 1.5 : 1}
             strokeDasharray={severed ? "4 4" : undefined}
-            opacity={severed ? 0.8 : 0.4}
+            opacity={dimmed ? 0.12 : touched ? 0.9 : severed ? 0.8 : 0.4}
+            style={{ transition: "opacity 150ms ease-out" }}
           />
         );
       })}
@@ -84,8 +112,17 @@ function TopologyColumn({ stopped }: { stopped: boolean }) {
       {NODES.map((n) => {
         const isStopped = stopped && n.stop;
         const isTool = n.id === "search";
+        const isActive = active === n.id;
+        const dimmed = active !== null && !isActive;
         return (
-          <g key={n.id}>
+          <g
+            key={n.id}
+            onMouseEnter={() => onHover(n.id)}
+            onMouseLeave={() => onHover(null)}
+            onClick={() => onPin(n.id)}
+            style={{ cursor: "crosshair", transition: "opacity 150ms ease-out" }}
+            opacity={dimmed ? 0.35 : 1}
+          >
             <rect
               x={n.x - nodeW / 2}
               y={n.y - nodeH / 2}
@@ -93,8 +130,8 @@ function TopologyColumn({ stopped }: { stopped: boolean }) {
               height={nodeH}
               rx={0}
               fill={isStopped ? "#ea580c" : "hsl(var(--foreground))"}
-              stroke={isStopped ? "#ea580c" : "hsl(var(--background))"}
-              strokeWidth={1.5}
+              stroke={isActive ? "#ea580c" : isStopped ? "#ea580c" : "hsl(var(--background))"}
+              strokeWidth={isActive ? 2 : 1.5}
               strokeDasharray={isTool ? "3 3" : undefined}
             />
             <text
@@ -121,14 +158,21 @@ function TopologyColumn({ stopped }: { stopped: boolean }) {
   );
 }
 
-function AgentTopology() {
+function AgentTopology({
+  active,
+  onHover,
+  onPin,
+}: {
+  active: string | null;
+  onHover: (id: string | null) => void;
+  onPin: (id: string) => void;
+}) {
   return (
     <svg
       viewBox="0 0 440 400"
       className="w-full h-full"
       preserveAspectRatio="xMidYMid meet"
-      role="img"
-      aria-label="Before/after agent topology: in the candidate run the fact_checker sub-agent has stopped firing"
+      aria-label="Before/after agent topology: in the candidate run the fact_checker sub-agent has stopped firing. Hover a node to read its baseline and candidate invocation rates."
     >
       {/* column captions */}
       <text
@@ -157,10 +201,10 @@ function AgentTopology() {
       {/* divider */}
       <line x1={220} y1={40} x2={220} y2={392} stroke="hsl(var(--background))" strokeWidth={1} opacity={0.25} />
       <g transform="translate(10, 40)">
-        <TopologyColumn stopped={false} />
+        <TopologyColumn stopped={false} active={active} onHover={onHover} onPin={onPin} />
       </g>
       <g transform="translate(230, 40)">
-        <TopologyColumn stopped />
+        <TopologyColumn stopped active={active} onHover={onHover} onPin={onPin} />
       </g>
     </svg>
   );
@@ -200,6 +244,13 @@ function StatBlock({ label, value, index }: { label: string; value: string; inde
  * attribute, the LLM never decides verdicts — plus a truthful stats grid.
  */
 export function AboutSection() {
+  // Hover previews a node; click/tap pins it (tap again to unpin) so touch
+  // devices get the same readout. Hover wins while present.
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [pinned, setPinned] = useState<string | null>(null);
+  const active = hovered ?? pinned;
+  const activeNode = active ? nodeById(active) : null;
+
   return (
     <section className="w-full px-6 py-20 lg:px-12">
       <SectionLabel label="METHODOLOGY" index={2} />
@@ -223,13 +274,27 @@ export function AboutSection() {
           </div>
 
           <div className="absolute inset-0 flex items-center justify-center px-5 pt-12 pb-12">
-            <AgentTopology />
+            <AgentTopology
+              active={active}
+              onHover={setHovered}
+              onPin={(id) => setPinned((p) => (p === id ? null : id))}
+            />
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3">
-            <span className="text-[11px] tracking-[0.16em] uppercase text-background/60 font-mono">
-              {"fact_checker: STOPPED"}
-            </span>
+            {activeNode ? (
+              <span
+                className={`text-[11px] tracking-[0.16em] uppercase font-mono tabular ${
+                  activeNode.status === "OK" ? "text-background/60" : "text-[#ea580c]"
+                }`}
+              >
+                {`${activeNode.label}: ${activeNode.base.toFixed(2)} → ${activeNode.cand.toFixed(2)} [${activeNode.status}]`}
+              </span>
+            ) : (
+              <span className="text-[11px] tracking-[0.16em] uppercase text-background/60 font-mono">
+                {"fact_checker: STOPPED"}
+              </span>
+            )}
             <span className="text-[11px] tracking-[0.16em] uppercase text-background/60 font-mono">
               {"1 SUB-AGENT REGRESSED"}
             </span>

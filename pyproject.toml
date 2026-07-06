@@ -1,6 +1,6 @@
 [project]
 name = "agentdiff"
-version = "0.1.0"
+version = "0.2.0"
 description = "Behavioral regression testing for Python AI agent systems"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}

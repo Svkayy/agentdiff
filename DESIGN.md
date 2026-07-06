@@ -327,4 +327,5 @@ header-bar-card internally.
 | 2026-06-21 | Initial design system created | /design-consultation. Memorable thing: "you can SEE the regression." One ember signal color, editorial data-viz, graph-as-plate. |
 | 2026-06-21 | Stack: Vite + React + React Flow | User chose Option C for the richest interactive graph; real layout engine + custom node components. |
 | 2026-07-03 | Dashboard light theme (user-approved override of dark graph canvas); Aceternity motion components adopted | User directive during Tier 1-3 build |
+| 2026-07-06 | Hero WorkflowDiagram pill labels (rx=13) kept as a blessed exception to the 0-radius rule | User decision (ship D8): the approved hero visual keeps its pill chips; every other surface stays square. |
 | 2026-07-05 | Brutalist "SYS.INT"-derived rework replaces the editorial-instrument system | User-supplied reference template; T2 of the brutalist-ui plan. Cream/black/#ea580c palette, 2px square borders/0 radius, JetBrains Mono + Silkscreen, dot-grid bg, glitch/marquee/blink/scramble motion. Legacy tokens re-mapped (not deleted) for incremental T3/T4 migration. |

@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/) — with
 the 0.x caveat described in the README's versioning policy: minor version
 bumps may still contain breaking changes until 1.0.0.
 
-## [Unreleased]
+## [0.2.0] - 2026-07-06
+
+### Added
 
 - Hosted-platform hardening: usage quotas, retention crons, health/metrics
   endpoints, and a production TLS deploy path for the self-hosted stack.
@@ -26,6 +28,52 @@ bumps may still contain breaking changes until 1.0.0.
 - UI: brutalist AgentDiff restyle for the public landing/docs routes and hosted
   dashboard chrome, including the before/after stopped-agent topology and the
   preserved pass/warn/fail verdict mapping.
+- Landing: the methodology baseline→candidate topology is now interactive —
+  hover or tap a node to highlight it in both columns and read its
+  baseline→candidate invocation rates in the panel readout.
+- Dev CORS: optional `AGENTDIFF_CORS_ORIGIN_REGEX` lets the API accept the
+  Vite dev server's dynamic localhost ports without loosening production CORS.
+- Frontend component-test infrastructure (jsdom + Testing Library) with
+  coverage for the auth gate, projects list error/retry, run-report polling,
+  and theme persistence.
+
+### Changed
+
+- README comprehensively restructured: quick start up front, table of
+  contents, badges, accurate install instructions, and consolidated coverage,
+  CI-gate, and hosted-platform sections.
+- Landing hero pipeline diagram renders at its full size.
+
+### Fixed
+
+- Dashboard URLs (`/projects`, `/projects/:id`, `/runs/:id`) no longer 404
+  after sign-in (nested-router mismatch), and signing in now lands on
+  `/projects` instead of the marketing home. Unknown URLs get a proper 404
+  page.
+- Docs body text was nearly invisible in both light and dark themes (legacy
+  color tokens resolving to surface colors).
+- The worker no longer reprocesses an already-completed run, so duplicate
+  queue deliveries can't duplicate findings.
+- The production compose overlay no longer publishes Postgres/Redis host
+  ports, and the one-shot migrate service's database URL is overridable for
+  managed-Postgres deployments.
+- The projects page fetched its list twice on every mount; it now fetches
+  once.
+- The dashboard header wordmark links back to the landing page.
+- Pre-landing review hardening: Slack OAuth install states are single-use
+  (replay of a leaked install link is rejected); worker run-claiming is
+  atomic (concurrent duplicate deliveries can't double-insert findings);
+  Slack HTTP calls no longer block the event loop; manual Slack reconfigure
+  clears a stale OAuth webhook; quota 429 bodies use a flat shape; a pending
+  run whose enqueue was lost is re-enqueued on idempotent replay; unmatched
+  request paths no longer mint unbounded metrics label series; cassettes
+  store query-stripped URLs so provider API keys never land in committed
+  cassette files; and `trajectories.run_id` / `findings.run_id` /
+  `runs.created_at` gained indexes.
+- Note: `agentdiff diff` / `agentdiff ci` now generate LLM attribution
+  explanations by default when `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) is
+  set — code hunks from your diff are sent to the configured provider. Unset
+  the key or disable the explainer to opt out.
 
 ## [0.1.0] - 2026-07-05
 
@@ -75,5 +123,5 @@ Initial public release.
 - **Traffic discovery** (`agentdiff traffic discover`): seeds regression
   test cases from existing JSONL/JSON/CSV/text traffic samples.
 
-[Unreleased]: https://github.com/Svkayy/agentdiff/compare/v0.1.0...HEAD
+[0.2.0]: https://github.com/Svkayy/agentdiff/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Svkayy/agentdiff/releases/tag/v0.1.0

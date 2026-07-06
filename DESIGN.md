@@ -95,11 +95,10 @@ Primary token set (HSL CSS custom properties, `frontend/src/index.css`,
   (`#ea580c`, the `--accent` family) carries the entire brand identity and
   every "this needs your attention" moment.
 - **`#ea580c` usage rules:** the split-arrow CTA button's arrow chip,
-  section-label blinking dot, scramble-price/scramble-stat highlights,
-  pricing "RECOMMENDED" tag, verdict FAIL state, live-status indicator
-  dots, glitch-marquee accents. Never used for large background fills or
-  as a generic "brand" wash — it stays a small, sharp accent so it keeps
-  reading as a signal rather than decoration.
+  section-label blinking dot, scramble-stat highlights, verdict FAIL state,
+  live-status indicator dots, glitch-marquee accents. Never used for large
+  background fills or as a generic "brand" wash — it stays a small, sharp
+  accent so it keeps reading as a signal rather than decoration.
 - **Ink:** `hsl(var(--foreground))` — near-black on the light cream shell,
   cream on the dark shell.
 - **Dot-grid background:** `.dot-grid-bg` (+ automatic `.dark .dot-grid-bg`
@@ -185,7 +184,7 @@ toggle.
   - Section labels: `initial={{ opacity: 0, x: -20 }}` → `x: 0`.
   - Body blocks / cards: `initial={{ opacity: 0, y: 16–30 }}` → `y: 0`,
     optionally with `filter: "blur(4–6px)"` → `blur(0px)` for a soft focus-in.
-  - Staggered lists (feature grid, pricing features): index-based `delay`
+  - Staggered lists (feature grid, repeated rows): index-based `delay`
     (e.g. `delay: i * 0.08–0.12`).
 - **Brutalist flourishes (named, all in `frontend/src/index.css`):**
   - `.animate-glitch` (`@keyframes glitch`, 5s infinite) — brief
@@ -199,9 +198,9 @@ toggle.
   - `.animate-blink` (`@keyframes blink`, 1s step-end infinite) — the
     small square "live" indicator dot used in section labels and status
     lines.
-  - `ScrambleText` / scramble-price effects — a terminal-decode reveal
+  - `ScrambleText` effects — a terminal-decode reveal
     (random chars resolving left-to-right into the real string) triggered
-    once on scroll-into-view. Use for stat values, prices, and other
+    once on scroll-into-view. Use for stat values and other
     "data materializing" moments — not for prose.
 - **Hover/tap micro-interactions:** buttons and interactive chips use
   `whileHover={{ scale: 1.02–1.05 }}` / `whileTap={{ scale: 0.92–0.97 }}`,
@@ -217,7 +216,7 @@ Every major section opens with a one-line label:
 ```
 
 Implemented as `frontend/src/components/system/SectionLabel.tsx`:
-uppercase 10px mono, `tracking-[0.2em]`, `text-muted-foreground`, a
+uppercase 11–12px mono, `tracking-[0.2em]`, `text-muted-foreground`, a
 `flex-1 border-t border-border` divider filling the remaining width, an
 optional blinking orange dot (`animate-blink`, `bg-[#ea580c]`), and the
 section's 1-based index zero-padded to 3 digits (`004`). Entrance:
@@ -237,7 +236,7 @@ color transition.
 ### Header-bar card pattern
 See "Header-bar card pattern" under Borders/Surfaces above — the
 `file.ext`-label + meta-value header bar is the standard top edge of every
-bordered card/panel (terminal cards, metrics cards, pricing tiers, the
+bordered card/panel (terminal cards, metrics cards, methodology panels, the
 about-section manifest panel, dashboard report panels).
 
 ### Bento grid

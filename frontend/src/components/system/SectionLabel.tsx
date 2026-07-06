@@ -14,8 +14,7 @@ export interface SectionLabelProps {
 
 /**
  * Brutalist section-label pattern — ported from the repeated block seen in
- * the reference template's feature-grid.tsx / about-section.tsx /
- * pricing-section.tsx:
+ * the reference template's feature-grid.tsx / about-section.tsx:
  *
  *   // SECTION: NAME  ────────────────────────  ●  004
  *
@@ -32,14 +31,14 @@ export function SectionLabel({ label, index, blink = true, className }: SectionL
       transition={{ duration: 0.5, ease }}
       className={`flex items-center gap-4 mb-8 ${className ?? ""}`}
     >
-      <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
+      <span className="text-[11px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
         {`// SECTION: ${label}`}
       </span>
       <div className="flex-1 border-t border-border" />
       {blink && (
         <span className="inline-block h-2 w-2 bg-[#ea580c] animate-blink" aria-hidden="true" />
       )}
-      <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
+      <span className="text-[11px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
         {String(index).padStart(3, "0")}
       </span>
     </motion.div>

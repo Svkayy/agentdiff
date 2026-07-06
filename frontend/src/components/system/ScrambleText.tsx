@@ -12,9 +12,8 @@ export interface ScrambleTextProps {
 
 /**
  * Brutalist "terminal decode" text reveal — ported from the reference
- * template's inline `ScrambleText` (used in about-section.tsx /
- * pricing-section.tsx). Triggers once when scrolled into view, then
- * resolves the string left-to-right through random characters from the
+ * template's inline `ScrambleText`. Triggers once when scrolled into view,
+ * then resolves the string left-to-right through random characters from the
  * template's charset.
  */
 export function ScrambleText({ text, className, frameMs = 30 }: ScrambleTextProps) {

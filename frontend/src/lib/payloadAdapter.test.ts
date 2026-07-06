@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { toReportData } from "./payloadAdapter";
+import { useReportData } from "./payload";
 import sampleJson from "@/sample.json";
 
 // ── Fixture: real committed run (frontend/src/sample.json), regenerated from
@@ -172,5 +173,15 @@ describe("toReportData — malformed/partial input", () => {
     expect(data.comparison).toBeNull();
     expect(data.attribution).toBeNull();
     expect(data.trajectories).toEqual({ baseline: [], candidate: [] });
+  });
+});
+
+describe("useReportData — CLI sample fallback", () => {
+  it("adapts the bundled sample before the CLI report renders it", () => {
+    const data = useReportData();
+    expect(data.outputEvals.length).toBeGreaterThan(0);
+    for (const e of data.outputEvals) {
+      expect(Array.isArray(e.skipped_checks)).toBe(true);
+    }
   });
 });

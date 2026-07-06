@@ -73,7 +73,7 @@ jobs:
       - name: Test hosted backend + collector
         run: pytest tests/server tests/collector -q
 
-  dashboard:
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,25 +92,6 @@ jobs:
         run: npx vitest run
         working-directory: frontend
 
-      - name: Build dashboard (tsc + vite)
+      - name: Build unified frontend (tsc + vite)
         run: npm run build
         working-directory: frontend
-
-  landing:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: landing/package-lock.json
-
-      - name: Install
-        run: npm ci
-        working-directory: landing
-
-      - name: Build landing page (tsc + vite)
-        run: npm run build
-        working-directory: landing

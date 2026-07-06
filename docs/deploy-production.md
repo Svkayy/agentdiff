@@ -5,6 +5,37 @@ platform: TLS, database migrations, backups, scaling, CORS, and secret
 rotation. It builds on the base `docker-compose.yml` with the
 `docker-compose.prod.yml` overlay.
 
+## Hosting the UI on Vercel
+
+AgentDiff's public landing page, docs, legal pages, and authenticated dashboard
+are now one Vite SPA under `frontend/`. Vercel can host that UI as the single
+public link, while the API, worker, Postgres, and Redis stay on your
+self-hosted/Docker stack.
+
+1. In Vercel, import the AgentDiff GitHub repo.
+2. Set the project root directory to `frontend/`.
+3. Keep the default Vite build settings (`npm run build`, output `dist`).
+4. Add environment variables:
+
+   ```text
+   VITE_CLERK_PUBLISHABLE_KEY=pk_live_...
+   VITE_AGENTDIFF_API_URL=https://api.your-agentdiff-domain.example
+   ```
+
+5. Deploy.
+
+After deployment, set the API's `AGENTDIFF_CORS_ORIGINS` to the Vercel UI
+origin (and any custom domain you attach). Vercel only hosts the browser UI;
+it does not run the AgentDiff API, worker, Postgres, or Redis.
+
+The Vite app includes `frontend/vercel.json`, which rewrites all public and
+dashboard routes back to `index.html` so direct links such as `/docs`,
+`/privacy`, `/projects`, and `/runs/<id>` work as SPA routes.
+
+---
+
+## Self-hosted stack
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```

@@ -98,7 +98,7 @@ function Sidebar({ activeSlug }: { activeSlug: string | null }) {
       <ul className="space-y-6">
         {docGroups.map((group) => (
           <li key={group.title}>
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            <p className="mb-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
               {`// ${group.title}`}
             </p>
             <ul className="space-y-0.5">
@@ -135,7 +135,7 @@ function OnThisPage({ slug, headings }: { slug: string; headings: Heading[] }) {
   return (
     <aside className="hidden w-48 shrink-0 xl:block">
       <div className="sticky top-20">
-        <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+        <p className="mb-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
           {"// ON THIS PAGE"}
         </p>
         <ul className="space-y-1 border-l-2 border-border">
@@ -172,7 +172,7 @@ function PrevNext({ slug }: { slug: string }) {
           to={`/docs/${prev.slug}`}
           className="group flex flex-col border-2 border-foreground bg-background p-4 transition-colors duration-200 hover:border-[#ea580c]"
         >
-          <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
             <ArrowLeft className="h-3 w-3" aria-hidden="true" /> Previous
           </span>
           <span className="mt-1 font-mono text-sm font-bold text-foreground">{prev.title}</span>
@@ -185,7 +185,7 @@ function PrevNext({ slug }: { slug: string }) {
           to={`/docs/${next.slug}`}
           className="group flex flex-col items-end border-2 border-foreground bg-background p-4 text-right transition-colors duration-200 hover:border-[#ea580c]"
         >
-          <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
             Next <ArrowRight className="h-3 w-3" aria-hidden="true" />
           </span>
           <span className="mt-1 font-mono text-sm font-bold text-foreground">{next.title}</span>
@@ -201,7 +201,7 @@ function PrevNext({ slug }: { slug: string }) {
 function DocsIndex() {
   return (
     <div>
-      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+      <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
         {"// DOCUMENTATION"}
       </p>
       <h1 className="mt-3 font-mono text-3xl font-bold uppercase tracking-tight text-foreground">
@@ -250,7 +250,7 @@ function DocArticle({ doc }: { doc: DocEntry }) {
   return (
     <div className="flex gap-10">
       <article className="min-w-0 flex-1">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+        <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
           {`// ${doc.group}`}
         </p>
         <div

@@ -20,8 +20,12 @@ bumps may still contain breaking changes until 1.0.0.
   Attribution, Timeline, Summary) wired to the new run-payload endpoint, with
   runtime-metric deltas, run-level warnings, and attribution confidence
   surfaced in the UI.
-- Landing site: authenticated app CTAs, an in-app docs section, SEO/social
-  metadata, legal pages, and a GitHub Pages deploy workflow.
+- UI: landing page, docs, legal pages, and Clerk-gated dashboard now ship as
+  one Vite SPA under `frontend/`, with `/projects` as the primary dashboard
+  entry point, Vercel-ready SPA rewrites, and a unified GitHub Pages workflow.
+- UI: brutalist AgentDiff restyle for the public landing/docs routes and hosted
+  dashboard chrome, including the before/after stopped-agent topology and the
+  preserved pass/warn/fail verdict mapping.
 
 ## [0.1.0] - 2026-07-05
 

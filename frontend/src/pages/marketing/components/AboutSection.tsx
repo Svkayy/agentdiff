@@ -39,8 +39,8 @@ function TopologyColumn({ stopped }: { stopped: boolean }) {
   // Node layout in a 200×360 column.
   const NODES: { id: string; label: string; x: number; y: number; stop?: boolean }[] = [
     { id: "orchestrator", label: "orchestrator", x: 100, y: 44 },
-    { id: "retriever", label: "retriever", x: 44, y: 150 },
-    { id: "fact_checker", label: "fact_checker", x: 156, y: 150, stop: true },
+    { id: "retriever", label: "retriever", x: 50, y: 150 },
+    { id: "fact_checker", label: "fact_checker", x: 150, y: 150, stop: true },
     { id: "summarizer", label: "summarizer", x: 100, y: 256 },
     { id: "search", label: "search()", x: 100, y: 336 },
   ];
@@ -53,7 +53,7 @@ function TopologyColumn({ stopped }: { stopped: boolean }) {
     ["fact_checker", "search"],
   ];
   const byId = (id: string) => NODES.find((n) => n.id === id)!;
-  const nodeW = 82;
+  const nodeW = 88;
   const nodeH = 30;
   const cx = (n: { x: number }) => n.x;
   const cy = (n: { y: number }) => n.y;
@@ -102,7 +102,7 @@ function TopologyColumn({ stopped }: { stopped: boolean }) {
               y={n.y + 4}
               textAnchor="middle"
               fill="hsl(var(--background))"
-              fontSize={10}
+              fontSize={11}
               fontFamily="var(--font-mono), monospace"
               fontWeight={600}
               letterSpacing="0.02em"
@@ -195,7 +195,7 @@ function StatBlock({ label, value, index }: { label: string; value: string; inde
 
 /**
  * About / methodology section — ported from the template's `about-section.tsx`.
- * Left: an abstract AGENT_GRAPH.svg composition (drawn, honestly labeled).
+ * Left: a real before/after AGENT_GRAPH.svg topology.
  * Right: METHODOLOGY-flavored copy — deterministic capture → compare →
  * attribute, the LLM never decides verdicts — plus a truthful stats grid.
  */
@@ -205,7 +205,7 @@ export function AboutSection() {
       <SectionLabel label="METHODOLOGY" index={2} />
 
       <div className="flex flex-col lg:flex-row gap-0 border-2 border-foreground">
-        {/* Left: abstract composition */}
+        {/* Left: before/after agent topology */}
         <motion.div
           initial={{ opacity: 0, x: -30, filter: "blur(6px)" }}
           whileInView={{ opacity: 1, x: 0, filter: "blur(0px)" }}

@@ -57,7 +57,7 @@ function ScrambleNumber({ target, label, delay = 0 }: ScrambleNumberProps) {
 /**
  * Bento metrics card — ported from the template's `metrics-card.tsx`. All
  * figures are TRUTHFUL product facts, not usage numbers: 8 provider parsers,
- * 4 framework adapters, the 0.05 significance level, and the 500+ test suite.
+ * 4 framework adapters, the 0.05 significance level, and the ~540-test suite.
  */
 export function MetricsCard() {
   return (
@@ -76,7 +76,7 @@ export function MetricsCard() {
           <ScrambleNumber target="4" label="Framework Adapters" delay={800} />
         </div>
         <div className="flex flex-col justify-center gap-1 p-6 border-r-2 border-foreground">
-          <ScrambleNumber target="500+" label="Tests Passing" delay={1100} />
+          <ScrambleNumber target="~540" label="Tests Passing" delay={1100} />
         </div>
         <div className="flex flex-col justify-center gap-1 p-6">
           <ScrambleNumber target="0.05" label="Significance a" delay={1400} />

@@ -50,7 +50,7 @@ export function GraphNodeCard({ data, selected }: { data: NodeData; selected: bo
           {n.label}
         </span>
         {n.stopped ? (
-          <div className="shrink-0 border-2 border-background px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-background">
+          <div className="shrink-0 border-2 border-background px-1.5 py-0.5 font-mono text-xs font-bold uppercase tracking-wider text-background">
             STOPPED FIRING
           </div>
         ) : (

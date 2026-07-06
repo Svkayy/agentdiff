@@ -389,11 +389,13 @@ mypy src/agentdiff
 # Dashboard (TypeScript)
 npm --prefix frontend ci
 npm --prefix frontend run build  # tsc --noEmit && vite build
+npm --prefix frontend run test   # vitest
+npm --prefix frontend run build:cli  # single-file local report bundle
 ```
 
 External LLM/HTTP calls are mocked, so the suite is hermetic and runs offline. CI
 ([`.github/workflows`](.github/workflows)) runs the engine suite, lint, type
-check, and the dashboard build on every push.
+check, and the unified frontend tests/build on every push.
 
 ## Hosted platform
 
@@ -405,14 +407,21 @@ cp .env.example .env   # fill in Clerk keys + Fernet encryption key
 docker compose up --build -d
 ```
 
-Five services start (`postgres`, `redis`, `api`, `worker`, `dashboard`). Sign in
-at `http://localhost:5173`, create a project, mint an API key, then point CI and
-your live `LiveCollector` at the API. Drift detection runs every 5 minutes and
-posts Slack briefs on `warn`/`fail` verdicts.
+Five services start (`postgres`, `redis`, `api`, `worker`, `dashboard`). The
+browser UI is one Vite SPA: public landing/docs/legal routes at `/`, `/docs`,
+`/privacy`, and `/terms`, with Clerk-gated dashboard routes at `/projects` and
+`/runs/:id`. Sign in at `http://localhost:5173/projects`, create a project, mint
+an API key, then point CI and your live `LiveCollector` at the API. Drift
+detection runs every 5 minutes and posts Slack briefs on `warn`/`fail` verdicts.
 
 See **[docs/hosted-quickstart.md](docs/hosted-quickstart.md)** for the full
 walkthrough: Clerk setup, CI wiring, live monitoring, Slack config, and a
 troubleshooting table.
+
+For a single public UI link, deploy `frontend/` to Vercel and set
+`VITE_CLERK_PUBLISHABLE_KEY` plus `VITE_AGENTDIFF_API_URL`. Vercel hosts only the
+browser UI; the API, worker, Postgres, and Redis stay on your Docker/self-hosted
+stack. See **[docs/deploy-production.md](docs/deploy-production.md)**.
 
 ## What is still not hosted/distributed
 

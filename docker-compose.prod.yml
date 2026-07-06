@@ -11,12 +11,21 @@
 #   - Ports for `api`/`dashboard` are NOT published on the host; only nginx
 #     (80/443) is exposed. Postgres/Redis stay internal.
 services:
+  # Prod: Postgres/Redis must NOT publish host ports — the base compose exposes
+  # them for local dev; reset both so only nginx is reachable from outside.
+  postgres:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
   migrate:
     build: { context: ., dockerfile: server/Dockerfile }
     command: alembic upgrade head
     restart: "no"
     environment:
-      AGENTDIFF_DATABASE_URL: postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff
+      # Overridable so migrate can target a managed Postgres in real deploys.
+      AGENTDIFF_DATABASE_URL: ${AGENTDIFF_DATABASE_URL:-postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff}
     depends_on:
       postgres: { condition: service_healthy }
 

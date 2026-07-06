@@ -37,6 +37,8 @@ services:
       AGENTDIFF_SLACK_REDIRECT_URL: ${AGENTDIFF_SLACK_REDIRECT_URL:-}
       AGENTDIFF_DASHBOARD_URL: ${AGENTDIFF_DASHBOARD_URL:-}
       AGENTDIFF_ANTHROPIC_API_KEY: ${AGENTDIFF_ANTHROPIC_API_KEY:-}
+      AGENTDIFF_CORS_ORIGINS: ${AGENTDIFF_CORS_ORIGINS:-http://localhost:5173}
+      AGENTDIFF_CORS_ORIGIN_REGEX: ${AGENTDIFF_CORS_ORIGIN_REGEX:-}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

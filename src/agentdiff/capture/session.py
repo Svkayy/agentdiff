@@ -14,9 +14,13 @@ a separate ``agentdiff init``.
 """
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
+from agentdiff.capture.http.redact import set_active_redaction_config
 from agentdiff.capture.tracer import Tracer
+
+if TYPE_CHECKING:
+    from agentdiff.config import AgentDiffConfig
 
 # Capture files truncated once per (process, path) so repeated script runs start
 # clean while in-process loops accumulate.
@@ -53,15 +57,23 @@ def record(
     *,
     case: str = "capture",
     project_root: str | Path = ".",
+    config: "AgentDiffConfig | None" = None,
 ) -> Iterator[Tracer]:
     """Record one trajectory of the wrapped agent code into a named capture.
 
     ``case`` ties trajectories together across captures: ``before`` and ``after``
     must share a case id to be compared (the default is fine for a single agent).
+
+    ``config``, if given, activates its ``capture.redaction`` settings (e.g. a
+    project's ``.agentdiff/config.yaml`` overrides) for the duration of this
+    capture. If omitted, whatever redaction config is already active (or the
+    standard-mode default) applies.
     """
     import agentdiff
 
     agentdiff.install()
+    if config is not None:
+        set_active_redaction_config(config.capture.redaction)
     root = Path(project_root)
     structure_root = _ensure_structure(root)
     path = captures_dir(root) / f"{name}.jsonl"
@@ -69,6 +81,11 @@ def record(
 
     key = str(path.resolve())
     if key not in _RESET_SEEN:
+        if path.exists() and path.stat().st_size > 0:
+            print(
+                f"[yellow]Overwriting existing capture '{name}' at {path} "
+                "(record() truncates per process; use a new name to keep it).[/yellow]"
+            )
         path.write_text("", encoding="utf-8")
         _RESET_SEEN.add(key)
 

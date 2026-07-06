@@ -43,6 +43,21 @@ class Settings(BaseSettings):
     slack_redirect_url: str = "http://localhost:8000/v1/slack/callback"
     dashboard_url: str = "http://localhost:5173"
 
+    # ── Usage metering / quotas ──────────────────────────────────────────────
+    # Monthly caps for the free plan. pro / unlimited plans have no cap.
+    free_runs_per_month: int = 500
+    free_trajectories_per_month: int = 50000
+
+    # ── Retention (days) ─────────────────────────────────────────────────────
+    # Runs older than this are deleted by the daily retention cron; 0 disables.
+    retention_days: int = 90
+    # LiveTrajectories older than this are deleted by the same cron; 0 disables.
+    live_retention_days: int = 30
+
+    # ── Observability ────────────────────────────────────────────────────────
+    # Optional Sentry DSN; when set, the worker calls sentry_sdk.init.
+    sentry_dsn: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

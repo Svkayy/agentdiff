@@ -26,12 +26,16 @@ def render_pr_check(summary: IncidentSummary, *, context: IncidentContext | None
         return "\n".join(lines) + "\n"
     lines.append("## Findings")
     for finding in summary.findings:
-        cause = f" Cause: `{finding.cause_path}`." if finding.cause_path else ""
+        cause = f" Cause: `{finding.cause_path}`.{_low_confidence_suffix(finding)}" if finding.cause_path else ""
         lines.append(
             f"- **{_LABEL[finding.verdict]}** `{finding.test_case_id}`: "
             f"{finding.impact_summary}{cause}"
         )
     return "\n".join(lines) + "\n"
+
+
+def _low_confidence_suffix(finding) -> str:
+    return " (low-confidence heuristic)" if finding.cause_confidence == "low" else ""
 
 
 def render_postmortem(summary: IncidentSummary, *, context: IncidentContext | None = None) -> str:
@@ -68,7 +72,7 @@ def render_postmortem(summary: IncidentSummary, *, context: IncidentContext | No
     if not caused:
         lines.append("No code or prompt hunk was attributed.")
     for finding in caused:
-        lines.append(f"- `{finding.cause_path}` via `{finding.cause_rule}`")
+        lines.append(f"- `{finding.cause_path}` via `{finding.cause_rule}`{_low_confidence_suffix(finding)}")
     lines.extend(["", "## Follow-Up", "", "- Confirm owner and remediation status."])
     return "\n".join(lines) + "\n"
 
@@ -94,7 +98,7 @@ def render_slack_blocks(
         cause = ""
         if top.cause_path:
             rule = f" — {top.cause_rule}" if top.cause_rule else ""
-            cause = f"\n*Likely cause:* `{top.cause_path}`{rule}"
+            cause = f"\n*Likely cause:* `{top.cause_path}`{rule}{_low_confidence_suffix(top)}"
         blocks.append(_section(f"*Impact:* {top.impact_summary}{cause}"))
         extra = summary.findings[1:_MAX_SLACK_FINDINGS]
         if extra:

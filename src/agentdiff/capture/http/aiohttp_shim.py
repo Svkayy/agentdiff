@@ -11,7 +11,12 @@ from agentdiff.capture.callstack import (
 from agentdiff.capture.events import LLMRequestEvent, LLMResponseEvent
 from agentdiff.capture.http.canonical import build_canonical_from_http
 from agentdiff.capture.http.provider_registry import match_provider
-from agentdiff.capture.http.redact import redact_url
+from agentdiff.capture.http.redact import (
+    get_active_redaction_config,
+    redact_body,
+    redact_canonical,
+    redact_url,
+)
 from agentdiff.capture.http.streaming import record_stream_chunks
 from agentdiff.capture.tracer import get_active_tracer
 
@@ -19,17 +24,19 @@ _PATCHED = False
 _ORIGINALS: dict[str, object] = {}
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch aiohttp if installed. Returns False if aiohttp isn't importable."""
     global _PATCHED
     if _PATCHED:
-        return
+        return True
     try:
         import aiohttp
     except ImportError:
-        return
+        return False
     _ORIGINALS["request"] = aiohttp.ClientSession._request
     aiohttp.ClientSession._request = _wrap(_ORIGINALS["request"])  # type: ignore[method-assign]
     _PATCHED = True
+    return True
 
 
 def uninstall() -> None:
@@ -61,6 +68,7 @@ async def _capture(tracer, original, session, method, url, args, kwargs):
     provider = match_provider(url_str)
     call_id = uuid4()
     request = _AiohttpRequestAdapter(url_str, _request_body(kwargs))
+    redaction_cfg = get_active_redaction_config()
 
     try:
         stack = capture_call_stack(skip=1)
@@ -68,10 +76,12 @@ async def _capture(tracer, original, session, method, url, args, kwargs):
         tracer.record(
             LLMRequestEvent(
                 call_id=call_id,
-                canonical=build_canonical_from_http(provider, request, response=None),
+                canonical=redact_canonical(
+                    build_canonical_from_http(provider, request, response=None), redaction_cfg
+                ),
                 captured_by="http_shim",
                 request_url=redact_url(url_str),
-                raw_body=request.content if provider == "unknown" else None,
+                raw_body=_unknown_raw_body(request.content, provider, redaction_cfg),
                 callsite=callsite_from_stack(stack),
                 call_stack=stack,
                 inferred_agent=inferred_agent,
@@ -94,11 +104,14 @@ async def _capture(tracer, original, session, method, url, args, kwargs):
             LLMResponseEvent(
                 call_id=call_id,
                 latency_ms=latency_ms,
-                canonical=build_canonical_from_http(
-                    provider, request, response=(_AiohttpResponseAdapter(response), body)
+                canonical=redact_canonical(
+                    build_canonical_from_http(
+                        provider, request, response=(_AiohttpResponseAdapter(response), body)
+                    ),
+                    redaction_cfg,
                 ),
                 captured_by="http_shim",
-                raw_body=body if provider == "unknown" else None,
+                raw_body=_unknown_raw_body(body, provider, redaction_cfg),
                 is_error=(response.status >= 400),
             )
         )
@@ -115,13 +128,27 @@ def _record_transport_error(tracer, provider, request, call_id, t0) -> None:
             LLMResponseEvent(
                 call_id=call_id,
                 latency_ms=int((time.perf_counter() - t0) * 1000),
-                canonical=build_canonical_from_http(provider, request, response=None),
+                canonical=redact_canonical(
+                    build_canonical_from_http(provider, request, response=None),
+                    get_active_redaction_config(),
+                ),
                 captured_by="http_shim",
                 is_error=True,
             )
         )
     except Exception as exc:
         print(f"[agentdiff] aiohttp shim error-capture error: {exc}")
+
+
+def _unknown_raw_body(body: bytes, provider: str, cfg) -> bytes | None:
+    """Raw body storage: unknown-provider only, and only when opted in.
+
+    ``capture_raw_bodies=True`` still runs the body through ``redact_body``
+    first — opting in to raw capture is not an opt-out of secret masking.
+    """
+    if provider != "unknown" or not cfg.capture_raw_bodies:
+        return None
+    return redact_body(body, cfg)
 
 
 def _request_body(kwargs: dict) -> bytes:

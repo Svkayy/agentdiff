@@ -1,6 +1,9 @@
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -76,7 +79,11 @@ def load_custom_providers(project_root: Path | str) -> int:
             continue
         try:
             compiled = re.compile(pattern)
-        except re.error:
+        except re.error as exc:
+            logger.warning(
+                "Skipping custom provider %r in %s: invalid url_pattern %r (%s)",
+                name, path, pattern, exc,
+            )
             continue
         register(ProviderPattern(name=name, url_re=compiled))
         _LOADED_CUSTOM_NAMES.add(name)

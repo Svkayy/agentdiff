@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from agentdiff import storage
 from agentdiff.compare import (
-    AgentInvocationDelta, ComparisonResult, TestCaseComparison, ToolUsageDelta,
+    AgentInvocationDelta, ComparisonResult, RunMetricDelta, TestCaseComparison, ToolUsageDelta,
 )
 from agentdiff.capture.events import (
     CallSite, CanonicalLLMCall, LLMRequestEvent, LLMResponseEvent,
@@ -53,6 +53,20 @@ def _write_run(tmp_path: Path) -> Path:
             tool_usage_deltas=[ToolUsageDelta(
                 tool_name="web_search", baseline_avg=1.0, candidate_avg=2.0, delta=1.0,
                 p_value=0.02, significant=True, verdict="fail")],
+            run_metric_deltas=[
+                RunMetricDelta(
+                    metric="latency_ms", baseline_mean=500.0, candidate_mean=8000.0,
+                    delta=7500.0, p_value=0.01, adjusted_p_value=0.01, significant=True,
+                    low_power=False, verdict="fail"),
+                RunMetricDelta(
+                    metric="total_tokens", baseline_mean=100.0, candidate_mean=100.0,
+                    delta=0.0, p_value=1.0, adjusted_p_value=1.0, significant=False,
+                    low_power=False, verdict="pass"),
+                RunMetricDelta(
+                    metric="error_rate", baseline_mean=0.0, candidate_mean=0.5,
+                    delta=0.5, p_value=0.01, adjusted_p_value=0.01, significant=True,
+                    low_power=False, verdict="fail"),
+            ],
         )],
     )
     attribution = {"attributions": [{

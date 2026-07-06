@@ -7,6 +7,7 @@ from agentdiff.capture.events import (
 from agentdiff.compare import (
     compare_all, compare_test_case, compute_invocation_rates, compute_tool_averages,
 )
+from agentdiff.config import StatsConfig
 from agentdiff.structure.structure_yaml import AgentEntry, StructureDoc, ToolEntry
 from agentdiff.trajectory import Trajectory, TrajectorySet
 
@@ -16,7 +17,8 @@ STRUCTURE = StructureDoc(
 )
 
 
-def _traj(tc_id, tag, agent_names=(), tool_names=()):
+def _traj(tc_id, tag, agent_names=(), tool_names=(), total_latency_ms=0, total_tokens=0,
+          status="success"):
     cid = uuid4()
     events = []
     for a in agent_names:
@@ -38,7 +40,10 @@ def _traj(tc_id, tag, agent_names=(), tool_names=()):
                 inferred_agent="Router",
             )
         )
-    return Trajectory(test_case_id=tc_id, version_tag=tag, input={}, events=events)
+    return Trajectory(
+        test_case_id=tc_id, version_tag=tag, input={}, events=events,
+        total_latency_ms=total_latency_ms, total_tokens=total_tokens, status=status,
+    )
 
 
 def test_invocation_rate_full_vs_none():
@@ -145,3 +150,176 @@ def test_custom_thresholds_change_verdict():
         },
     )
     assert cmp.agent_invocation_deltas[0].verdict == "warn"
+
+
+# ---------------------------------------------------------------------------
+# Task 6: latency, token, and error-rate run-level deltas.
+# ---------------------------------------------------------------------------
+
+def _run_metric(cmp, metric):
+    return next(d for d in cmp.run_metric_deltas if d.metric == metric)
+
+
+def test_large_latency_shift_fails_significantly():
+    baseline = [_traj("tc", "baseline", total_latency_ms=500) for _ in range(20)]
+    candidate = [_traj("tc", "candidate", total_latency_ms=8000) for _ in range(20)]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "latency_ms")
+    assert d.baseline_mean == 500
+    assert d.candidate_mean == 8000
+    assert d.delta == 7500
+    assert d.p_value is not None and d.p_value < 0.05
+    assert d.significant is True
+    assert d.verdict == "fail"
+    assert cmp.overall_verdict == "fail"
+
+
+def test_identical_latency_sets_pass_p_equals_one():
+    baseline = [_traj("tc", "baseline", total_latency_ms=500) for _ in range(10)]
+    candidate = [_traj("tc", "candidate", total_latency_ms=500) for _ in range(10)]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "latency_ms")
+    assert d.delta == 0
+    assert d.p_value == 1.0
+    assert d.verdict == "pass"
+
+
+def test_token_delta_present_with_metric_name():
+    baseline = [_traj("tc", "baseline", total_tokens=100) for _ in range(10)]
+    candidate = [_traj("tc", "candidate", total_tokens=100) for _ in range(10)]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "total_tokens")
+    assert d.baseline_mean == 100
+    assert d.candidate_mean == 100
+    assert d.verdict == "pass"
+
+
+def test_error_rate_delta_fires_on_candidate_failures():
+    baseline = [_traj("tc", "baseline", status="success") for _ in range(20)]
+    candidate = [
+        _traj("tc", "candidate", status="failed" if i < 10 else "success")
+        for i in range(20)
+    ]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "error_rate")
+    assert d.baseline_mean == 0.0
+    assert d.candidate_mean == 0.5
+    assert d.delta == 0.5
+    assert d.p_value is not None and d.p_value < 0.05
+    assert d.significant is True
+    assert d.verdict == "fail"
+
+
+def test_run_metric_delta_shape_matches_payload_contract():
+    baseline = [_traj("tc", "baseline", total_latency_ms=500) for _ in range(5)]
+    candidate = [_traj("tc", "candidate", total_latency_ms=600) for _ in range(5)]
+    cmp = compare_test_case("tc", baseline, candidate, STRUCTURE)
+    d = _run_metric(cmp, "latency_ms")
+    # With no stats_config passed, compare_test_case defaults to "none"
+    # correction (adjusted mirrors raw) for backward compatibility.
+    assert d.adjusted_p_value == d.p_value
+    assert {"latency_ms", "total_tokens", "error_rate"} == {
+        rd.metric for rd in cmp.run_metric_deltas
+    }
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Benjamini-Hochberg correction + low-power warnings.
+# ---------------------------------------------------------------------------
+
+def test_bh_correction_downgrades_verdict_when_adjusted_p_not_significant():
+    """A delta significant at raw p but not at BH-adjusted p downgrades to warn.
+
+    Build a family where one test case has a strong, clearly significant swing
+    (raw p very small) and several other test cases contribute many
+    near-1.0 p-values (agents/tools that never differ). With enough noise
+    p-values in the family, BH correction inflates even a fairly small raw p
+    for one borderline delta past alpha, downgrading fail -> warn.
+    """
+    structure = StructureDoc(
+        agents=[AgentEntry(name="Router", function="route", file="a.py", line=1)],
+        tools=[ToolEntry(name="search", function="web_search", file="a.py", line=5)],
+    )
+    stats_config = StatsConfig(correction="benjamini_hochberg", alpha=0.05, min_samples_warn=5)
+
+    # Borderline test case: small-sample big swing -> raw p significant-ish but
+    # not overwhelmingly so (n=6 vs n=6, full vs none).
+    borderline_baseline = [_traj("borderline", "baseline", agent_names=["Router"]) for _ in range(6)]
+    borderline_candidate = [_traj("borderline", "candidate") for _ in range(3)] + [
+        _traj("borderline", "candidate", agent_names=["Router"]) for _ in range(3)
+    ]
+
+    ids = ["borderline"] + [f"noise{i}" for i in range(30)]
+    b = TrajectorySet(version_tag="baseline", trajectories=(
+        borderline_baseline
+        + [
+            traj
+            for i in range(30)
+            for traj in (
+                [_traj(f"noise{i}", "baseline", agent_names=["Router"]) for _ in range(10)]
+            )
+        ]
+    ))
+    c = TrajectorySet(version_tag="candidate", trajectories=(
+        borderline_candidate
+        + [
+            traj
+            for i in range(30)
+            for traj in (
+                [_traj(f"noise{i}", "candidate", agent_names=["Router"]) for _ in range(10)]
+            )
+        ]
+    ))
+
+    raw_result = compare_all(b, c, structure, ids, stats_config=StatsConfig(correction="none"))
+    raw_delta = raw_result.test_case_comparisons[0].agent_invocation_deltas[0]
+    assert raw_delta.significant is True
+    assert raw_delta.verdict in ("fail", "warn")
+    raw_verdict = raw_delta.verdict
+
+    corrected_result = compare_all(b, c, structure, ids, stats_config=stats_config)
+    corrected_delta = corrected_result.test_case_comparisons[0].agent_invocation_deltas[0]
+    assert corrected_delta.adjusted_p_value is not None
+    assert corrected_delta.adjusted_p_value > raw_delta.p_value
+    assert corrected_delta.significant is False
+    assert corrected_delta.verdict == "warn"
+    assert raw_verdict == "fail"
+
+
+def test_low_power_flag_set_for_small_n_and_run_warning():
+    baseline = [_traj("tc", "baseline", agent_names=["Router"]) for _ in range(3)]
+    candidate = [_traj("tc", "candidate") for _ in range(3)]
+    stats_config = StatsConfig(correction="benjamini_hochberg", alpha=0.05, min_samples_warn=5)
+    result = compare_all(b_set(baseline), c_set(candidate), STRUCTURE, ["tc"], stats_config=stats_config)
+    tcc = result.test_case_comparisons[0]
+    assert tcc.agent_invocation_deltas[0].low_power is True
+    assert any("low" in w.lower() and "power" in w.lower() for w in result.warnings)
+    assert any("tc" in w for w in result.warnings)
+
+
+def test_low_power_not_set_when_n_meets_threshold():
+    baseline = [_traj("tc", "baseline", agent_names=["Router"]) for _ in range(10)]
+    candidate = [_traj("tc", "candidate", agent_names=["Router"]) for _ in range(10)]
+    stats_config = StatsConfig(correction="benjamini_hochberg", alpha=0.05, min_samples_warn=5)
+    result = compare_all(b_set(baseline), c_set(candidate), STRUCTURE, ["tc"], stats_config=stats_config)
+    tcc = result.test_case_comparisons[0]
+    assert tcc.agent_invocation_deltas[0].low_power is False
+    assert result.warnings == []
+
+
+def test_none_correction_restores_old_behavior():
+    baseline = [_traj("tc", "baseline", agent_names=["Router"]) for _ in range(8)]
+    candidate = [_traj("tc", "candidate") for _ in range(8)]
+    stats_config = StatsConfig(correction="none", alpha=0.05, min_samples_warn=5)
+    result = compare_all(b_set(baseline), c_set(candidate), STRUCTURE, ["tc"], stats_config=stats_config)
+    d = result.test_case_comparisons[0].agent_invocation_deltas[0]
+    assert d.adjusted_p_value == d.p_value
+    assert d.verdict == "fail"
+
+
+def b_set(trajectories):
+    return TrajectorySet(version_tag="baseline", trajectories=trajectories)
+
+
+def c_set(trajectories):
+    return TrajectorySet(version_tag="candidate", trajectories=trajectories)

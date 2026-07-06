@@ -13,23 +13,29 @@ from agentdiff.capture.framework.base import (
 _PATCHES = PatchRegistry("langgraph")
 
 
-def install() -> None:
-    """Install best-effort LangGraph graph/node capture."""
-    _patch_pregel()
-    _patch_state_graph()
+def install() -> bool:
+    """Install best-effort LangGraph graph/node capture.
+
+    Returns False only if langgraph isn't importable at all (neither Pregel
+    nor StateGraph could be found) — the two are patched independently since
+    either can exist without the other across langgraph versions.
+    """
+    pregel_ok = _patch_pregel()
+    state_graph_ok = _patch_state_graph()
+    return pregel_ok or state_graph_ok
 
 
 def uninstall() -> None:
     _PATCHES.uninstall()
 
 
-def _patch_pregel() -> None:
+def _patch_pregel() -> bool:
     Pregel = _import_attr(
         ("langgraph.pregel", "Pregel"),
         ("langgraph.pregel.main", "Pregel"),
     )
     if Pregel is None:
-        return
+        return False
     for method_name in ("invoke", "ainvoke"):
         _PATCHES.patch_method(
             Pregel,
@@ -40,18 +46,20 @@ def _patch_pregel() -> None:
                 name_getter=lambda self, _args, _kwargs: object_name(self, "graph"),
             ),
         )
+    return True
 
 
-def _patch_state_graph() -> None:
+def _patch_state_graph() -> bool:
     StateGraph = _import_attr(
         ("langgraph.graph", "StateGraph"),
         ("langgraph.graph.state", "StateGraph"),
     )
     if StateGraph is None:
-        return
+        return False
     _PATCHES.patch_method(StateGraph, "add_node", _wrap_add_node)
     _PATCHES.patch_method(StateGraph, "add_edge", _wrap_add_edge)
     _PATCHES.patch_method(StateGraph, "add_conditional_edges", _wrap_add_conditional_edges)
+    return True
 
 
 def _wrap_add_node(original):

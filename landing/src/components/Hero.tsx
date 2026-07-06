@@ -1,12 +1,15 @@
 import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Copy, Star } from "lucide-react";
+import { ArrowRight, Check, Copy, Star } from "lucide-react";
 import { useSkipEntrance } from "@/lib/utils";
 import { Spotlight } from "./aceternity/Spotlight";
 import { TextGenerateEffect } from "./aceternity/TextGenerateEffect";
 import { GraphPlate } from "./GraphPlate";
 
 const INSTALL_CMD = "pip install agentdiff";
+
+// The hosted dashboard (Clerk-gated) lives at a separate app URL.
+const APP_URL = import.meta.env.VITE_APP_URL ?? "https://app.agentdiff.ai";
 
 function InstallButton() {
   const [copied, setCopied] = useState(false);
@@ -23,7 +26,7 @@ function InstallButton() {
       type="button"
       onClick={copy}
       aria-label="Copy pip install agentdiff to clipboard"
-      className="inline-flex h-11 items-center gap-3 rounded-sm border border-ink bg-ink px-4 font-mono text-sm text-shell transition-colors duration-200 hover:bg-[#22262D]"
+      className="inline-flex h-11 items-center gap-3 rounded-sm border border-hairline bg-card px-4 font-mono text-sm text-ink transition-colors duration-200 hover:border-faint"
     >
       <span aria-hidden="true" className="text-faint">
         $
@@ -72,6 +75,13 @@ export function Hero() {
             transition={{ duration: 0.32, ease: "easeOut", delay: 0.5 }}
             className="mt-8 flex flex-wrap items-center gap-3"
           >
+            <a
+              href={APP_URL}
+              className="inline-flex h-11 items-center gap-2 rounded-sm border border-ink bg-ink px-4 text-sm font-medium text-shell transition-colors duration-200 hover:bg-[#22262D]"
+            >
+              Get started
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </a>
             <InstallButton />
             <a
               href="https://github.com/sandeepvinay/agentdiff"

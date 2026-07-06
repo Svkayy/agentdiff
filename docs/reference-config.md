@@ -22,6 +22,9 @@ sampling:
   install_deps: true
   max_failure_rate: 0.0
   workers: 1
+  timeout_seconds: 300.0
+  retries: 1
+  retry_backoff_seconds: 2.0
 
 thresholds:
   agent_invocation_rate:
@@ -30,6 +33,15 @@ thresholds:
   tool_usage_avg:
     warn: 0.5
     fail: 1.0
+  latency_ms:
+    warn: 1000
+    fail: 5000
+  tokens:
+    warn: 200
+    fail: 1000
+  error_rate:
+    warn: 0.1
+    fail: 0.25
 
 capture:
   httpx: true
@@ -43,6 +55,26 @@ capture:
   crewai: true
   autogen: true
   llamaindex: true
+  redaction:
+    mode: standard
+    patterns: []
+    redact_fields: []
+    capture_raw_bodies: false
+
+stats:
+  correction: benjamini_hochberg
+  alpha: 0.05
+  min_samples_warn: 5
+
+output_eval:
+  semantic_fail: 0.70
+  semantic_warn: 0.85
+  length_fail: 0.50
+  length_warn: 0.80
+  structural_fail: 0.70
+  structural_warn: 0.90
+  judge_fail: 2.0
+  judge_warn: 3.5
 ```
 
 ---
@@ -142,6 +174,37 @@ you have shared state reset between invocations.
 
 Equivalent CLI flag: `--workers`
 
+### `sampling.timeout_seconds`
+
+| Type | Default | Range |
+|------|---------|-------|
+| float | `300.0` | ≥ 0 (`0` disables the timeout) |
+
+Maximum wall-clock time allowed for a single Runner invocation before it is
+treated as a failure. Set to `0` to disable the per-invocation timeout
+entirely (not recommended for CI, where a hung Runner would block the run
+indefinitely).
+
+### `sampling.retries`
+
+| Type | Default | Range |
+|------|---------|-------|
+| int | `1` | ≥ 0 |
+
+Number of additional attempts made for a single sample after it fails or
+times out, before counting it as a failure toward `max_failure_rate`. `0`
+disables retries — the first failure counts immediately.
+
+### `sampling.retry_backoff_seconds`
+
+| Type | Default | Range |
+|------|---------|-------|
+| float | `2.0` | ≥ 0 |
+
+Delay before each retry attempt. Helps ride out transient issues (rate
+limits, brief network blips) without hammering the Runner immediately after
+a failure.
+
 ---
 
 ## `thresholds`
@@ -173,6 +236,33 @@ Mean number of tool invocations per trajectory.
 
 Gated by a Mann-Whitney U test (no scipy dependency).
 
+### `thresholds.latency_ms`
+
+Change in per-invocation latency, in milliseconds.
+
+| Field | Type | Default | Meaning |
+|-------|------|---------|---------|
+| `warn` | float | `1000` | Absolute change of ≥ 1000ms in latency → WARN |
+| `fail` | float | `5000` | Absolute change of ≥ 5000ms in latency → FAIL |
+
+### `thresholds.tokens`
+
+Change in tokens consumed per invocation.
+
+| Field | Type | Default | Meaning |
+|-------|------|---------|---------|
+| `warn` | float | `200` | Absolute change of ≥ 200 tokens → WARN |
+| `fail` | float | `1000` | Absolute change of ≥ 1000 tokens → FAIL |
+
+### `thresholds.error_rate`
+
+Change in the fraction of invocations that error out.
+
+| Field | Type | Default | Meaning |
+|-------|------|---------|---------|
+| `warn` | float | `0.1` | Absolute change of ≥ 0.1 in error rate → WARN |
+| `fail` | float | `0.25` | Absolute change of ≥ 0.25 in error rate → FAIL |
+
 ---
 
 ## `capture`
@@ -202,6 +292,68 @@ capture still works.
 Disabling an HTTP shim (`httpx`, `requests`) is unusual — the HTTP layer is
 the foundation of capture. Disable a framework adapter if it conflicts with
 how you initialize that framework in tests.
+
+### `capture.redaction`
+
+Controls what sensitive data is scrubbed from captured request/response
+bodies before they are stored in a trajectory.
+
+| Field | Type | Default | Meaning |
+|-------|------|---------|---------|
+| `mode` | string | `"standard"` | `"standard"`: redact common secret-shaped fields (auth headers, API keys, tokens). `"strict"`: also redact free-text fields that match `patterns` and anything listed in `redact_fields`. `"off"`: disable redaction entirely (not recommended — raw bodies may contain credentials). |
+| `patterns` | list[string] | `[]` | Extra regexes (Python `re` syntax) matched against body text; matches are replaced with a redaction marker. Only applied when `mode: strict`. |
+| `redact_fields` | list[string] | `[]` | Extra JSON field names (case-insensitive) to redact wherever they appear in a captured body, on top of the built-in list. Only applied when `mode: strict`. |
+| `capture_raw_bodies` | bool | `false` | When `true`, also stores the pre-redaction raw body alongside the redacted one, for local debugging. Never enable this in a shared or CI environment — it defeats the purpose of redaction. |
+
+**Example:**
+```yaml
+capture:
+  redaction:
+    mode: strict
+    patterns:
+      - '\d{3}-\d{2}-\d{4}'   # SSN-shaped strings
+    redact_fields:
+      - authorization
+      - x-api-key
+    capture_raw_bodies: false
+```
+
+---
+
+## `stats`
+
+Controls the statistical correction applied when many metrics are compared
+at once, to limit false positives from multiple comparisons.
+
+| Field | Type | Default | Values | Meaning |
+|-------|------|---------|--------|---------|
+| `correction` | string | `"benjamini_hochberg"` | `"benjamini_hochberg"` \| `"none"` | Multiple-comparison correction applied to per-metric p-values before gating WARN/FAIL. `"none"` disables correction (each metric's p-value is used as-is). |
+| `alpha` | float | `0.05` | `0 < alpha <= 1` | Significance level used by the correction and by the underlying tests (z-test, Mann-Whitney U). |
+| `min_samples_warn` | int | `5` | ≥ 0 | If `samples_per_case` is below this value, the report emits a WARN noting that statistical power is low and results may be noisy. |
+
+---
+
+## `output_eval`
+
+Thresholds for the output-quality evaluators (semantic similarity, length
+ratio, structural diff, and LLM-judge score) that compare baseline and
+candidate outputs directly, independent of the behavioral trajectory
+comparison.
+
+| Field | Type | Default | Meaning |
+|-------|------|---------|---------|
+| `semantic_fail` | float | `0.70` | Semantic similarity score below this → FAIL |
+| `semantic_warn` | float | `0.85` | Semantic similarity score below this (and ≥ `semantic_fail`) → WARN |
+| `length_fail` | float | `0.50` | Output length ratio below this → FAIL |
+| `length_warn` | float | `0.80` | Output length ratio below this (and ≥ `length_fail`) → WARN |
+| `structural_fail` | float | `0.70` | Structural similarity score below this → FAIL |
+| `structural_warn` | float | `0.90` | Structural similarity score below this (and ≥ `structural_fail`) → WARN |
+| `judge_fail` | float | `2.0` | LLM-judge score (1–5 scale) below this → FAIL |
+| `judge_warn` | float | `3.5` | LLM-judge score below this (and ≥ `judge_fail`) → WARN |
+
+Requires `llm_provider` and its API key to be configured for `judge_fail`
+and `judge_warn` to take effect; otherwise the judge evaluator is skipped
+and only semantic/length/structural thresholds apply.
 
 ---
 

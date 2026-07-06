@@ -49,6 +49,11 @@ export function StatChips({ data }: { data: ReportData }) {
       ? Math.round((overlaps.reduce((a, b) => a + b, 0) / overlaps.length) * 100)
       : null;
 
+  // Runtime metric deltas (latency/tokens/error-rate — Task 7/8) flagged non-pass.
+  const runMetrics = tcs.flatMap((tc) => tc.run_metrics ?? []);
+  const flaggedRunMetrics = runMetrics.filter((m) => m.verdict !== "pass").length;
+  const lowPowerCount = data.warnings.length;
+
   return (
     <div className="grid grid-cols-2 gap-md sm:grid-cols-4">
       <Chip
@@ -68,6 +73,16 @@ export function StatChips({ data }: { data: ReportData }) {
         label="Behavioral Overlap"
         value={avgOverlap !== null ? `${avgOverlap}%` : "—"}
       />
+      {runMetrics.length > 0 && (
+        <Chip
+          label="Runtime Metric Flags"
+          value={flaggedRunMetrics}
+          accent={flaggedRunMetrics > 0 ? "ember" : "pass"}
+        />
+      )}
+      {lowPowerCount > 0 && (
+        <Chip label="Low-Power Warnings" value={lowPowerCount} accent="warn" />
+      )}
     </div>
   );
 }

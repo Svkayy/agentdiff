@@ -39,6 +39,12 @@ export function AgentGraph({
         position: { x, y: i * ROW_DY + 32 },
         data: { node },
         selected: node.id === selectedId,
+        // Keyboard-focusable: tabIndex=0 + Enter/Space triggers the same
+        // selection path as a click (React Flow's built-in node a11y).
+        focusable: true,
+        ariaLabel: `${node.kind === "agent" ? "Agent" : "Tool"} ${node.label}${
+          node.stopped ? ", stopped firing" : ""
+        }`,
       }));
 
     const rfNodes: Node<NodeData>[] = [...place(agents, COL_AGENT_X), ...place(tools, COL_TOOL_X)];
@@ -86,6 +92,7 @@ export function AgentGraph({
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable
+      nodesFocusable
       minZoom={0.4}
       maxZoom={1.5}
     >

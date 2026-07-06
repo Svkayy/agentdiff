@@ -3,21 +3,24 @@ from agentdiff.capture.framework.base import PatchRegistry, object_name, span_wr
 _PATCHES = PatchRegistry("autogen")
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch autogen if installed. Returns False if autogen isn't importable."""
     ConversableAgent = _import_attr(
         ("autogen", "ConversableAgent"),
         ("autogen.agentchat", "ConversableAgent"),
     )
-    if ConversableAgent is not None:
-        for method_name, kind in (
-            ("send", "speaker_turn"),
-            ("a_send", "speaker_turn"),
-            ("receive", "message_receive"),
-            ("a_receive", "message_receive"),
-            ("generate_reply", "reply_generate"),
-            ("a_generate_reply", "reply_generate"),
-        ):
-            _PATCHES.patch_method(ConversableAgent, method_name, _span(kind))
+    if ConversableAgent is None:
+        return False
+    for method_name, kind in (
+        ("send", "speaker_turn"),
+        ("a_send", "speaker_turn"),
+        ("receive", "message_receive"),
+        ("a_receive", "message_receive"),
+        ("generate_reply", "reply_generate"),
+        ("a_generate_reply", "reply_generate"),
+    ):
+        _PATCHES.patch_method(ConversableAgent, method_name, _span(kind))
+    return True
 
 
 def uninstall() -> None:

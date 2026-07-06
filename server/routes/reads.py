@@ -3,16 +3,19 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentdiff.compare import ComparisonResult, compare_all
 from agentdiff.graph_model import build as build_graph
 from agentdiff.structure.structure_yaml import StructureDoc
 from server import crypto
+from server.config import get_settings
+from server.audit import record_audit
 from server.db import get_session
 from server.deps import get_user_ctx, own_project
-from server.models import Finding, Org, Project, Run, SlackConfig, Trajectory, User
+from server.models import Finding, LiveTrajectory, Org, Project, Run, SlackConfig, Trajectory, User
+from server.usage import check_quota
 
 router = APIRouter()
 
@@ -21,41 +24,84 @@ router = APIRouter()
 _own_project = own_project
 
 
+def _clamp_limit(limit: int) -> int:
+    return max(0, min(limit, 200))
+
+
 @router.get("/v1/projects")
 async def list_projects(
+    q: str | None = None,
     ctx: tuple[User, Org] = Depends(get_user_ctx),
     session: AsyncSession = Depends(get_session),
-) -> list[dict]:
+) -> dict:
     _user, org = ctx
-    rows = (
-        await session.execute(select(Project).where(Project.org_id == org.id))
-    ).scalars().all()
-    return [{"id": str(p.id), "name": p.name} for p in rows]
+    stmt = select(Project).where(Project.org_id == org.id)
+    count_stmt = select(func.count(Project.id)).where(Project.org_id == org.id)
+    if q:
+        needle = f"%{q}%"
+        stmt = stmt.where(Project.name.ilike(needle))
+        count_stmt = count_stmt.where(Project.name.ilike(needle))
+
+    total: int = (await session.execute(count_stmt)).scalar_one()
+    rows = (await session.execute(stmt)).scalars().all()
+    return {
+        "items": [{"id": str(p.id), "name": p.name} for p in rows],
+        "total": total,
+    }
 
 
 @router.get("/v1/projects/{project_id}/runs")
 async def list_runs(
     project_id: uuid.UUID,
+    limit: int = 50,
+    offset: int = 0,
+    verdict: str | None = None,
+    q: str | None = None,
     ctx: tuple[User, Org] = Depends(get_user_ctx),
     session: AsyncSession = Depends(get_session),
-) -> list[dict]:
+) -> dict:
     _user, org = ctx
     project = await _own_project(session, org, project_id)
+    clamped_limit = _clamp_limit(limit)
+    clamped_offset = max(0, offset)
+
+    filters = [Run.project_id == project.id]
+    if verdict:
+        filters.append(Run.verdict == verdict)
+    if q:
+        needle = f"%{q}%"
+        filters.append(
+            or_(Run.baseline_ref.ilike(needle), Run.candidate_ref.ilike(needle))
+        )
+
+    total: int = (
+        await session.execute(select(func.count(Run.id)).where(*filters))
+    ).scalar_one()
+
     rows = (
-        await session.execute(select(Run).where(Run.project_id == project.id))
+        await session.execute(
+            select(Run)
+            .where(*filters)
+            .order_by(Run.created_at.desc())
+            .limit(clamped_limit)
+            .offset(clamped_offset)
+        )
     ).scalars().all()
-    return [
-        {
-            "id": str(r.id),
-            "status": r.status,
-            "verdict": r.verdict,
-            "baseline_ref": r.baseline_ref,
-            "candidate_ref": r.candidate_ref,
-            "kind": r.kind,
-            "created_at": r.created_at.isoformat(),
-        }
-        for r in rows
-    ]
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "status": r.status,
+                "verdict": r.verdict,
+                "baseline_ref": r.baseline_ref,
+                "candidate_ref": r.candidate_ref,
+                "kind": r.kind,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in rows
+        ],
+        "total": total,
+    }
 
 
 @router.get("/v1/runs/{run_id}")
@@ -123,6 +169,25 @@ async def get_run(
         ],
         **processed,
     }
+
+
+@router.get("/v1/runs/{run_id}/payload")
+async def get_run_payload(
+    run_id: uuid.UUID,
+    ctx: tuple[User, Org] = Depends(get_user_ctx),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    _user, org = ctx
+    run = (
+        await session.execute(
+            select(Run).join(Project).where(Run.id == run_id, Project.org_id == org.id)
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    if run.report_payload is None:
+        raise HTTPException(status_code=404, detail="payload not ready")
+    return run.report_payload
 
 
 def _processed_run_payload(run: Run, trajectory_rows: list[Trajectory]) -> dict:
@@ -274,13 +339,55 @@ async def get_project_stats(
         for r in recent_rows
     ]
 
+    # Drift readiness: is there enough live traffic in the most recent window
+    # for the drift cron to actually classify behavior?  Surfaces the same
+    # min_samples gate the worker enforces so the dashboard can explain a
+    # "quiet" drift lane instead of implying it's broken.
+    settings = get_settings()
+    if settings.drift_window_minutes <= 0 or settings.drift_check_interval_minutes <= 0:
+        drift_status = "disabled"
+    else:
+        window_start = datetime.now(timezone.utc) - timedelta(
+            minutes=settings.drift_window_minutes
+        )
+        live_count: int = (
+            await session.execute(
+                select(func.count(LiveTrajectory.id)).where(
+                    LiveTrajectory.project_id == project.id,
+                    LiveTrajectory.captured_at >= window_start,
+                )
+            )
+        ).scalar_one()
+        drift_status = (
+            "ok" if live_count >= settings.drift_min_samples else "insufficient_samples"
+        )
+
     return {
         "total_runs": total_runs,
         "pass_rate_30": pass_rate_30,
         "failing_streak": failing_streak,
         "last_failure_at": last_failure_at,
         "drift_runs_7d": drift_runs_7d,
+        "drift_status": drift_status,
         "recent": recent,
+    }
+
+
+@router.get("/v1/usage")
+async def get_usage(
+    ctx: tuple[User, Org] = Depends(get_user_ctx),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Current-period usage + plan limits for the caller's org."""
+    _user, org = ctx
+    status = await check_quota(session, org)
+    return {
+        "plan": status.plan,
+        "period": status.period,
+        "runs_used": status.runs_used,
+        "runs_limit": status.runs_limit,
+        "trajectories_used": status.trajectories_used,
+        "trajectories_limit": status.trajectories_limit,
     }
 
 
@@ -296,7 +403,7 @@ async def set_slack(
     ctx: tuple[User, Org] = Depends(get_user_ctx),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    _user, org = ctx
+    user, org = ctx
     project = await _own_project(session, org, project_id)
     cfg = (
         await session.execute(
@@ -317,5 +424,14 @@ async def set_slack(
         cfg.channel_id = body.channel_id
         cfg.bot_token_encrypted = enc
         cfg.enabled = True
+    await record_audit(
+        session,
+        org.id,
+        user.clerk_user_id,
+        "slack.connected",
+        "project",
+        str(project.id),
+        project_id=project.id,
+    )
     await session.commit()
     return {"status": "ok"}

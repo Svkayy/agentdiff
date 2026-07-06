@@ -1,9 +1,21 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
-import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignIn, useClerk } from "@clerk/clerk-react";
 import { Shell } from "@/components/Shell";
+import { Toaster } from "@/components/Toaster";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
 import { RunDetailPage } from "@/pages/RunDetailPage";
+import { registerSignOut } from "@/lib/auth";
+
+/** Hand Clerk's signOut to lib/auth so a 401 can force a clean sign-out. */
+function SignOutBridge() {
+  const { signOut } = useClerk();
+  useEffect(() => {
+    registerSignOut((opts) => signOut(opts));
+  }, [signOut]);
+  return null;
+}
 
 function AuthGate() {
   return (
@@ -44,6 +56,7 @@ export default function App() {
         <AuthGate />
       </SignedOut>
       <SignedIn>
+        <SignOutBridge />
         <Shell>
           <Routes>
             <Route path="/" element={<ProjectsPage />} />
@@ -54,6 +67,7 @@ export default function App() {
           </Routes>
         </Shell>
       </SignedIn>
+      <Toaster />
     </BrowserRouter>
   );
 }

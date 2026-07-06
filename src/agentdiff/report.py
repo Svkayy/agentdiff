@@ -15,6 +15,11 @@ from agentdiff.output_eval import OutputEvalResult
 _LABEL = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}
 
 
+def _esc_md_table_cell(text: str) -> str:
+    """Escape `|` so free-text can't fracture a Markdown table row."""
+    return text.replace("|", "\\|")
+
+
 def _fmt_p(p_value: float | None, significant: bool) -> str:
     if p_value is None:
         return "n/a"
@@ -22,6 +27,22 @@ def _fmt_p(p_value: float | None, significant: bool) -> str:
     if p_value < 0.001:
         return f"<0.001{marker}"
     return f"{p_value:.3f}{marker}"
+
+
+def _fmt_p_adjusted(
+    p_value: float | None,
+    adjusted_p_value: float | None,
+    significant: bool,
+    low_power: bool,
+) -> str:
+    """Render adjusted p (BH-corrected) with the raw p alongside, plus a
+    low-power marker (`!`) when the delta's per-side sample size fell below
+    ``min_samples_warn`` — a `*` still marks significance at the adjusted p.
+    """
+    adjusted = _fmt_p(adjusted_p_value, significant)
+    raw = _fmt_p(p_value, significant) if p_value != adjusted_p_value else None
+    text = f"{adjusted} (raw {raw})" if raw is not None else adjusted
+    return f"{text} !" if low_power else text
 
 
 def render_report(
@@ -35,6 +56,7 @@ def render_report(
 
     _header(lines, comparison, meta)
     _run_quality(lines, meta)
+    _warnings_section(lines, comparison)
     _summary_table(lines, comparison, evals_by_id)
     _output_eval_details(lines, output_evals)
     _behavioral_findings(lines, comparison)
@@ -88,8 +110,27 @@ def _run_quality(lines: list[str], meta: dict[str, Any]) -> None:
             f"{thresholds.get('agent_invocation_rate_fail', 'n/a')}; "
             f"tool usage warn/fail = "
             f"{thresholds.get('tool_usage_avg_warn', 'n/a')}/"
-            f"{thresholds.get('tool_usage_avg_fail', 'n/a')}."
+            f"{thresholds.get('tool_usage_avg_fail', 'n/a')}; "
+            f"latency (ms) warn/fail = "
+            f"{thresholds.get('latency_ms_warn', 'n/a')}/"
+            f"{thresholds.get('latency_ms_fail', 'n/a')}; "
+            f"tokens warn/fail = "
+            f"{thresholds.get('tokens_warn', 'n/a')}/"
+            f"{thresholds.get('tokens_fail', 'n/a')}; "
+            f"error rate warn/fail = "
+            f"{thresholds.get('error_rate_warn', 'n/a')}/"
+            f"{thresholds.get('error_rate_fail', 'n/a')}."
         )
+    lines.append("")
+
+
+def _warnings_section(lines: list[str], comparison: ComparisonResult) -> None:
+    if not comparison.warnings:
+        return
+    lines.append("## Warnings")
+    lines.append("")
+    for w in comparison.warnings:
+        lines.append(f"- {w}")
     lines.append("")
 
 
@@ -122,17 +163,32 @@ def _output_eval_details(lines: list[str], output_evals: list[OutputEvalResult])
         lines.append("_No output evaluations were produced._")
         lines.append("")
         return
-    lines.append("| Test case | Kind | Semantic | Structural | Length | Judge | Notes |")
-    lines.append("|---|---|---:|---:|---:|---:|---|")
+    lines.append("| Test case | Kind | Semantic | Structural | Length | Judge | Notes | Skipped checks |")
+    lines.append("|---|---|---:|---:|---:|---:|---|---|")
     for ev in output_evals:
-        notes = "; ".join(ev.notes) if ev.notes else ""
+        notes = _esc_md_table_cell("; ".join(ev.notes)) if ev.notes else ""
+        skipped = (
+            _esc_md_table_cell(
+                "; ".join(f"{c['check']} ({c['reason']})" for c in ev.skipped_checks)
+            )
+            if ev.skipped_checks
+            else ""
+        )
         lines.append(
             f"| `{ev.test_case_id}` | {ev.output_kind} "
             f"| {_fmt_float(ev.semantic_similarity)} "
             f"| {_fmt_float(ev.structural_similarity)} "
             f"| {_fmt_float(ev.length_ratio)} "
             f"| {_fmt_float(ev.judge_score)} "
-            f"| {notes} |"
+            f"| {notes} "
+            f"| {skipped} |"
+        )
+    if any(ev.skipped_checks for ev in output_evals):
+        lines.append("")
+        lines.append(
+            "_Some checks above were skipped (missing dependency, no LLM credential, "
+            "or judge error) — a PASS/WARN/FAIL verdict may not reflect every signal. "
+            "See the Skipped checks column._"
         )
     lines.append("")
 
@@ -151,26 +207,44 @@ def _test_case_block(lines: list[str], tcc: TestCaseComparison) -> None:
     if tcc.agent_invocation_deltas:
         lines.append("**Agent invocation rates**")
         lines.append("")
-        lines.append("| Agent | Baseline | Candidate | Delta | p-value | Verdict |")
+        lines.append("| Agent | Baseline | Candidate | Delta | p-value (adjusted) | Verdict |")
         lines.append("|---|---|---|---|---|---|")
         for d in tcc.agent_invocation_deltas:
             lines.append(
                 f"| {d.agent_name} "
                 f"| {d.baseline_rate:.0%} ({d.baseline_count}/{d.baseline_total}) "
                 f"| {d.candidate_rate:.0%} ({d.candidate_count}/{d.candidate_total}) "
-                f"| {d.delta:+.0%} | {_fmt_p(d.p_value, d.significant)} | {_LABEL[d.verdict]} |"
+                f"| {d.delta:+.0%} "
+                f"| {_fmt_p_adjusted(d.p_value, d.adjusted_p_value, d.significant, d.low_power)} "
+                f"| {_LABEL[d.verdict]} |"
             )
         lines.append("")
 
     if tcc.tool_usage_deltas:
         lines.append("**Tool usage (avg per trajectory)**")
         lines.append("")
-        lines.append("| Tool | Baseline | Candidate | Delta | p-value | Verdict |")
+        lines.append("| Tool | Baseline | Candidate | Delta | p-value (adjusted) | Verdict |")
         lines.append("|---|---|---|---|---|---|")
         for td in tcc.tool_usage_deltas:
             lines.append(
                 f"| {td.tool_name} | {td.baseline_avg:.2f} | {td.candidate_avg:.2f} "
-                f"| {td.delta:+.2f} | {_fmt_p(td.p_value, td.significant)} | {_LABEL[td.verdict]} |"
+                f"| {td.delta:+.2f} "
+                f"| {_fmt_p_adjusted(td.p_value, td.adjusted_p_value, td.significant, td.low_power)} "
+                f"| {_LABEL[td.verdict]} |"
+            )
+        lines.append("")
+
+    if tcc.run_metric_deltas:
+        lines.append("**Runtime deltas**")
+        lines.append("")
+        lines.append("| Metric | Baseline | Candidate | Delta | p-value (adjusted) | Verdict |")
+        lines.append("|---|---|---|---|---|---|")
+        for rd in tcc.run_metric_deltas:
+            lines.append(
+                f"| {rd.metric} | {rd.baseline_mean:.2f} | {rd.candidate_mean:.2f} "
+                f"| {rd.delta:+.2f} "
+                f"| {_fmt_p_adjusted(rd.p_value, rd.adjusted_p_value, rd.significant, rd.low_power)} "
+                f"| {_LABEL[rd.verdict]} |"
             )
         lines.append("")
 
@@ -180,7 +254,11 @@ def _test_case_block(lines: list[str], tcc: TestCaseComparison) -> None:
         )
         lines.append("")
 
-    if not tcc.agent_invocation_deltas and not tcc.tool_usage_deltas:
+    if (
+        not tcc.agent_invocation_deltas
+        and not tcc.tool_usage_deltas
+        and not tcc.run_metric_deltas
+    ):
         lines.append("_No agents or tools observed for this test case._")
         lines.append("")
 
@@ -209,9 +287,10 @@ def _attribution_section(lines: list[str], attribution) -> None:
             continue
 
         p = ba.primary
+        low_conf_label = " (low-confidence heuristic)" if p.confidence == "low" else ""
         lines.append(
             f"- **Primary cause:** `{p.target_path}` "
-            f"(rule: `{p.rule}`, confidence {p.weight:.0%})"
+            f"(rule: `{p.rule}`, confidence {p.weight:.0%} [{p.confidence}]){low_conf_label}"
         )
         lines.append(f"- {p.reason}")
         if ba.explanation:

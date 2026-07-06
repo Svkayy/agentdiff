@@ -11,6 +11,28 @@ from typing import Any, Literal, Protocol
 
 from agentdiff.trajectory import Trajectory, TrajectorySet
 
+#: Schema version written to new/legacy databases by this version of AgentDiff.
+#: Bump this when `_init_schema` changes in a way that requires migration.
+CURRENT_SCHEMA_VERSION = 1
+
+
+class StorageVersionError(RuntimeError):
+    """Raised when a local SQLite artifact was written by a newer AgentDiff.
+
+    A DB with a schema_version greater than this build understands cannot be
+    read safely (older code may not know about newer columns/tables), so we
+    refuse to open it rather than risk silently corrupting or misreading it.
+    """
+
+    def __init__(self, db_version: int, supported_version: int):
+        self.db_version = db_version
+        self.supported_version = supported_version
+        super().__init__(
+            f"This SQLite artifact was written by a newer version of AgentDiff "
+            f"(schema version {db_version}), but this install only supports "
+            f"schema version {supported_version}. Upgrade AgentDiff to read it."
+        )
+
 
 class TrajectorySink(Protocol):
     """Write and read trajectory sets for one capture environment."""
@@ -88,8 +110,7 @@ def write_run_store(
     """Write a queryable SQLite artifact for one AgentDiff compare run."""
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
-        _init_schema(conn)
+    with _connect(path) as conn:
         run_id = str(metadata.get("run_id") or metadata.get("timestamp") or "latest")
         conn.execute(
             "insert or replace into runs(run_id, metadata_json) values (?, ?)",
@@ -155,7 +176,7 @@ def load_trajectory_set_from_sqlite(
     path = Path(db_path)
     if not path.exists():
         return TrajectorySet(version_tag=version_tag, trajectories=[])
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         if run_id is None:
             row = conn.execute(
                 "select run_id from runs order by rowid desc limit 1"
@@ -194,7 +215,7 @@ def read_artifact(
     path = Path(db_path)
     if not path.exists():
         return None
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         if run_id is None:
             row = conn.execute(
                 "select run_id from runs order by rowid desc limit 1"
@@ -212,6 +233,44 @@ def read_artifact(
         return json.loads(row[0])
     except (json.JSONDecodeError, TypeError):
         return None
+
+
+def _connect(path: Path) -> sqlite3.Connection:
+    """Open a SQLite connection with WAL mode and the schema version guard.
+
+    Every connection to a local AgentDiff artifact DB goes through this
+    function so that:
+
+    - the journal mode is always WAL (better concurrent read/write behavior
+      for a file that may be tailed while a run is still writing), and
+    - we refuse to open a DB written by a newer AgentDiff than this install
+      understands, rather than risk misreading an unfamiliar schema.
+
+    A pre-existing DB with no ``schema_version`` table (written by an
+    AgentDiff version that predates schema versioning) is grandfathered in
+    as version 1 rather than treated as an error, so old report directories
+    stay readable.
+    """
+    conn = sqlite3.connect(path)
+    conn.execute("pragma journal_mode=WAL")
+    _init_schema(conn)
+    _check_schema_version(conn)
+    conn.commit()
+    return conn
+
+
+def _check_schema_version(conn: sqlite3.Connection) -> None:
+    row = conn.execute("select version from schema_version").fetchone()
+    if row is None:
+        # schema_version table exists (created by _init_schema) but is empty:
+        # a legacy DB from before version tracking existed. Grandfather it in.
+        conn.execute(
+            "insert into schema_version(version) values (?)", (CURRENT_SCHEMA_VERSION,)
+        )
+        return
+    db_version = row[0]
+    if db_version > CURRENT_SCHEMA_VERSION:
+        raise StorageVersionError(db_version, CURRENT_SCHEMA_VERSION)
 
 
 def _init_schema(conn: sqlite3.Connection) -> None:
@@ -249,6 +308,9 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             name text not null,
             payload_json text not null,
             primary key (run_id, name)
+        );
+        create table if not exists schema_version (
+            version integer not null
         );
         """
     )

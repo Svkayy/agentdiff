@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   fetchRuns,
+  fetchRunsPage,
   fetchRun,
+  fetchRunPayload,
   fetchProjects,
+  fetchUsage,
+  fetchAudit,
   fetchMe,
   createProject,
+  renameProject,
+  deleteProject,
+  deleteRun,
   mintKey,
   revokeKey,
   putSlackConfig,
@@ -13,32 +20,71 @@ import {
   getSlackInstallUrl,
   disconnectSlack,
   fetchProjectStats,
+  ApiError,
 } from "./api";
+import * as auth from "./auth";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  auth.__resetUnauthorizedGuard();
+});
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function stubFetch(body: unknown, ok = true) {
+function stubFetch(body: unknown, ok = true, status = 200) {
   const calls: { url: string; opts: RequestInit }[] = [];
   vi.stubGlobal("fetch", async (url: string, opts: RequestInit) => {
     calls.push({ url, opts });
-    return { ok, json: async () => body } as Response;
+    return { ok, status, json: async () => body } as Response;
   });
   return calls;
 }
 
-// ── existing tests (kept) ─────────────────────────────────────────────────────
+function auth401() {
+  const calls: { url: string; opts: RequestInit }[] = [];
+  vi.stubGlobal("fetch", async (url: string, opts: RequestInit) => {
+    calls.push({ url, opts });
+    return { ok: false, status: 401, json: async () => ({}) } as Response;
+  });
+  return calls;
+}
+
+// ── existing tests (updated for {items,total} envelope) ────────────────────────
 
 describe("fetchRuns", () => {
-  it("sends the clerk bearer token", async () => {
-    const calls = stubFetch([{ id: "r1" }]);
+  it("returns the {items,total} envelope with the clerk bearer token", async () => {
+    const calls = stubFetch({ items: [{ id: "r1" }], total: 1 });
     const runs = await fetchRuns("proj-1", async () => "jwt-abc");
-    expect(runs).toEqual([{ id: "r1" }]);
+    expect(runs).toEqual({ items: [{ id: "r1" }], total: 1 });
     expect(calls[0].url).toContain("/v1/projects/proj-1/runs");
     expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe(
       "Bearer jwt-abc",
     );
+  });
+});
+
+describe("fetchRunsPage", () => {
+  it("passes limit/offset/verdict/q as query params", async () => {
+    const calls = stubFetch({ items: [], total: 0 });
+    await fetchRunsPage(
+      "proj-9",
+      { limit: 20, offset: 40, verdict: "fail", q: "auth" },
+      async () => "tok",
+    );
+    const url = calls[0].url;
+    expect(url).toContain("/v1/projects/proj-9/runs?");
+    expect(url).toContain("limit=20");
+    expect(url).toContain("offset=40");
+    expect(url).toContain("verdict=fail");
+    expect(url).toContain("q=auth");
+  });
+
+  it("omits empty options from the query string", async () => {
+    const calls = stubFetch({ items: [], total: 0 });
+    await fetchRunsPage("proj-9", {}, async () => "tok");
+    expect(calls[0].url).toContain("/v1/projects/proj-9/runs");
+    expect(calls[0].url).not.toContain("?");
   });
 });
 
@@ -55,6 +101,17 @@ describe("fetchRun", () => {
   });
 });
 
+describe("fetchRunPayload", () => {
+  it("GET /v1/runs/:id/payload with bearer token", async () => {
+    const calls = stubFetch({ meta: {}, graph: { nodes: [] } });
+    await fetchRunPayload("run-7", async () => "tok-payload");
+    expect(calls[0].url).toContain("/v1/runs/run-7/payload");
+    expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer tok-payload",
+    );
+  });
+});
+
 describe("null-token guard", () => {
   it("rejects without calling fetch when token is null", async () => {
     const mockFetch = vi.fn();
@@ -64,15 +121,64 @@ describe("null-token guard", () => {
   });
 });
 
-// ── new api function tests ────────────────────────────────────────────────────
+// ── list endpoints ─────────────────────────────────────────────────────────────
 
 describe("fetchProjects", () => {
-  it("GET /v1/projects with bearer token", async () => {
-    const calls = stubFetch([{ id: "p1", name: "my-proj" }]);
+  it("GET /v1/projects returns the {items,total} envelope", async () => {
+    const calls = stubFetch({ items: [{ id: "p1", name: "my-proj" }], total: 1 });
     const projects = await fetchProjects(async () => "tok");
     expect(calls[0].url).toContain("/v1/projects");
     expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe("Bearer tok");
-    expect(projects).toEqual([{ id: "p1", name: "my-proj" }]);
+    expect(projects).toEqual({ items: [{ id: "p1", name: "my-proj" }], total: 1 });
+  });
+
+  it("passes q as a query param when provided", async () => {
+    const calls = stubFetch({ items: [], total: 0 });
+    await fetchProjects(async () => "tok", "my search");
+    expect(calls[0].url).toContain("q=my%20search");
+  });
+});
+
+describe("fetchUsage", () => {
+  it("GET /v1/usage returns plan + limits", async () => {
+    const calls = stubFetch({
+      plan: "pro",
+      period: "2026-07",
+      runs_used: 12,
+      runs_limit: 100,
+      trajectories_used: 340,
+      trajectories_limit: null,
+    });
+    const usage = await fetchUsage(async () => "tok-usage");
+    expect(calls[0].url).toContain("/v1/usage");
+    expect(usage.plan).toBe("pro");
+    expect(usage.runs_limit).toBe(100);
+    expect(usage.trajectories_limit).toBeNull();
+  });
+});
+
+describe("fetchAudit", () => {
+  it("GET /v1/projects/:id/audit with limit/offset and envelope", async () => {
+    const calls = stubFetch({
+      items: [
+        {
+          id: "a1",
+          actor: "user@x.com",
+          action: "project.rename",
+          target_type: "project",
+          target_id: "p1",
+          meta: { from: "old", to: "new" },
+          created_at: "2026-07-01T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+    const result = await fetchAudit("proj-a", { limit: 25, offset: 0 }, async () => "tok-audit");
+    expect(calls[0].url).toContain("/v1/projects/proj-a/audit?");
+    expect(calls[0].url).toContain("limit=25");
+    expect(calls[0].url).toContain("offset=0");
+    expect(result.items[0].action).toBe("project.rename");
+    expect(result.total).toBe(1);
   });
 });
 
@@ -91,6 +197,8 @@ describe("fetchMe", () => {
   });
 });
 
+// ── project CRUD ────────────────────────────────────────────────────────────────
+
 describe("createProject", () => {
   it("POST /v1/projects with name in body", async () => {
     const calls = stubFetch({ id: "p2", name: "new" });
@@ -102,13 +210,49 @@ describe("createProject", () => {
   });
 });
 
+describe("renameProject", () => {
+  it("PATCH /v1/projects/:id with name in body", async () => {
+    const calls = stubFetch({ id: "p2", name: "renamed" });
+    const result = await renameProject("p2", "renamed", async () => "tok-rn");
+    expect(calls[0].url).toContain("/v1/projects/p2");
+    expect(calls[0].opts.method).toBe("PATCH");
+    expect(calls[0].opts.body).toBe(JSON.stringify({ name: "renamed" }));
+    expect(result.name).toBe("renamed");
+  });
+});
+
+describe("deleteProject", () => {
+  it("DELETE /v1/projects/:id (204 no body)", async () => {
+    const calls = stubFetch(undefined, true, 204);
+    await deleteProject("p3", async () => "tok-dp");
+    expect(calls[0].url).toContain("/v1/projects/p3");
+    expect(calls[0].opts.method).toBe("DELETE");
+  });
+});
+
+describe("deleteRun", () => {
+  it("DELETE /v1/runs/:id (204 no body)", async () => {
+    const calls = stubFetch(undefined, true, 204);
+    await deleteRun("run-3", async () => "tok-dr");
+    expect(calls[0].url).toContain("/v1/runs/run-3");
+    expect(calls[0].opts.method).toBe("DELETE");
+  });
+});
+
 describe("mintKey", () => {
-  it("POST /v1/projects/:id/keys", async () => {
-    const calls = stubFetch({ id: "k1", key: "adk_secret", prefix: "adk_" });
-    const result = await mintKey("proj-5", async () => "tok4");
+  it("POST /v1/projects/:id/keys with name in body", async () => {
+    const calls = stubFetch({ id: "k1", key: "adk_secret", prefix: "adk_", name: "ci" });
+    const result = await mintKey("proj-5", "ci", async () => "tok4");
     expect(calls[0].url).toContain("/v1/projects/proj-5/keys");
     expect(calls[0].opts.method).toBe("POST");
-    expect(result).toMatchObject({ prefix: "adk_" });
+    expect(calls[0].opts.body).toBe(JSON.stringify({ name: "ci" }));
+    expect(result).toMatchObject({ prefix: "adk_", name: "ci" });
+  });
+
+  it("sends name: null when no name given", async () => {
+    const calls = stubFetch({ id: "k2", key: "adk_x", prefix: "adk_" });
+    await mintKey("proj-5", null, async () => "tok4");
+    expect(calls[0].opts.body).toBe(JSON.stringify({ name: null }));
   });
 });
 
@@ -136,7 +280,7 @@ describe("putSlackConfig", () => {
 
 describe("listKeys", () => {
   it("GET /v1/projects/:id/keys with bearer token", async () => {
-    const calls = stubFetch([{ id: "k1", prefix: "adk_" }]);
+    const calls = stubFetch([{ id: "k1", name: "ci", prefix: "adk_" }]);
     await listKeys("proj-4", async () => "tok7");
     expect(calls[0].url).toContain("/v1/projects/proj-4/keys");
     expect((calls[0].opts.headers as Record<string, string>)["Authorization"]).toBe("Bearer tok7");
@@ -149,6 +293,31 @@ describe("null-token guard for new fns", () => {
     vi.stubGlobal("fetch", mockFetch);
     await expect(createProject("x", async () => null)).rejects.toThrow("Not authenticated");
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+// ── 401 → onUnauthorized central handling ──────────────────────────────────────
+
+describe("handleApiError on 401", () => {
+  it("calls onUnauthorized and rejects with a 401 ApiError", async () => {
+    const spy = vi.spyOn(auth, "onUnauthorized").mockImplementation(() => {});
+    auth401();
+    await expect(fetchProjects(async () => "tok")).rejects.toMatchObject({ status: 401 });
+    expect(spy).toHaveBeenCalledOnce();
+  });
+
+  it("does NOT call onUnauthorized on a non-401 error", async () => {
+    const spy = vi.spyOn(auth, "onUnauthorized").mockImplementation(() => {});
+    stubFetch({}, false, 500);
+    await expect(fetchProjects(async () => "tok")).rejects.toBeInstanceOf(ApiError);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("fires for a write endpoint too (deleteProject)", async () => {
+    const spy = vi.spyOn(auth, "onUnauthorized").mockImplementation(() => {});
+    auth401();
+    await expect(deleteProject("p1", async () => "tok")).rejects.toMatchObject({ status: 401 });
+    expect(spy).toHaveBeenCalledOnce();
   });
 });
 

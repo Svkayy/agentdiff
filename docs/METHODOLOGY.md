@@ -58,11 +58,46 @@ Per test case, over the loaded `structure.yaml` (nothing hardcoded):
 - **Behavioral overlap** — Jaccard of the tool sets exercised on each side.
 
 **Statistical gating:** a flagged effect that is *not* statistically significant
-(p ≥ 0.05) is downgraded one level (FAIL→WARN, WARN→PASS). So a big difference seen
-across only a handful of samples surfaces as WARN ("possible regression — collect
-more samples"), not a hard FAIL. p-values appear in the report (a `*` marks
-significance). The tests live in `stats.py` (two-proportion z-test + Mann-Whitney U
-with a normal approximation and tie correction — no scipy dependency).
+(p ≥ alpha, default 0.05) is downgraded one level (FAIL→WARN, WARN→PASS). So a big
+difference seen across only a handful of samples surfaces as WARN ("possible
+regression — collect more samples"), not a hard FAIL. p-values appear in the report
+(a `*` marks significance). The tests live in `stats.py` (two-proportion z-test +
+Mann-Whitney U with a normal approximation and tie correction — no scipy
+dependency), and the same significance/downgrade logic applies uniformly to agent
+invocation deltas, tool usage deltas, and run-metric deltas (latency, tokens, error
+rate).
+
+**Multiple-comparison correction (Benjamini-Hochberg):** a single comparison run
+produces one p-value per delta — one per agent, one per tool, one per run metric,
+for every test case. Testing that many hypotheses at an uncorrected alpha of 0.05
+means false positives ("significant" deltas that are just noise) pile up as the
+number of agents/tools/test cases grows. `config.stats.correction` controls how
+this is handled:
+
+- `benjamini_hochberg` (default) — every p-value across the *entire* comparison
+  (every delta, every test case) is treated as one family and corrected with the
+  Benjamini-Hochberg step-up procedure (`stats.benjamini_hochberg`), which controls
+  the expected false discovery rate rather than the per-test error rate. The
+  correction runs once, after every test case has been compared — not per test case
+  — so the family size reflects the true number of hypotheses tested in the run.
+  Each delta keeps its raw `p_value` and gains an `adjusted_p_value`; `significant`
+  and the verdict-downgrade in the previous section switch to using
+  `adjusted_p_value` instead of `p_value`. A delta that looked significant (and
+  therefore FAIL) at the raw p can end up downgraded to WARN once corrected for the
+  size of the family — this is expected and is the point of the correction.
+- `none` — restores pre-correction behavior: `adjusted_p_value` mirrors `p_value`,
+  and gating uses the raw p-value directly.
+
+`config.stats.alpha` (default 0.05) is the significance threshold applied to
+whichever p-value (raw or adjusted) is in effect.
+
+**Low-power warnings:** a p-value — corrected or not — is only as trustworthy as
+the sample it was computed from. Any delta where either side has fewer trajectories
+than `config.stats.min_samples_warn` (default 5) is flagged `low_power: True`. The
+comparison result carries a run-level `warnings: list[str]` with one entry per
+affected test case, surfaced both in the Markdown report (a "Warnings" section
+near the top) and in the dashboard JSON payload, so a clean-looking PASS/FAIL
+verdict from a 3-sample run doesn't get read with more confidence than it deserves.
 
 ## 5. Output evaluation
 

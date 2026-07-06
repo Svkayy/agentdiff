@@ -128,11 +128,21 @@ flowchart TB
     Engine -. optional .-> LLM
 ```
 
-## Quick start
+## Install
+
+```bash
+pip install agentdiff
+```
+
+Or from source, for development:
 
 ```bash
 pip install -e .
+```
 
+## Quick start
+
+```bash
 # 1. Infer structure, runner, starter config, and starter test cases.
 agentdiff quickstart
 
@@ -213,9 +223,13 @@ blocks with `@agentdiff.tool` so they appear in the trajectory.
    point.
 3. **Behavioral findings** — per-agent invocation rates, tool-usage counts, and
    tool-set overlap, with PASS/WARN/FAIL verdicts.
-4. **Causal attribution** — for each non-passing delta: the primary cause file,
+4. **Runtime deltas** — latency, token-usage, and error-rate shifts between
+   baseline and candidate, each with its own significance test and verdict, so
+   a regression that changes cost or speed without changing agent routing
+   still surfaces.
+5. **Causal attribution** — for each non-passing delta: the primary cause file,
    the rule that fired, the diff hunk, and a short explanation.
-5. **Reproduction command.**
+6. **Reproduction command.**
 
 ## Provider coverage
 
@@ -300,8 +314,9 @@ agentdiff dashboard  Generate or serve a local HTML dashboard for a run.
 agentdiff monitor    Run local compare monitoring or summarize the latest report.
 agentdiff doctor     Validate config, runner imports, git refs, hook status, and optional deps.
 agentdiff hook       Manage the optional autoload hook: status/install/uninstall.
-agentdiff structure  Refresh structure.yaml (stub in v0 — re-run init).
-agentdiff replay     Replay captured tool calls (stub in v0).
+agentdiff structure  Refresh structure.yaml, merging in added/removed functions
+                     while preserving user-edited display names.
+agentdiff replay     Deterministically re-run the runner against a recorded HTTP cassette.
 ```
 
 `agentdiff compare` also supports hardened release settings:
@@ -421,7 +436,17 @@ line.
 | [Runner Recipes](docs/recipes/README.md) | Copy-paste Runner patterns for request-response, event-driven, scheduled, and multi-turn agents |
 | [METHODOLOGY.md](docs/METHODOLOGY.md) | Capture → comparison → attribution pipeline in detail |
 | [CODEBASE.md](docs/CODEBASE.md) | Module-by-module, function-by-function implementation reference |
+| [Data Handling](docs/data-handling.md) | What's captured by default, redaction modes, storage locations, hosted retention, how to disable capture |
+| [Deploying to Production](docs/deploy-production.md) | TLS, backups, scaling, and secret rotation for the self-hosted platform |
 | [Limitations](docs/recipes/limitations.md) | What v0 deliberately does not support, and workarounds |
+
+## Versioning
+
+AgentDiff follows [Semantic Versioning](https://semver.org/). While the
+project is `0.x`, **minor version bumps may still contain breaking changes**
+— the API and CLI surface are still settling. Once `1.0.0` ships, the usual
+SemVer contract applies: breaking changes only on a major bump. See
+[CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## License
 

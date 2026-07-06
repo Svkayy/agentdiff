@@ -201,6 +201,15 @@
 .react-flow__handle {
   opacity: 0;
 }
+/* Keyboard focus ring for focusable graph nodes (tabIndex + Enter selects).
+   Uses the existing selection-ring blue (see GraphNodeCard's
+   ring-primary-dark), not ember — DESIGN.md reserves ember exclusively for
+   the regression/stopped-firing signal, never as a decorative UI accent. */
+.react-flow__node:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 3px;
+  border-radius: 12px;
+}
 
 /* ── @keyframes (also declared in tailwind for Tailwind class usage) ─────── */
 @keyframes ember-pulse {

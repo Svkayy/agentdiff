@@ -188,6 +188,7 @@ def attribute_observed(
                         target_path=cause or "",
                         hunk=None,
                         weight=0.5,
+                        confidence="medium",
                         reason=reason,
                     ),
                     explanation=reason,

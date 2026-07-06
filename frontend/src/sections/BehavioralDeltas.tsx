@@ -12,6 +12,7 @@ import { verdictColor } from "@/lib/payload";
 import type {
   AgentInvocationDelta,
   ReportData,
+  RunMetricDelta,
   TestCaseComparison,
   ToolUsageDelta,
   Verdict,
@@ -209,6 +210,95 @@ function DeltaTable({ tc }: { tc: TestCaseComparison }) {
   );
 }
 
+// ── Run metric labels/formatting ──────────────────────────────────────────────
+const METRIC_LABELS: Record<RunMetricDelta["metric"], string> = {
+  latency_ms: "Latency",
+  total_tokens: "Total Tokens",
+  error_rate: "Error Rate",
+};
+
+function fmtMetricValue(metric: RunMetricDelta["metric"], value: number): string {
+  if (metric === "latency_ms") return `${Math.round(value)}ms`;
+  if (metric === "error_rate") return `${(value * 100).toFixed(1)}%`;
+  return Math.round(value).toLocaleString();
+}
+
+// ── Run-level metric deltas (latency/tokens/error-rate — Task 7/8) ───────────
+function RunMetricsTable({ metrics }: { metrics: RunMetricDelta[] }) {
+  if (metrics.length === 0) return null;
+
+  return (
+    <div className="rounded-md border border-node-border bg-node-fill/30">
+      <div className="border-b border-node-border px-md py-sm font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        Runtime Metrics
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow className="border-node-border">
+            <TableHead className="text-micro uppercase tracking-widest text-neutral-faint font-mono">
+              Metric
+            </TableHead>
+            <TableHead className="text-right text-micro uppercase tracking-widest text-neutral-faint font-mono">
+              Baseline
+            </TableHead>
+            <TableHead className="text-right text-micro uppercase tracking-widest text-neutral-faint font-mono">
+              Candidate
+            </TableHead>
+            <TableHead className="text-right text-micro uppercase tracking-widest text-neutral-faint font-mono">
+              Δ
+            </TableHead>
+            <TableHead className="text-right text-micro uppercase tracking-widest text-neutral-faint font-mono">
+              p-value
+            </TableHead>
+            <TableHead className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+              Verdict
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {metrics.map((m) => {
+            const isEmber = m.verdict === "fail";
+            return (
+              <TableRow key={m.metric} className="border-node-border transition-colors hover:bg-node-fill/50">
+                <TableCell className="font-mono text-small text-ink-light">
+                  {METRIC_LABELS[m.metric]}
+                  {m.low_power && (
+                    <span
+                      className="ml-sm rounded-sm border border-verdict-warn/30 bg-verdict-warn/10 px-xs py-2xs font-mono text-micro text-verdict-warn"
+                      title="Sample size below the configured minimum — treat this delta cautiously"
+                    >
+                      low power
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-small text-ink-light">
+                  {fmtMetricValue(m.metric, m.baseline_mean)}
+                </TableCell>
+                <TableCell
+                  className={`text-right font-mono tabular-nums text-small ${
+                    isEmber ? "text-ember font-bold" : "text-ink-light"
+                  }`}
+                >
+                  {fmtMetricValue(m.metric, m.candidate_mean)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <DeltaCell delta={m.delta} isEmber={isEmber} />
+                </TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-small text-neutral-faint">
+                  {fmtP(m.p_value, m.adjusted_p_value !== null && m.adjusted_p_value < 0.05)}
+                </TableCell>
+                <TableCell>
+                  <VerdictBadge verdict={m.verdict} />
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 // ── Case selector tabs ────────────────────────────────────────────────────────
 function CaseTabs({
   cases,
@@ -301,13 +391,17 @@ export function BehavioralDeltas({ data }: { data: ReportData }) {
             <div className="rounded-md border border-node-border bg-node-fill/30">
               <DeltaTable tc={activeCase} />
             </div>
+
+            {/* Runtime metric deltas (latency/tokens/error-rate — Task 7/8) */}
+            <RunMetricsTable metrics={activeCase.run_metrics ?? []} />
           </div>
         )}
       </div>
 
       {/* Footer note on stopped rows */}
       <p className="text-micro text-neutral-faint">
-        Rows with ember background: agent stopped firing in candidate (candidate rate = 0).
+        Rows with ember background: agent stopped firing in candidate (candidate rate = 0). Runtime
+        metrics tagged &quot;low power&quot; have a per-side sample size below the configured minimum.
       </p>
     </div>
   );

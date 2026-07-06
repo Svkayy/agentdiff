@@ -1,12 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { viteSingleFile } from "vite-plugin-singlefile";
 import path from "node:path";
 
-// Single-file build: the dashboard ships as one self-contained index.html the
-// Python CLI serves. No external asset paths, works offline.
+// Default build: a normal, code-split SPA for hosting (Vercel/Pages). This is
+// the unified marketing + dashboard app. The CLI single-file dashboard is a
+// separate build — see vite.cli.config.ts (`npm run build:cli`).
 export default defineConfig({
-  plugins: [react(), viteSingleFile()],
+  plugins: [react()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },

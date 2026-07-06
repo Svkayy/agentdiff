@@ -30,7 +30,10 @@ export default {
         },
 
         // ── DESIGN.md ink (text) ──────────────────────────────────────────
+        // DEFAULT lets the ported marketing components use the flat `text-ink`
+        // token; -dark/-light keep the dashboard classes working.
         ink: {
+          DEFAULT: "#15181D",
           dark: "#15181D",   // on light backgrounds
           light: "#E8EBEF",  // on dark graph canvas
         },
@@ -39,14 +42,27 @@ export default {
         canvas: "#0E1116",
         "node-fill": "#1B2027",
         "node-border": "#2A313B",
+        // Flat aliases the ported marketing GraphPlate expects.
+        node: "#1B2027",
+        nodeborder: "#2A313B",
+        canvastext: "#E8EBEF",
 
         // ── DESIGN.md surfaces (light shell) ─────────────────────────────
+        // DEFAULT = the light shell so marketing `bg-shell`/`text-shell` work;
+        // -bg/-card/-dark keep the dashboard classes working.
         shell: {
-          bg: "#FAFAF8",       // warm off-white
+          DEFAULT: "#FAFAF8",  // warm off-white (marketing bg)
+          bg: "#FAFAF8",
           card: "#FFFFFF",
           dark: "#14161A",     // dark shell
         },
         hairline: "#E6E3DD",
+        // Flat marketing neutrals (landing palette). `muted` is defined on the
+        // shadcn object below (DEFAULT #5B6470) so it isn't duplicated here.
+        faint: "#8A929C",
+        // Marketing verdict tints (flat) — the landing components use these.
+        pass: "#3FB27F",
+        warn: "#E8A33D",
 
         // ── DESIGN.md neutrals ────────────────────────────────────────────
         neutral: {
@@ -58,7 +74,9 @@ export default {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
-          DEFAULT: "hsl(var(--card))",
+          // DEFAULT is the light marketing card (#FFFFFF); -foreground stays
+          // CSS-var-backed for the shadcn dashboard components.
+          DEFAULT: "#FFFFFF",
           foreground: "hsl(var(--card-foreground))",
         },
         popover: {
@@ -70,7 +88,10 @@ export default {
           foreground: "hsl(var(--secondary-foreground))",
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
+          // DEFAULT is the flat marketing muted-text (#5B6470) so the ported
+          // landing components read correctly on the light shell; -foreground
+          // stays CSS-var-backed for the shadcn dashboard components.
+          DEFAULT: "#5B6470",
           foreground: "hsl(var(--muted-foreground))",
         },
         accent: {
@@ -91,6 +112,16 @@ export default {
           "4": "hsl(var(--chart-4))",
           "5": "hsl(var(--chart-5))",
         },
+      },
+
+      // Marketing content width (ported from the landing app).
+      maxWidth: {
+        content: "1240px",
+      },
+
+      transitionTimingFunction: {
+        // Landing entrance easing.
+        enter: "cubic-bezier(0.16, 1, 0.3, 1)",
       },
 
       // ── DESIGN.md border radii ────────────────────────────────────────────
@@ -115,6 +146,13 @@ export default {
         ],
         // Body / UI — Geist (self-hosted via @fontsource-variable/geist)
         sans: [
+          '"Geist Variable"',
+          '"Geist"',
+          "system-ui",
+          "sans-serif",
+        ],
+        // Marketing components use `font-body` for the same body stack.
+        body: [
           '"Geist Variable"',
           '"Geist"',
           "system-ui",

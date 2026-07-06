@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:cli": "tsc --noEmit && vite build --config vite.cli.config.ts",
     "preview": "vite preview",
     "test": "vitest run"
   },
@@ -23,14 +24,17 @@
     "@xyflow/react": "^12.3.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.11",
     "framer-motion": "^12.42.2",
     "lucide-react": "^0.460.0",
+    "marked": "^18.0.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.1",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

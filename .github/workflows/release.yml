@@ -10,8 +10,10 @@ name: release
 # register this workflow as a trusted publisher on the PyPI project.
 #
 # The dashboard ships as a vendored single-file build
-# (src/agentdiff/dashboard_assets/index.html). This workflow builds and
-# re-vendors it automatically before packaging — no manual pre-step required.
+# (src/agentdiff/dashboard_assets/index.html), produced by the CLI-only
+# `npm run build:cli` (report dashboard only — no router/Clerk/marketing).
+# This workflow builds and re-vendors it automatically before packaging — no
+# manual pre-step required.
 
 on:
   push:
@@ -62,11 +64,14 @@ jobs:
       - name: Test
         run: pytest -q
 
-      - name: Build dashboard and vendor into the package
+      - name: Build CLI dashboard and vendor into the package
+        # build:cli emits a single self-contained HTML (report dashboard only,
+        # no router/Clerk/marketing) via vite-plugin-singlefile. The default
+        # `npm run build` is the hosted SPA and is NOT vendored.
         run: |
           npm --prefix frontend ci
-          npm --prefix frontend run build
-          cp frontend/dist/index.html src/agentdiff/dashboard_assets/index.html
+          npm --prefix frontend run build:cli
+          cp frontend/dist-cli/cli.html src/agentdiff/dashboard_assets/index.html
 
       - name: Build sdist + wheel
         run: python -m build

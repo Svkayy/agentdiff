@@ -1,28 +1,19 @@
-import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
-import { SignedIn, SignedOut, SignIn, useClerk } from "@clerk/clerk-react";
 import { Shell } from "@/components/Shell";
 import { Toaster } from "@/components/Toaster";
+import { RequireAuth } from "@/components/RequireAuth";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
 import { RunDetailPage } from "@/pages/RunDetailPage";
-import { registerSignOut } from "@/lib/auth";
+import { MarketingLayout } from "@/pages/marketing/MarketingLayout";
+import { MarketingHome } from "@/pages/marketing/MarketingHome";
+import { DocsPage } from "@/pages/marketing/components/DocsPage";
+import { useParams } from "react-router-dom";
 
-/** Hand Clerk's signOut to lib/auth so a 401 can force a clean sign-out. */
-function SignOutBridge() {
-  const { signOut } = useClerk();
-  useEffect(() => {
-    registerSignOut((opts) => signOut(opts));
-  }, [signOut]);
-  return null;
-}
-
-function AuthGate() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-shell-bg">
-      <SignIn />
-    </div>
-  );
+/** /docs/:slug — reads the slug from the route and renders the docs shell. */
+function DocDetailRoute() {
+  const { slug } = useParams<{ slug: string }>();
+  return <DocsPage slug={slug ?? null} />;
 }
 
 function NotFoundPage() {
@@ -39,7 +30,7 @@ function NotFoundPage() {
           The page you&apos;re looking for doesn&apos;t exist or has been moved.
         </p>
         <Link
-          to="/"
+          to="/projects"
           className="rounded-sm bg-ink-dark px-lg py-sm text-small font-medium text-white transition-opacity hover:opacity-80"
         >
           Back to Projects
@@ -49,24 +40,73 @@ function NotFoundPage() {
   );
 }
 
+/** The Clerk-gated dashboard subtree, mounted once under one ClerkProvider. */
+function DashboardRoutes() {
+  return (
+    <RequireAuth>
+      <Shell>
+        <Routes>
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/:id" element={<ProjectPage />} />
+          <Route path="/runs/:id" element={<RunDetailPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Shell>
+    </RequireAuth>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <SignedOut>
-        <AuthGate />
-      </SignedOut>
-      <SignedIn>
-        <SignOutBridge />
-        <Shell>
-          <Routes>
-            <Route path="/" element={<ProjectsPage />} />
-            <Route path="/projects/:id" element={<ProjectPage />} />
-            <Route path="/runs/:id" element={<RunDetailPage />} />
-            {/* Catch-all: any unknown path → friendly not-found page */}
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </Shell>
-      </SignedIn>
+      <Routes>
+        {/* ── Public marketing + docs (render without Clerk) ─────────────── */}
+        <Route
+          path="/"
+          element={
+            <MarketingLayout>
+              <MarketingHome />
+            </MarketingLayout>
+          }
+        />
+        <Route
+          path="/docs"
+          element={
+            <MarketingLayout>
+              <DocsPage slug={null} />
+            </MarketingLayout>
+          }
+        />
+        <Route
+          path="/docs/:slug"
+          element={
+            <MarketingLayout>
+              <DocDetailRoute />
+            </MarketingLayout>
+          }
+        />
+        <Route
+          path="/privacy"
+          element={
+            <MarketingLayout>
+              <DocsPage slug="privacy" />
+            </MarketingLayout>
+          }
+        />
+        <Route
+          path="/terms"
+          element={
+            <MarketingLayout>
+              <DocsPage slug="terms" />
+            </MarketingLayout>
+          }
+        />
+
+        {/* ── Clerk-gated dashboard ──────────────────────────────────────── */}
+        <Route path="/projects" element={<DashboardRoutes />} />
+        <Route path="/projects/:id" element={<DashboardRoutes />} />
+        <Route path="/runs/:id" element={<DashboardRoutes />} />
+      </Routes>
       <Toaster />
     </BrowserRouter>
   );

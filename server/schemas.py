@@ -1,4 +1,13 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
+
+
+class PaginatedResponse(BaseModel):
+    """Generic {"items": [...], "total": int} envelope used by list endpoints."""
+
+    items: list[Any]
+    total: int
 
 
 class TrajectoryIn(BaseModel):

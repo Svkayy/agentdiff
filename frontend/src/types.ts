@@ -40,6 +40,12 @@ export interface Thresholds {
   agent_invocation_rate_fail: number;
   tool_usage_avg_warn: number;
   tool_usage_avg_fail: number;
+  latency_ms_warn?: number;
+  latency_ms_fail?: number;
+  tokens_warn?: number;
+  tokens_fail?: number;
+  error_rate_warn?: number;
+  error_rate_fail?: number;
 }
 
 export interface RunMeta {
@@ -60,6 +66,18 @@ export interface RunQuality {
 }
 
 // ── Behavioral comparison (compare.ComparisonResult) ───────────────────────
+export interface StatisticalEvidence {
+  test: string;
+  p_value: number | null;
+  significant: boolean;
+  alpha: number;
+  effect_size: number | null;
+  effect_label: string;
+  confidence_interval: [number, number] | null;
+  baseline_n: number;
+  candidate_n: number;
+}
+
 export interface AgentInvocationDelta {
   agent_name: string;
   function: string;
@@ -71,7 +89,10 @@ export interface AgentInvocationDelta {
   baseline_total: number;
   candidate_total: number;
   p_value: number | null;
+  adjusted_p_value: number | null;
   significant: boolean;
+  low_power: boolean;
+  stats?: StatisticalEvidence | null;
   verdict: Verdict;
 }
 
@@ -81,14 +102,33 @@ export interface ToolUsageDelta {
   candidate_avg: number;
   delta: number;
   p_value: number | null;
+  adjusted_p_value: number | null;
   significant: boolean;
+  low_power: boolean;
+  stats?: StatisticalEvidence | null;
   verdict: Verdict;
+}
+
+// Latency/token/error-rate run-level delta. `adjusted_p_value` is the
+// Benjamini-Hochberg-corrected p-value across every delta in the whole
+// comparison (Task 7); `low_power` flags a per-side sample size below
+// config.stats.min_samples_warn.
+export interface RunMetricDelta {
+  metric: "latency_ms" | "total_tokens" | "error_rate";
+  baseline_mean: number;
+  candidate_mean: number;
+  delta: number;
+  p_value: number | null;
+  adjusted_p_value: number | null;
+  verdict: Verdict;
+  low_power: boolean;
 }
 
 export interface TestCaseComparison {
   test_case_id: string;
   agent_invocation_deltas: AgentInvocationDelta[];
   tool_usage_deltas: ToolUsageDelta[];
+  run_metrics?: RunMetricDelta[];
   behavioral_overlap: number | null;
   overall_verdict: Verdict;
 }
@@ -96,9 +136,15 @@ export interface TestCaseComparison {
 export interface Comparison {
   test_case_comparisons: TestCaseComparison[];
   overall_verdict: Verdict;
+  warnings: string[];
 }
 
 // ── Output evaluation (output_eval.OutputEvalResult) ───────────────────────
+export interface SkippedCheck {
+  check: string;
+  reason: string;
+}
+
 export interface OutputEval {
   test_case_id: string;
   output_kind: string;
@@ -106,18 +152,26 @@ export interface OutputEval {
   structural_similarity: number | null;
   length_ratio: number | null;
   judge_score: number | null;
+  judge_reason?: string | null;
   changed_keys?: string[];
   verdict: Verdict;
   notes: string[];
+  // Checks skipped this run (missing embeddings dep, no judge credential,
+  // judge parse error, ...) — non-empty means the verdict is not a full pass
+  // across every signal.
+  skipped_checks: SkippedCheck[];
 }
 
 // ── Causal attribution (attribution.engine.AttributionResult) ──────────────
+export type AttributionConfidence = "high" | "medium" | "low";
+
 export interface AttributionCause {
   rule: string;
   target_path: string;
   hunk: string | null;
   weight: number;
   reason: string;
+  confidence: AttributionConfidence;
 }
 
 export interface AttributionEntry {
@@ -171,6 +225,10 @@ export interface ReportData {
   runQuality: RunQuality;
   graph: AgentGraph;
   comparison: Comparison | null;
+  // Run-level warnings (Task 7 low-power flags, etc). Mirrors
+  // `comparison.warnings` but lives at the payload root too — the adapter
+  // reads whichever is present.
+  warnings: string[];
   outputEvals: OutputEval[];
   attribution: Attribution | null;
   trajectories: Trajectories;

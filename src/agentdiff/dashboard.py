@@ -19,8 +19,8 @@ _ASSET = Path(__file__).parent / "dashboard_assets" / "index.html"
 
 _FALLBACK_HTML = (
     "<!doctype html><html><head><meta charset='utf-8'><title>AgentDiff</title></head>"
-    "<body><p>Dashboard assets are not built. Run <code>npm --prefix frontend run build</code> "
-    "and re-vendor <code>frontend/dist/index.html</code> to "
+    "<body><p>Dashboard assets are not built. Run <code>npm --prefix frontend run build:cli</code> "
+    "and re-vendor <code>frontend/dist-cli/cli.html</code> to "
     "<code>src/agentdiff/dashboard_assets/index.html</code>.</p>"
     "<script>window.__AGENTDIFF__=__PAYLOAD__;</script></body></html>"
 )

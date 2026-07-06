@@ -19,6 +19,7 @@ from agentdiff import compare as compare_engine
 from agentdiff import storage
 from agentdiff.attribution.engine import attribute, attribute_observed
 from agentdiff.capture.session import captures_dir
+from agentdiff.config import load_config
 from agentdiff.dashboard import write_dashboard
 from agentdiff.structure import structure_yaml
 from agentdiff.structure.structure_yaml import StructureDoc
@@ -59,9 +60,13 @@ def diff_cmd(
         raise SystemExit(1)
 
     structure = structure_yaml.load(root) or StructureDoc()
-    comparison = compare_engine.compare_all(baseline_set, candidate_set, structure)
+    config = load_config(root)
+    comparison = compare_engine.compare_all(
+        baseline_set, candidate_set, structure, stats_config=config.stats
+    )
 
     if baseline:
+        # When ANTHROPIC_API_KEY is set, LLM explanations auto-enable via AUTO_LLM_EXPLAINER default.
         attribution = attribute(
             comparison,
             structure,
@@ -70,7 +75,6 @@ def diff_cmd(
             repo_root=root,
             baseline_ref=baseline,
             candidate_ref=None,
-            llm_client=None,
         )
     else:
         attribution = attribute_observed(

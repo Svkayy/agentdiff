@@ -105,6 +105,7 @@ def test_rule_reachable_fallback_when_nothing_direct():
     assert len(attrs) == 1
     assert attrs[0].rule == "reachable_change"
     assert attrs[0].weight == 0.2
+    assert attrs[0].confidence == "low"
 
 
 def test_rule_reachable_prefers_reachable_changed_file():
@@ -119,6 +120,124 @@ def test_rule_reachable_prefers_reachable_changed_file():
     assert attrs[0].rule == "reachable_change"
     assert attrs[0].target_path == "helper.py"
     assert attrs[0].weight == 0.35
+    assert attrs[0].confidence == "low"
+
+
+# ---------------------------------------------------------------------------
+# confidence labels
+# ---------------------------------------------------------------------------
+
+def test_confidence_high_for_direct_prompt_change():
+    # weight 0.9 >= 0.7 -> high
+    d = diff_manifests(
+        {"research_agent": _manifest("A", "c", "m")},
+        {"research_agent": _manifest("B", "c", "m")},
+    )["research_agent"]
+    git_diff = {"prompts/research.txt": "@@ -1 +1 @@\n-old\n+new\n"}
+    attrs = apply_rules(d, git_diff, STRUCT)
+    assert attrs[0].weight == 0.9
+    assert attrs[0].confidence == "high"
+
+
+def test_confidence_medium_for_tool_schema_change():
+    # weight 0.6 -> >= 0.5 and < 0.7 -> medium
+    d = diff_manifests(
+        {"research_agent": _manifest("h", "c", "m", tools=["search"])},
+        {"research_agent": _manifest("h", "c", "m", tools=["search", "calc"])},
+    )["research_agent"]
+    git_diff = {"tools.py": "@@ -1 +1 @@\n+def calc(): ...\n"}
+    attrs = apply_rules(d, git_diff, STRUCT)
+    assert any(a.rule == "tool_schema_change" and a.confidence == "medium" for a in attrs)
+
+
+def test_confidence_boundaries_by_weight():
+    from agentdiff.attribution.rules import _confidence_for_weight
+
+    assert _confidence_for_weight(0.9) == "high"
+    assert _confidence_for_weight(0.7) == "high"
+    assert _confidence_for_weight(0.69) == "medium"
+    assert _confidence_for_weight(0.5) == "medium"
+    assert _confidence_for_weight(0.49) == "low"
+    assert _confidence_for_weight(0.2) == "low"
+
+
+def test_rule_reachable_fallback_reason_has_no_baked_in_label():
+    """Rule-5's blind-heuristic reason string must not itself contain the
+    '(low-confidence heuristic)' phrase — the renderer is the single source
+    of that label (added only when confidence == 'low'). If the rule's reason
+    also carries the phrase, rendered output doubles it."""
+    d = diff_manifests(
+        {"research_agent": _manifest("h", "c", "m")},
+        {"research_agent": _manifest("h", "c", "m")},
+    )["research_agent"]
+    git_diff = {"utils.py": "@@ -1 +1 @@\n-a\n+b\n"}
+    attrs = apply_rules(d, git_diff, STRUCT)
+    assert len(attrs) == 1
+    assert "(low-confidence heuristic)" not in attrs[0].reason
+
+
+def test_renderer_low_confidence_label_appears_exactly_once_for_rule5():
+    """End-to-end through the real rule-5 reason string and the real
+    renderer: the phrase must appear exactly once in the rendered report,
+    not doubled by both the rule's reason text and the renderer's label."""
+    from agentdiff.attribution.engine import AttributionResult, BehavioralAttribution
+    from agentdiff.compare import ComparisonResult
+    from agentdiff.report import render_report
+
+    d = diff_manifests(
+        {"research_agent": _manifest("h", "c", "m")},
+        {"research_agent": _manifest("h", "c", "m")},
+    )["research_agent"]
+    git_diff = {"utils.py": "@@ -1 +1 @@\n-a\n+b\n"}
+    primary = apply_rules(d, git_diff, STRUCT)[0]
+
+    attribution = AttributionResult(
+        attributions=[
+            BehavioralAttribution(
+                test_case_id="tc1",
+                agent_name="Research",
+                function="research_agent",
+                metric="invocation_rate",
+                delta_summary="100% -> 70% (-30%)",
+                verdict="warn",
+                primary=primary,
+            )
+        ]
+    )
+    comparison = ComparisonResult(test_case_comparisons=[], overall_verdict="warn")
+    md = render_report(comparison, [], {}, attribution)
+    assert md.count("(low-confidence heuristic)") == 1
+
+
+def test_renderer_low_confidence_label_in_report():
+    from agentdiff.attribution.engine import AttributionResult, BehavioralAttribution
+    from agentdiff.attribution.rules import Attribution
+    from agentdiff.compare import ComparisonResult
+    from agentdiff.report import render_report
+
+    attribution = AttributionResult(
+        attributions=[
+            BehavioralAttribution(
+                test_case_id="tc1",
+                agent_name="Research",
+                function="research_agent",
+                metric="invocation_rate",
+                delta_summary="100% -> 70% (-30%)",
+                verdict="warn",
+                primary=Attribution(
+                    rule="reachable_change",
+                    target_path="utils.py",
+                    hunk=None,
+                    weight=0.2,
+                    reason="low confidence heuristic reason",
+                    confidence="low",
+                ),
+            )
+        ]
+    )
+    comparison = ComparisonResult(test_case_comparisons=[], overall_verdict="warn")
+    md = render_report(comparison, [], {}, attribution)
+    assert "(low-confidence heuristic)" in md
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +373,56 @@ def test_attribute_range_matches_legacy_attribute_for_working_tree(tmp_path):
         candidate_trajectories=candidate,
         repo_root=project,
         git_range=GitRange(base_ref="HEAD", head_ref=None),
+        llm_client=None,
     )
 
     assert result.attributions[0].primary is not None
     assert result.attributions[0].primary.target_path == "agent.py"
+
+
+@pytestmark_git
+def test_default_explainer_adds_fallback_explanation(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "agent.py").write_text(
+        "PROMPT = 'baseline'\n"
+        "def research_agent(query):\n"
+        "    return PROMPT\n"
+    )
+    _git(["init"], project)
+    _git(["config", "user.email", "t@t.com"], project)
+    _git(["config", "user.name", "t"], project)
+    _git(["add", "-A"], project)
+    _git(["commit", "-m", "baseline"], project)
+    (project / "agent.py").write_text(
+        "PROMPT = 'candidate'\n"
+        "def research_agent(query):\n"
+        "    return PROMPT\n"
+    )
+
+    structure = StructureDoc(
+        agents=[AgentEntry(name="Research", function="research_agent", file="agent.py", line=2)],
+    )
+    baseline = [_agent_traj("baseline", "baseline") for _ in range(20)]
+    candidate = [_agent_traj("candidate", "candidate") for _ in range(14)]
+    candidate += [_agent_traj("candidate", "candidate", fires=False) for _ in range(6)]
+    comparison = compare_all(
+        TrajectorySet(version_tag="baseline", trajectories=baseline),
+        TrajectorySet(version_tag="candidate", trajectories=candidate),
+        structure,
+        ["tc1"],
+    )
+
+    result = attribution_engine.attribute_range(
+        comparison=comparison,
+        structure=structure,
+        baseline_trajectories=baseline,
+        candidate_trajectories=candidate,
+        repo_root=project,
+        git_range=GitRange(base_ref="HEAD", head_ref=None),
+    )
+
+    assert result.attributions[0].explanation
+    assert "AgentDiff attributed" in result.attributions[0].explanation

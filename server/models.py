@@ -21,6 +21,7 @@ class Org(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     clerk_org_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String(255))
+    plan: Mapped[str] = mapped_column(String(20), default="free", server_default="free")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     projects: Mapped[list["Project"]] = relationship(back_populates="org")
     users: Mapped[list["User"]] = relationship(back_populates="org")
@@ -53,6 +54,7 @@ class ApiKey(Base):
     __tablename__ = "api_keys"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"))
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     key_hash: Mapped[str] = mapped_column(Text)
     prefix: Mapped[str] = mapped_column(String(16), index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -67,6 +69,7 @@ class SlackConfig(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
     channel_id: Mapped[str] = mapped_column(String(64))
     bot_token_encrypted: Mapped[str] = mapped_column(Text)
+    webhook_url_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True)
     project: Mapped[Project] = relationship(back_populates="slack_config")
 
@@ -82,10 +85,11 @@ class Run(Base):
     kind: Mapped[str] = mapped_column(String(16), default="ci", server_default="ci")
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
     attribution: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    report_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="pending")
     verdict: Mapped[str | None] = mapped_column(String(16), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
     project: Mapped[Project] = relationship(back_populates="runs")
     trajectories: Mapped[list["Trajectory"]] = relationship(back_populates="run", cascade="all, delete-orphan")
     findings: Mapped[list["Finding"]] = relationship(back_populates="run", cascade="all, delete-orphan")
@@ -94,7 +98,7 @@ class Run(Base):
 class Trajectory(Base):
     __tablename__ = "trajectories"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
-    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id"))
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id"), index=True)
     side: Mapped[str] = mapped_column(String(16))
     test_case_id: Mapped[str] = mapped_column(String(255))
     payload: Mapped[dict] = mapped_column(JSONB)
@@ -104,12 +108,13 @@ class Trajectory(Base):
 class Finding(Base):
     __tablename__ = "findings"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
-    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id"))
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id"), index=True)
     test_case_id: Mapped[str] = mapped_column(String(255))
     title: Mapped[str] = mapped_column(Text)
     verdict: Mapped[str] = mapped_column(String(16))
     metric: Mapped[str] = mapped_column(String(64))
     impact_summary: Mapped[str] = mapped_column(Text)
+    statistical_evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     cause_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     cause_rule: Mapped[str | None] = mapped_column(String(64), nullable=True)
     cause_hunk: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -128,3 +133,35 @@ class LiveTrajectory(Base):
     payload: Mapped[dict] = mapped_column(JSONB)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     project: Mapped[Project] = relationship(back_populates="live_trajectories")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_org_id_created_at", "org_id", "created_at"),
+        Index("ix_audit_logs_project_id_created_at", "project_id", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
+    # Nullable, plain column (not a hard FK-cascade): audit rows must survive
+    # deletion of the project they reference, so a deleted project's trail is
+    # retained rather than cascade-deleted or orphaned via ON DELETE CASCADE.
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    actor: Mapped[str] = mapped_column(String(255))
+    action: Mapped[str] = mapped_column(String(120))
+    target_type: Mapped[str] = mapped_column(String(64))
+    target_id: Mapped[str] = mapped_column(String(255))
+    meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class UsageCounter(Base):
+    __tablename__ = "usage_counters"
+    __table_args__ = (
+        Index("ix_usage_counters_org_id_period", "org_id", "period", unique=True),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
+    period: Mapped[str] = mapped_column(String(6))
+    runs: Mapped[int] = mapped_column(default=0, server_default="0")
+    trajectories: Mapped[int] = mapped_column(default=0, server_default="0")

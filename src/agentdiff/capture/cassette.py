@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Literal
 
+from agentdiff.capture.http.redact import redact_url
+
 SCHEMA_VERSION = 1
 
 
@@ -74,10 +76,14 @@ class HTTPCassette:
             return
         payload = {
             "schema_version": SCHEMA_VERSION,
+            # The lookup key hashes the RAW url so replay matching still
+            # works; the stored display url is query-stripped because
+            # providers carry credentials there (e.g. Gemini's ?key=...)
+            # and cassettes get committed for CI replay.
             "key": request_key(method, url, body),
             "request": {
                 "method": method.upper(),
-                "url": url,
+                "url": redact_url(url),
                 "body_sha256": _sha256(body or b""),
             },
             "response": {

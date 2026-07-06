@@ -1,19 +1,76 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AgentDiff — Behavioral Regression</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      // Pre-paint theme application: read the persisted theme and set the
+      // `dark` class before React mounts, so a dark-mode reload never paints
+      // a light frame first. Kept inline and dependency-free by design.
+      (function () {
+        try {
+          if (localStorage.getItem("agentdiff-theme") === "dark") {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {
+          /* storage unavailable (private mode) — default light */
+        }
+      })();
+    </script>
+    <title>AgentDiff — Behavioral CI gate for AI agents</title>
+    <meta
+      name="description"
+      content="AgentDiff catches behavioral regressions in AI agents before production, attributes them to the exact commit, and posts a Slack brief your team can act on."
     />
+    <link rel="canonical" href="https://agentdiff.ai/" />
+    <meta name="theme-color" content="#FAFAF8" />
+
+    <!-- Inline SVG favicon: the diff-glyph (Δ) mark in DESIGN.md ink on the warm
+         off-white shell. Data-URI so it survives the single-file build. -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&display=swap"
-      rel="stylesheet"
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23FAFAF8'/%3E%3Ctext x='16' y='23' font-family='ui-monospace,monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%2315181D'%3E%CE%94%3C/text%3E%3C/svg%3E"
     />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AgentDiff" />
+    <meta
+      property="og:title"
+      content="AgentDiff — Behavioral CI gate for AI agents"
+    />
+    <meta
+      property="og:description"
+      content="Catch the agent regressions your evals can't see. AgentDiff diffs agent behavior, attributes the regression to a commit, and briefs your team."
+    />
+    <meta property="og:url" content="https://agentdiff.ai/" />
+    <meta property="og:image" content="https://agentdiff.ai/og.png" />
+
+    <!-- Twitter card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="AgentDiff — Behavioral CI gate for AI agents"
+    />
+    <meta
+      name="twitter:description"
+      content="Catch the agent regressions your evals can't see. Behavioral diff + causal attribution for AI agent systems."
+    />
+    <meta name="twitter:image" content="https://agentdiff.ai/og.png" />
+
+    <!-- JSON-LD: SoftwareApplication -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "AgentDiff",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Cross-platform (Python 3.10+)",
+        "description": "Behavioral regression testing for AI agent systems. AgentDiff diffs agent behavior between code versions, attributes regressions to the exact commit, and posts a Slack brief.",
+        "url": "https://agentdiff.ai/",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

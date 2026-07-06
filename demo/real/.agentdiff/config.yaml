@@ -1,0 +1,9 @@
+runner:
+  module: runner
+  callable: run
+samples_per_case: 5
+llm_provider: anthropic
+sampling:
+  install_deps: false
+  workers: 1
+  max_failure_rate: 0.0

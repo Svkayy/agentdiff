@@ -1,10 +1,11 @@
 // Single entry point for the report payload + small pure selectors the sections
 // share. The CLI injects `window.__AGENTDIFF__`; dev falls back to the real sample.
 import { SAMPLE } from "@/sample";
+import { toReportData } from "@/lib/payloadAdapter";
 import type { AttributionEntry, ReportData, Verdict } from "@/types";
 
 export function useReportData(): ReportData {
-  return (typeof window !== "undefined" && window.__AGENTDIFF__) || SAMPLE;
+  return toReportData((typeof window !== "undefined" && window.__AGENTDIFF__) || SAMPLE);
 }
 
 /** Short, readable form of a git ref (40-char SHA → 7 chars; labels untouched). */

@@ -1,6 +1,8 @@
 from agentdiff.attribution.engine import AttributionResult, BehavioralAttribution
 from agentdiff.attribution.rules import Attribution
-from agentdiff.compare import AgentInvocationDelta, ComparisonResult, TestCaseComparison
+from agentdiff.compare import (
+    AgentInvocationDelta, ComparisonResult, RunMetricDelta, TestCaseComparison,
+)
 from agentdiff.incident.findings import IncidentContext, build_incident_summary
 from agentdiff.incident.github import AGENTDIFF_COMMENT_MARKER, GitHubClient, infer_pr_number
 from agentdiff.incident.renderers import (
@@ -65,8 +67,127 @@ def test_incident_summary_merges_attribution_once():
     summary = build_incident_summary(_comparison(), attribution)
 
     assert summary.verdict == "fail"
+    # One test case → exactly one aggregated finding
+    assert len(summary.findings) == 1
     assert summary.findings[0].cause_path == "agents/fact_checker.py"
     assert "100%" in summary.findings[0].impact_summary
+    assert summary.findings[0].test_cases_affected == 1
+    assert summary.findings[0].test_cases_total == 1
+
+
+def test_low_confidence_attribution_renders_heuristic_label():
+    attribution = AttributionResult(
+        attributions=[
+            BehavioralAttribution(
+                test_case_id="tc1",
+                agent_name="Fact Checker",
+                function="fact_checker",
+                metric="invocation_rate",
+                delta_summary="invocation rate 100% -> 0%",
+                verdict="fail",
+                primary=Attribution(
+                    rule="reachable_change",
+                    target_path="utils.py",
+                    hunk="@@ -1 +1 @@",
+                    weight=0.2,
+                    confidence="low",
+                    reason="low confidence heuristic reason",
+                ),
+            )
+        ]
+    )
+    summary = build_incident_summary(_comparison(), attribution)
+    assert summary.findings[0].cause_confidence == "low"
+
+    pr_check = render_pr_check(summary)
+    postmortem = render_postmortem(summary)
+    blocks = render_slack_blocks(summary)
+
+    assert "(low-confidence heuristic)" in pr_check
+    assert "(low-confidence heuristic)" in postmortem
+    assert any(
+        "(low-confidence heuristic)" in b.get("text", {}).get("text", "")
+        for b in blocks
+        if b.get("type") == "section"
+    )
+
+
+def test_run_metric_delta_produces_finding():
+    comparison = ComparisonResult(
+        overall_verdict="fail",
+        test_case_comparisons=[
+            TestCaseComparison(
+                test_case_id="tc1",
+                overall_verdict="fail",
+                run_metric_deltas=[
+                    RunMetricDelta(
+                        metric="latency_ms", baseline_mean=500.0, candidate_mean=8000.0,
+                        delta=7500.0, p_value=0.01, adjusted_p_value=0.01,
+                        significant=True, low_power=False, verdict="fail",
+                    ),
+                    RunMetricDelta(
+                        metric="total_tokens", baseline_mean=100.0, candidate_mean=105.0,
+                        delta=5.0, p_value=0.9, adjusted_p_value=0.9,
+                        significant=False, low_power=False, verdict="pass",
+                    ),
+                ],
+            )
+        ],
+    )
+    summary = build_incident_summary(comparison)
+    metrics = {f.metric for f in summary.findings}
+    assert "latency_ms" in metrics
+    assert "total_tokens" not in metrics  # pass verdicts don't surface as findings
+    latency_finding = next(f for f in summary.findings if f.metric == "latency_ms")
+    assert latency_finding.verdict == "fail"
+    assert "500.00" in latency_finding.impact_summary
+    assert "8000.00" in latency_finding.impact_summary
+
+
+def test_run_metric_finding_averages_means_over_all_test_cases_not_just_failing():
+    # Two test cases both compute latency_ms: tc1 has a big FAIL shift, tc2 is
+    # a passing test case (verdict "pass", no shift). The displayed finding's
+    # baseline/candidate means must be the average across BOTH test cases —
+    # not just the failing one — while the worst verdict (fail) still gates.
+    comparison = ComparisonResult(
+        overall_verdict="fail",
+        test_case_comparisons=[
+            TestCaseComparison(
+                test_case_id="tc1",
+                overall_verdict="fail",
+                run_metric_deltas=[
+                    RunMetricDelta(
+                        metric="latency_ms", baseline_mean=500.0, candidate_mean=8000.0,
+                        delta=7500.0, p_value=0.01, adjusted_p_value=0.01,
+                        significant=True, low_power=False, verdict="fail",
+                    ),
+                ],
+            ),
+            TestCaseComparison(
+                test_case_id="tc2",
+                overall_verdict="pass",
+                run_metric_deltas=[
+                    RunMetricDelta(
+                        metric="latency_ms", baseline_mean=300.0, candidate_mean=300.0,
+                        delta=0.0, p_value=1.0, adjusted_p_value=1.0,
+                        significant=False, low_power=False, verdict="pass",
+                    ),
+                ],
+            ),
+        ],
+    )
+    summary = build_incident_summary(comparison)
+    latency_finding = next(f for f in summary.findings if f.metric == "latency_ms")
+
+    # Worst verdict across test cases still governs whether/how this gates.
+    assert latency_finding.verdict == "fail"
+
+    # Means must be pooled across BOTH test cases (500+300)/2=400, (8000+300)/2=4150 —
+    # not just the failing test case's 500.0/8000.0.
+    assert "400.00" in latency_finding.impact_summary
+    assert "4150.00" in latency_finding.impact_summary
+    assert "500.00" not in latency_finding.impact_summary
+    assert "8000.00" not in latency_finding.impact_summary
 
 
 def test_empty_input_is_warn_not_pass():
@@ -81,7 +202,7 @@ def test_empty_input_is_warn_not_pass():
 def test_renderers_share_same_summary():
     summary = build_incident_summary(_comparison())
 
-    assert "AgentDiff CI Gate: FAIL" in render_pr_check(summary)
+    assert "AgentDiff CI Gate: CHANGE" in render_pr_check(summary)
     assert "Postmortem Draft" in render_postmortem(summary)
     blocks = render_slack_blocks(summary, detail_url="https://example.com/report")
     assert blocks[0]["type"] == "header"
@@ -136,7 +257,7 @@ def test_github_upserts_existing_pr_comment():
     result = GitHubClient("ghs_test", request_fn=fake_request).upsert_pr_comment(
         repository="o/r",
         pr_number=1,
-        body="# AgentDiff CI Gate: FAIL\n",
+        body="# AgentDiff CI Gate: CHANGE\n",
     )
 
     assert result.ok is True
@@ -223,7 +344,8 @@ def test_slack_payload_colors_by_verdict():
     assert warn_payload["attachments"][0]["color"] == "#E8A33D"
 
 
-def test_slack_headline_counts_multiple_findings():
+def test_slack_headline_same_agent_two_test_cases_aggregates_to_one():
+    """Same agent change across 2 test cases → ONE aggregated finding, not two."""
     comparison = _comparison()
     extra = comparison.test_case_comparisons[0].model_copy(
         update={"test_case_id": "tc2"}
@@ -233,8 +355,66 @@ def test_slack_headline_counts_multiple_findings():
         test_case_comparisons=[comparison.test_case_comparisons[0], extra],
     )
     summary = build_incident_summary(comparison)
+    # Aggregated: ONE finding covers both test cases
+    assert len(summary.findings) == 1
+    assert summary.findings[0].test_cases_affected == 2
+    assert summary.findings[0].test_cases_total == 2
+    assert "2 of 2 inputs" in summary.findings[0].impact_summary
+    # Headline names the single finding, not "2 behavioral changes"
     blocks = render_slack_blocks(summary)
-    assert "2 behavioral regressions" in blocks[0]["text"]["text"]
+    assert "Fact Checker invocation changed" in blocks[0]["text"]["text"]
+    # No "Also affected" section when there is only one aggregated finding
+    listed = [b for b in blocks if b["type"] == "section" and "Also affected" in b["text"]["text"]]
+    assert len(listed) == 0
+
+
+def test_slack_headline_counts_multiple_distinct_agent_findings():
+    """Two DIFFERENT agents changing → two findings → '2 behavioral changes detected'."""
+    from agentdiff.compare import AgentInvocationDelta, TestCaseComparison
+
+    comparison = ComparisonResult(
+        overall_verdict="fail",
+        test_case_comparisons=[
+            TestCaseComparison(
+                test_case_id="tc1",
+                overall_verdict="fail",
+                agent_invocation_deltas=[
+                    AgentInvocationDelta(
+                        agent_name="Fact Checker",
+                        function="fact_checker",
+                        baseline_rate=1.0,
+                        candidate_rate=0.0,
+                        delta=-1.0,
+                        baseline_count=5,
+                        candidate_count=0,
+                        baseline_total=5,
+                        candidate_total=5,
+                        p_value=0.01,
+                        significant=True,
+                        verdict="fail",
+                    ),
+                    AgentInvocationDelta(
+                        agent_name="Summarizer",
+                        function="summarizer",
+                        baseline_rate=1.0,
+                        candidate_rate=0.0,
+                        delta=-1.0,
+                        baseline_count=5,
+                        candidate_count=0,
+                        baseline_total=5,
+                        candidate_total=5,
+                        p_value=0.01,
+                        significant=True,
+                        verdict="fail",
+                    ),
+                ],
+            )
+        ],
+    )
+    summary = build_incident_summary(comparison)
+    assert len(summary.findings) == 2
+    blocks = render_slack_blocks(summary)
+    assert "2 behavioral changes detected" in blocks[0]["text"]["text"]
     listed = [b for b in blocks if b["type"] == "section" and "Also affected" in b["text"]["text"]]
     assert len(listed) == 1
 
@@ -253,7 +433,7 @@ def test_slack_post_payload_merges_channel_and_fallback():
     assert result.ok is True
     assert calls[0]["channel"] == "C123"
     assert calls[0]["attachments"][0]["color"] == "#FF4D2E"
-    assert calls[0]["text"].startswith("AgentDiff FAIL")
+    assert calls[0]["text"].startswith("AgentDiff CHANGE")
 
 
 def test_pr_check_and_postmortem_include_context():

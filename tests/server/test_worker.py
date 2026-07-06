@@ -136,6 +136,10 @@ async def test_process_run_writes_findings(session):
     assert all(
         f.impact_summary for f in findings
     ), "impact_summary must be populated"
+    assert any(
+        f.statistical_evidence and f.statistical_evidence["test"] == "two_proportion_z"
+        for f in findings
+    ), "statistical evidence must be persisted with findings"
 
 
 # ---------------------------------------------------------------------------
@@ -179,3 +183,55 @@ async def test_process_run_engine_error_sets_failed(session):
     assert run.status == "failed", f"expected failed, got {run.status!r}"
     assert run.error, "error field must be populated"
     assert len(findings) == 0, "no findings should be written on engine error"
+
+# ---------------------------------------------------------------------------
+# Idempotency guard: a done run must not be reprocessed
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_process_run_skips_done_run(session):
+    """A duplicate queue delivery (or manual re-enqueue) of a completed run
+    must be a no-op — reprocessing would double-insert its Finding rows."""
+    org = Org(name="Acme-idem")
+    project = Project(org=org, name="proj-idem")
+    run = Run(
+        project=project,
+        idempotency_key=f"worker-idem-{uuid4()}",
+        baseline_ref="main",
+        candidate_ref="feat",
+        tier="hermetic",
+        config=CONFIG,
+        status="done",
+        verdict="fail",
+        report_payload={"kind": "already-processed"},
+    )
+    run.trajectories.append(
+        Trajectory(
+            side="baseline",
+            test_case_id="tc1",
+            payload=_payload("tc1", "baseline", agent_fires=True),
+        )
+    )
+    session.add(run)
+    await session.commit()
+    finding = Finding(
+        run_id=run.id,
+        test_case_id="tc1",
+        title="existing",
+        verdict="fail",
+        metric="invocation_rate",
+        impact_summary="pre-existing finding",
+    )
+    session.add(finding)
+    await session.commit()
+
+    await process_run({"session_factory": _factory(session)}, str(run.id))
+
+    await session.refresh(run)
+    findings = (
+        await session.execute(select(Finding).where(Finding.run_id == run.id))
+    ).scalars().all()
+
+    assert run.status == "done", "status must remain done"
+    assert run.report_payload == {"kind": "already-processed"}, "payload must be untouched"
+    assert len(findings) == 1, f"findings must not duplicate, got {len(findings)}"

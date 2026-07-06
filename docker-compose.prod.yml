@@ -1,0 +1,67 @@
+# Production overlay for AgentDiff.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from the base compose:
+#   - A one-shot `migrate` service runs `alembic upgrade head` to completion;
+#     `api` and `worker` wait for it (depends_on: service_completed_successfully)
+#     and no longer migrate at boot — schema changes apply exactly once.
+#   - `nginx` terminates TLS and reverse-proxies to `api` and `dashboard`,
+#     redirects http→https, and sets HSTS. Certs are mounted from ./deploy/certs.
+#   - Ports for `api`/`dashboard` are NOT published on the host; only nginx
+#     (80/443) is exposed. Postgres/Redis stay internal.
+services:
+  # Prod: Postgres/Redis must NOT publish host ports — the base compose exposes
+  # them for local dev; reset both so only nginx is reachable from outside.
+  postgres:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  migrate:
+    build: { context: ., dockerfile: server/Dockerfile }
+    command: alembic upgrade head
+    restart: "no"
+    environment:
+      # Overridable so migrate can target a managed Postgres in real deploys.
+      AGENTDIFF_DATABASE_URL: ${AGENTDIFF_DATABASE_URL:-postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff}
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    # Prod: DO NOT migrate at boot — the one-shot `migrate` service owns that.
+    command: ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      AGENTDIFF_CORS_ORIGINS: ${AGENTDIFF_CORS_ORIGINS:-https://app.example.com}
+      AGENTDIFF_SENTRY_DSN: ${AGENTDIFF_SENTRY_DSN:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    # Reachable only via nginx; drop the host port publish from the base file.
+    ports: !reset []
+
+  worker:
+    environment:
+      AGENTDIFF_SENTRY_DSN: ${AGENTDIFF_SENTRY_DSN:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  dashboard:
+    # Served behind nginx; drop the host port publish from the base file.
+    ports: !reset []
+    depends_on: [api]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+    depends_on: [api, dashboard]

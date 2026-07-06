@@ -26,7 +26,7 @@ export function TimelineView({ trajectory, side }: TimelineViewProps) {
   return (
     <div className="space-y-md">
       {/* Summary bar */}
-      <div className="flex flex-wrap items-center gap-md rounded-sm border border-node-border bg-node-fill px-md py-sm">
+      <div className="flex flex-wrap items-center gap-md border-2 border-node-border bg-node-fill px-md py-sm">
         <div className="font-mono text-micro text-neutral-faint">
           <span className="text-ink-light">{timeline.length}</span> events
         </div>
@@ -40,14 +40,14 @@ export function TimelineView({ trajectory, side }: TimelineViewProps) {
           {agentsPresent.map((a) => (
             <span
               key={a}
-              className="rounded-sm border border-node-border bg-canvas px-xs py-2xs font-mono text-micro text-ink-light"
+              className="border-2 border-node-border bg-canvas px-xs py-2xs font-mono text-micro text-ink-light"
             >
               {a}
             </span>
           ))}
         </div>
         {side === "candidate" && !agentsPresent.includes("fact_checker") && (
-          <span className="rounded-sm border border-ember/30 bg-ember/10 px-xs py-2xs font-mono text-micro text-ember">
+          <span className="border-2 border-[#ea580c] px-xs py-2xs font-mono text-micro text-[#ea580c]">
             fact_checker absent
           </span>
         )}

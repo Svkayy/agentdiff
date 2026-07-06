@@ -1,0 +1,11 @@
+version: '1'
+agents:
+  - name: Fact Checker
+    function: fact_checker
+    file: agents/fact_checker.py
+    line: 40
+tools: []
+entry_points:
+  - function: run
+    file: runner.py
+    line: 20

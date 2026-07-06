@@ -20,48 +20,51 @@ export function GraphNodeCard({ data, selected }: { data: NodeData; selected: bo
   const n = data.node;
   const m = metric(n);
 
+  // Verdict mapping (DESIGN.md, locked): pass = neutral/foreground dot;
+  // warn = orange OUTLINE dot; fail = solid orange dot. Stopped agents get the
+  // full solid-orange treatment below and stay THE most salient node.
   const dot = n.stopped
-    ? "bg-ember"
+    ? "bg-[#ea580c]"
     : n.verdict === "warn"
-      ? "bg-amber-400"
-      : "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]";
+      ? "border-2 border-[#ea580c] bg-transparent"
+      : n.verdict === "fail"
+        ? "bg-[#ea580c]"
+        : "bg-[#ede8dc]";
 
   return (
     <div
       className={cn(
-        "w-[240px] rounded-xl p-4 animate-fade-in",
-        n.stopped ? "bg-white/90 backdrop-blur-md halo-glow scale-[1.03]" : "glass-node",
-        selected && !n.stopped && "ring-2 ring-primary-dark/50",
-        selected && n.stopped && "ring-2 ring-ember/50",
+        "w-[240px] animate-fade-in border-2 p-4 font-mono",
+        // Stopped = solid orange plate: the loudest thing on the graph.
+        n.stopped
+          ? "border-[#ea580c] bg-[#ea580c] text-background scale-[1.03] halo-glow"
+          : "border-node-border bg-node-fill text-[#ede8dc]",
+        selected && !n.stopped && "ring-2 ring-primary-dark/60",
+        selected && n.stopped && "ring-2 ring-background/70",
         (n.hunk || n.explanation) && "cursor-pointer",
       )}
     >
       <Handle type="target" position={Position.Left} />
-      <div className="mb-3 flex items-center justify-between">
-        <span
-          className={cn(
-            "text-base font-semibold",
-            n.stopped ? "font-bold text-ember" : "text-ink-light",
-          )}
-        >
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className={cn("text-sm font-bold uppercase tracking-wide", n.stopped && "text-background")}>
           {n.label}
         </span>
         {n.stopped ? (
-          <div className="rounded border border-ember/30 bg-red-50 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-ember">
+          <div className="shrink-0 border-2 border-background px-1.5 py-0.5 font-mono text-xs font-bold uppercase tracking-wider text-background">
             STOPPED FIRING
           </div>
         ) : (
-          <div className={cn("h-2.5 w-2.5 rounded-full border border-white", dot)} />
+          <div className={cn("h-2.5 w-2.5 shrink-0", dot)} />
         )}
       </div>
       <div
         className={cn(
-          "mt-2 flex justify-between border-t pt-3 font-mono text-xs tnum",
-          n.stopped ? "border-ember/20" : "border-node-border",
+          "mt-2 flex justify-between border-t-2 pt-3 font-mono text-xs tnum",
+          n.stopped ? "border-background/40" : "border-node-border",
         )}
       >
-        <span className="text-neutral-faint">{m.label}</span>
-        <span className={cn("font-medium", n.stopped ? "font-bold text-ember" : "text-ink-light")}>
+        <span className={n.stopped ? "text-background/80" : "text-neutral-faint"}>{m.label}</span>
+        <span className={cn("font-bold", n.stopped ? "text-background" : "text-[#ede8dc]")}>
           {m.value}
         </span>
       </div>

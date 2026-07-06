@@ -1,14 +1,28 @@
 /* ── Self-hosted fonts (offline-safe — no CDN) ─────────────────────────────
-   Geist Variable  →  @fontsource-variable/geist (npm)
-   JetBrains Mono  →  @fontsource/jetbrains-mono (npm)
-   Cabinet Grotesk →  self-hosted TTF in src/fonts/ (Fontshare, downloaded)
+   JetBrains Mono   →  @fontsource/jetbrains-mono (npm) — brutalist body/mono
+   Silkscreen       →  @fontsource/silkscreen (npm)     — brutalist "pixel" display
+   Geist Variable   →  @fontsource-variable/geist (npm) — legacy sans (kept, see below)
+   Cabinet Grotesk  →  self-hosted TTF in src/fonts/ (Fontshare) — legacy display (kept)
+
+   Why Silkscreen instead of the `geist` npm package's pixel face: `geist`
+   ships its pixel woff2 files only behind `dist/pixel.js`, which wraps them
+   with `next/font/local` (a Next.js-only build-time API backed by the
+   Next compiler). That module does not resolve under Vite/esbuild — there is
+   no supported way to import the raw `.woff2` asset path without reaching
+   into the package's private dist layout, which is fragile across geist
+   releases. Per the plan's explicit fallback instruction, we use Fontsource
+   "Silkscreen" (a genuine pixel/bitmap Google Font) as `font-pixel` instead.
    ──────────────────────────────────────────────────────────────────────── */
-@import "@fontsource-variable/geist";
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/500.css";
 @import "@fontsource/jetbrains-mono/700.css";
+@import "@fontsource/silkscreen/400.css";
+@import "@fontsource/silkscreen/700.css";
 
-/* Cabinet Grotesk — display / hero font (Fontshare, self-hosted TTF) */
+/* Legacy fonts — kept so pre-T3/T4 components (which still reference
+   font-display/font-body) keep rendering acceptably until they migrate. */
+@import "@fontsource-variable/geist";
+
 @font-face {
   font-family: "Cabinet Grotesk";
   src: url("./fonts/CabinetGrotesk-Variable.ttf") format("truetype");
@@ -21,66 +35,73 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── CSS design tokens (DESIGN.md) ─────────────────────────────────────────
-   Dark shell is the default — the graph plate is always dark;
-   a full dark shell reduces eye strain in the dev CLI context.
+/* ── Brutalist design tokens (DESIGN.md — SYS.INT-derived system) ─────────
+   HSL var set ported verbatim from the reference template's globals.css.
+   Light is the default theme; `.dark` is applied as a class on <html>
+   (see src/components/system/useTheme.ts). radius is 0 everywhere: sharp,
+   square, bordered — no rounded corners, no shadows, no gradients.
    ──────────────────────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    /* ── Dark shell (default) ─────────────────────────────────────── */
-    --background: 220 13% 9%;           /* #14161A — dark shell */
-    --foreground: 210 20% 92%;          /* #E8EBEF — ink light */
+    --background: 43 23% 93%;      /* warm cream shell */
+    --foreground: 0 0% 4%;         /* near-black ink */
 
-    --card: 220 13% 11%;                /* slightly lighter than shell */
-    --card-foreground: 210 20% 92%;
+    --card: 43 23% 93%;
+    --card-foreground: 0 0% 4%;
 
-    --popover: 220 13% 11%;
-    --popover-foreground: 210 20% 92%;
+    --popover: 43 23% 93%;
+    --popover-foreground: 0 0% 4%;
 
-    --primary: 12 100% 58%;             /* ember #FF4D2E */
-    --primary-foreground: 0 0% 100%;
+    --primary: 0 0% 4%;
+    --primary-foreground: 43 23% 93%;
 
-    --secondary: 216 14% 18%;           /* node-fill #1B2027 */
-    --secondary-foreground: 210 20% 92%;
+    --secondary: 0 0% 90%;
+    --secondary-foreground: 0 0% 4%;
 
-    --muted: 215 12% 20%;
-    --muted-foreground: 215 10% 60%;    /* neutral-faint #8A929C approx */
+    --muted: 40 10% 85%;
+    --muted-foreground: 0 0% 40%;
 
-    --accent: 215 12% 20%;
-    --accent-foreground: 210 20% 92%;
+    --accent: 20 90% 45%;          /* signal orange ~ #ea580c family, light */
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 12 100% 58%;         /* ember */
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 216 15% 23%;              /* node-border #2A313B approx */
-    --input: 216 15% 23%;
-    --ring: 12 100% 58%;                /* ember ring */
+    --border: 0 0% 75%;
+    --input: 0 0% 75%;
+    --ring: 0 0% 4%;
 
-    --radius: 10px;                     /* md — DESIGN.md default */
+    --radius: 0rem;
 
-    /* ── Chart palette ────────────────────────────────────────────── */
-    --chart-1: 158 47% 47%;             /* pass #3FB27F */
-    --chart-2: 37 73% 57%;              /* warn #E8A33D */
-    --chart-3: 12 100% 58%;             /* ember #FF4D2E */
-    --chart-4: 215 10% 60%;             /* neutral-faint */
-    --chart-5: 215 14% 34%;             /* neutral-muted */
+    /* ── Legacy chart palette (kept — used by shadcn-derived dashboard bits).
+       Re-derived to sit inside the new cream/black/orange system instead of
+       the old dark-shell chart-1..5 set. ─────────────────────────────────── */
+    --chart-1: 20 90% 45%;         /* accent orange (pass/positive signal reuse) */
+    --chart-2: 30 80% 50%;         /* warm amber (warn) */
+    --chart-3: 20 90% 45%;         /* accent orange (fail — same hue as ember) */
+    --chart-4: 0 0% 40%;           /* muted-foreground gray (neutral/faint) */
+    --chart-5: 0 0% 25%;           /* darker neutral */
 
-    /* ── Raw DESIGN.md tokens (for use outside shadcn classes) ───── */
-    --color-ember: #FF4D2E;
-    --color-pass: #3FB27F;
-    --color-warn: #E8A33D;
-    --color-ink-dark: #15181D;
-    --color-ink-light: #E8EBEF;
-    --color-canvas: #0E1116;
-    --color-node-fill: #1B2027;
-    --color-node-border: #2A313B;
-    --color-shell-bg: #FAFAF8;
-    --color-shell-dark: #14161A;
-    --color-hairline: #E6E3DD;
-    --color-neutral-muted: #5B6470;
-    --color-neutral-faint: #8A929C;
+    /* ── Legacy raw hex tokens — RE-MAPPED aliases onto the new palette.
+       Do not delete: existing dashboard/marketing components (pre-T3/T4)
+       reference these directly via tailwind.config.js color keys. Mapped so
+       the app stays visually coherent (not broken) on the new tokens. ───── */
+    --color-ember: #ea580c;              /* was #FF4D2E → new signal orange */
+    --color-pass: #2f6b46;               /* verdict PASS — calm, distinguishable green kept for readability under old dashboard code (T4 will move this to a neutral/foreground chip per DESIGN.md) */
+    --color-warn: #b45309;               /* verdict WARN — warm amber-orange (outline family, distinct from solid fail) */
+    --color-ink-dark: #0a0a0a;           /* was #15181D → foreground on light */
+    --color-ink-light: #ede8dc;          /* was #E8EBEF → foreground on dark canvas */
+    --color-canvas: #0f0f0f;             /* was #0E1116 → dark canvas surface */
+    --color-node-fill: #1a1a1a;          /* was #1B2027 */
+    --color-node-border: #3a3a3a;        /* was #2A313B */
+    --color-shell-bg: #ede4cf;           /* was #FAFAF8 → new cream background */
+    --color-shell-dark: #0f0f0f;         /* was #14161A → new dark background */
+    --color-hairline: #bfbcb0;           /* was #E6E3DD → new border gray-on-cream */
+    --color-neutral-muted: #666666;      /* was #5B6470 */
+    --color-neutral-faint: #999999;      /* was #8A929C */
 
-    /* ── Spacing (8px base, DESIGN.md scale) ─────────────────────── */
+    /* ── Spacing (8px base, DESIGN.md scale) — unchanged, kept for legacy
+       px-md/py-sm/etc utility usage across dashboard components. ────────── */
     --space-2xs: 2px;
     --space-xs:  4px;
     --space-sm:  8px;
@@ -90,26 +111,80 @@
     --space-2xl: 48px;
     --space-3xl: 64px;
 
-    /* ── Motion durations (DESIGN.md) ────────────────────────────── */
+    /* ── Motion durations (DESIGN.md, legacy names kept) ─────────────────── */
     --dur-micro:  80ms;
     --dur-short:  200ms;
     --dur-medium: 320ms;
     --dur-long:   600ms;
   }
 
+  .dark {
+    --background: 0 0% 6%;
+    --foreground: 43 23% 93%;
+
+    --card: 0 0% 8%;
+    --card-foreground: 43 23% 93%;
+
+    --popover: 0 0% 8%;
+    --popover-foreground: 43 23% 93%;
+
+    --primary: 43 23% 93%;
+    --primary-foreground: 0 0% 6%;
+
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 43 23% 93%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 60%;
+
+    --accent: 20 90% 50%;          /* signal orange, dark-mode variant */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 25%;
+    --input: 0 0% 25%;
+    --ring: 43 23% 93%;
+
+    /* Legacy chart palette, dark variant. */
+    --chart-1: 20 90% 50%;
+    --chart-2: 30 85% 55%;
+    --chart-3: 20 90% 50%;
+    --chart-4: 0 0% 60%;
+    --chart-5: 0 0% 40%;
+
+    /* Legacy raw hex — dark-mode remap. */
+    --color-ember: #ea580c;
+    --color-pass: #4c9a6a;
+    --color-warn: #d97706;
+    --color-ink-dark: #0a0a0a;
+    --color-ink-light: #ede8dc;
+    --color-canvas: #0a0a0a;
+    --color-node-fill: #171717;
+    --color-node-border: #3a3a3a;
+    --color-shell-bg: #0f0f0f;
+    --color-shell-dark: #0f0f0f;
+    --color-hairline: #404040;
+    --color-neutral-muted: #a3a3a3;
+    --color-neutral-faint: #8c8c8c;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-mono;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   html,
   body {
     margin: 0;
     height: 100%;
-  }
-
-  body {
-    /* Light shell — user-approved override of dark canvas default */
-    background-color: #FAFAF8;
-    color: #15181D;
-    font-family: "Geist Variable", "Geist", system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
 
   /* Tabular numerics helper (DESIGN.md: data / rates) */
@@ -131,6 +206,68 @@
   }
 }
 
+/* ── Dot Grid Background (brutalist) — ported verbatim from the template,
+   plus a `.dark` variant. Legacy `.dot-grid-light`/`.dot-grid-dark` (below)
+   are kept as distinct, differently-toned aliases for existing dashboard
+   graph plates. ───────────────────────────────────────────────────────── */
+.dot-grid-bg {
+  background-image: radial-gradient(circle, #c4c2b8 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.dark .dot-grid-bg {
+  background-image: radial-gradient(circle, hsl(0 0% 20%) 1px, transparent 1px);
+}
+
+/* ── Glitch / marquee / blink keyframes (brutalist motion vocabulary) ────── */
+@keyframes glitch {
+  0%, 90%, 100% {
+    transform: translate(0);
+    filter: none;
+  }
+  92% {
+    transform: translate(-2px, 1px);
+    filter: hue-rotate(90deg);
+  }
+  94% {
+    transform: translate(2px, -1px);
+    filter: hue-rotate(-90deg);
+  }
+  96% {
+    transform: translate(-1px, -1px);
+    filter: none;
+  }
+  98% {
+    transform: translate(1px, 2px);
+    filter: hue-rotate(45deg);
+  }
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-glitch {
+  animation: glitch 5s infinite;
+}
+
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
 @layer components {
   /* ── Glass surfaces (legacy — kept for existing components) ─────── */
   .glass-panel {
@@ -144,8 +281,8 @@
   }
 
   .glass-node {
-    background: rgba(27, 32, 39, 0.9);    /* node-fill with slight transparency */
-    border: 1px solid #2A313B;            /* node-border */
+    background: rgba(27, 32, 39, 0.9);
+    border: 1px solid #2A313B;
     transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   }
 
@@ -157,8 +294,8 @@
 
   /* Ember halo — DESIGN.md: one attention pulse on load, then still */
   .halo-glow {
-    box-shadow: 0 0 20px rgba(255, 77, 46, 0.3);
-    border: 1px solid rgba(255, 77, 46, 0.5) !important;
+    box-shadow: 0 0 20px rgba(234, 88, 12, 0.3);
+    border: 1px solid rgba(234, 88, 12, 0.5) !important;
     animation: ember-pulse var(--dur-long) ease-out 1;
   }
 }
@@ -179,10 +316,95 @@
   background: #C9C5BD;
 }
 
-/* ── Light dot-grid for agent graph plates ───────────────────────────────── */
+/* ── Legacy dot-grid variants (kept, distinct names) for dashboard graph
+   plates that pre-date the brutalist `.dot-grid-bg` above. ──────────────── */
 .dot-grid-light {
   background-image: radial-gradient(circle, #E6E3DD 1px, transparent 1px);
   background-size: 20px 20px;
+}
+.dot-grid-dark {
+  background-image: radial-gradient(circle, #2a313b 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Docs prose (ported from the landing app) ─────────────────────────────
+   Cabinet Grotesk display headings, Geist body, JetBrains Mono code, and the
+   ink/muted/hairline palette. Used by the marketing DocsPage. */
+@layer components {
+  .doc-prose {
+    @apply max-w-2xl text-[15px] leading-7 text-foreground;
+  }
+  .doc-prose h1 {
+    @apply mt-0 font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground;
+  }
+  .doc-prose h2 {
+    @apply mt-10 scroll-mt-20 border-t border-hairline pt-8 font-display text-xl font-bold tracking-tight text-foreground;
+  }
+  .doc-prose h3 {
+    @apply mt-8 scroll-mt-20 font-display text-base font-bold text-foreground;
+  }
+  .doc-prose h4 {
+    @apply mt-6 font-body text-sm font-semibold uppercase tracking-wide text-muted-foreground;
+  }
+  .doc-prose p {
+    @apply mt-4 text-muted-foreground;
+  }
+  .doc-prose a {
+    @apply font-medium text-foreground underline decoration-hairline underline-offset-2 transition-colors duration-200 hover:decoration-foreground;
+  }
+  .doc-prose h1 > .doc-anchor,
+  .doc-prose h2 > .doc-anchor,
+  .doc-prose h3 > .doc-anchor {
+    @apply -ml-5 mr-1 inline-block w-4 select-none text-faint no-underline opacity-0 transition-opacity duration-150;
+  }
+  .doc-prose h1:hover > .doc-anchor,
+  .doc-prose h2:hover > .doc-anchor,
+  .doc-prose h3:hover > .doc-anchor {
+    @apply opacity-100;
+  }
+  .doc-prose ul {
+    @apply mt-4 list-disc space-y-1.5 pl-5 text-muted-foreground;
+  }
+  .doc-prose ol {
+    @apply mt-4 list-decimal space-y-1.5 pl-5 text-muted-foreground;
+  }
+  .doc-prose li > ul,
+  .doc-prose li > ol {
+    @apply mt-1.5;
+  }
+  .doc-prose strong {
+    @apply font-semibold text-foreground;
+  }
+  .doc-prose code {
+    @apply rounded-sm border border-hairline bg-card px-1.5 py-0.5 font-mono text-[13px] text-foreground;
+  }
+  .doc-prose pre {
+    @apply mt-4 overflow-x-auto rounded-md border border-hairline bg-canvas p-4;
+  }
+  .doc-prose pre code {
+    @apply border-0 bg-transparent p-0 font-mono text-[13px] leading-6 text-canvastext;
+  }
+  .doc-prose blockquote {
+    @apply mt-4 border-l-2 border-hairline pl-4 italic text-muted-foreground;
+  }
+  .doc-prose hr {
+    @apply my-8 border-hairline;
+  }
+  .doc-prose table {
+    @apply mt-4 block w-full max-w-full overflow-x-auto border-collapse text-sm;
+  }
+  .doc-prose th {
+    @apply border border-hairline bg-card px-3 py-2 text-left font-semibold text-foreground;
+  }
+  .doc-prose td {
+    @apply border border-hairline px-3 py-2 align-top text-muted-foreground;
+  }
+  .doc-prose img {
+    @apply mt-4 max-w-full rounded-md border border-hairline;
+  }
 }
 
 /* ── React Flow overrides — dark canvas, DESIGN.md edge colors ───────────── */
@@ -190,21 +412,31 @@
   display: none;
 }
 .react-flow__edge-path {
-  stroke: #5B6470;    /* neutral-muted for calm edges */
+  stroke: #5B6470;
   stroke-width: 2;
 }
 .react-flow__edge.stopped .react-flow__edge-path {
-  stroke: #ff4d2e;
+  stroke: #ea580c;
   stroke-dasharray: 6 4;
-  filter: drop-shadow(0 0 4px rgba(255, 77, 46, 0.5));
+  filter: drop-shadow(0 0 4px rgba(234, 88, 12, 0.5));
 }
 .react-flow__handle {
   opacity: 0;
+}
+/* Keyboard focus ring for focusable graph nodes (tabIndex + Enter selects).
+   Uses the existing selection-ring blue (see GraphNodeCard's
+   ring-primary-dark), not the signal orange (DESIGN.md reserves orange
+   exclusively for the regression/fail signal, never as a decorative UI
+   accent). */
+.react-flow__node:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 3px;
+  border-radius: 0; /* brutalist: square focus ring to match square node cards */
 }
 
 /* ── @keyframes (also declared in tailwind for Tailwind class usage) ─────── */
 @keyframes ember-pulse {
   0%,
-  100% { box-shadow: 0 0 0 0 rgba(255, 77, 46, 0); }
-  50%   { box-shadow: 0 0 0 12px rgba(255, 77, 46, 0.25); }
+  100% { box-shadow: 0 0 0 0 rgba(234, 88, 12, 0); }
+  50%   { box-shadow: 0 0 0 12px rgba(234, 88, 12, 0.25); }
 }

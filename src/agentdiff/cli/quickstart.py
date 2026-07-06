@@ -91,17 +91,22 @@ def _module_path(root: Path, rel_file: str) -> str | None:
 
 def _write_runner_template(root: Path, *, force: bool) -> dict:
     target = root / "agentdiff_runner.py"
+    template_body = (
+        "\"\"\"AgentDiff Runner template.\n\n"
+        "Replace this with one production-style invocation of your agent.\n"
+        "\"\"\"\n\n"
+        "def run(input_data: dict):\n"
+        "    raise NotImplementedError(\n"
+        "        \"Wire agentdiff_runner.run(input_data) to call your agent once.\"\n"
+        "    )\n"
+    )
     if force or not target.exists():
-        target.write_text(
-            "\"\"\"AgentDiff Runner template.\n\n"
-            "Replace this with one production-style invocation of your agent.\n"
-            "\"\"\"\n\n"
-            "def run(input_data: dict):\n"
-            "    raise NotImplementedError(\n"
-            "        \"Wire agentdiff_runner.run(input_data) to call your agent once.\"\n"
-            "    )\n",
-            encoding="utf-8",
-        )
+        target.write_text(template_body, encoding="utf-8")
+    edit_line = template_body.count("\n", 0, template_body.index("raise NotImplementedError")) + 1
+    console.print(
+        f"[yellow]Edit[/yellow] {target.resolve()}:{edit_line} — "
+        "replace `raise NotImplementedError(...)` with a call to your agent."
+    )
     return {"module": "agentdiff_runner", "callable": "run", "source": "template"}
 
 

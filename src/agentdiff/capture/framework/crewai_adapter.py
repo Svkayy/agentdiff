@@ -3,10 +3,14 @@ from agentdiff.capture.framework.base import PatchRegistry, object_name, span_wr
 _PATCHES = PatchRegistry("crewai")
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch crewai if installed. Returns False if crewai isn't importable."""
     Crew = _import_attr("crewai", "Crew")
     Agent = _import_attr("crewai", "Agent")
     Task = _import_attr("crewai", "Task")
+
+    if Crew is None and Agent is None and Task is None:
+        return False
 
     if Crew is not None:
         for method_name in ("kickoff", "kickoff_async", "kickoff_for_each", "kickoff_for_each_async"):
@@ -17,6 +21,7 @@ def install() -> None:
     if Task is not None:
         for method_name in ("execute", "execute_sync", "execute_async"):
             _PATCHES.patch_method(Task, method_name, _span("task_execute"))
+    return True
 
 
 def uninstall() -> None:

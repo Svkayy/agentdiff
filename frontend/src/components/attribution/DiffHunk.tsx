@@ -23,17 +23,20 @@ export function DiffHunk({ hunk, className }: DiffHunkProps) {
   return (
     <div
       className={cn(
-        "overflow-x-auto rounded-sm bg-canvas p-md font-mono text-micro leading-relaxed",
+        "overflow-x-auto border-2 border-node-border bg-canvas p-md font-mono text-micro leading-relaxed",
         className,
       )}
     >
       {lines.map((line, i) => {
         const kind = classifyLine(line);
+        // Removed lines carry the orange signal (they're what regressed);
+        // added lines use a distinguishable calm green; both stay legible on
+        // the dark terminal plate.
         const lineClass =
           kind === "added"
-            ? "text-verdict-pass/90 bg-verdict-pass/5"
+            ? "text-[#4c9a6a] bg-[#4c9a6a]/10"
             : kind === "removed"
-              ? "text-ember/90 bg-ember/5"
+              ? "text-[#ea580c] bg-[#ea580c]/10"
               : kind === "header"
                 ? "text-neutral-faint"
                 : "text-ink-light";

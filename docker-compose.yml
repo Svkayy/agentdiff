@@ -12,6 +12,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
   redis:
     image: redis:7
     restart: unless-stopped
@@ -30,6 +32,13 @@ services:
       AGENTDIFF_SECRET_ENCRYPTION_KEY: ${AGENTDIFF_SECRET_ENCRYPTION_KEY}
       AGENTDIFF_CLERK_JWKS_URL: ${AGENTDIFF_CLERK_JWKS_URL}
       AGENTDIFF_CLERK_ISSUER: ${AGENTDIFF_CLERK_ISSUER}
+      AGENTDIFF_SLACK_CLIENT_ID: ${AGENTDIFF_SLACK_CLIENT_ID:-}
+      AGENTDIFF_SLACK_CLIENT_SECRET: ${AGENTDIFF_SLACK_CLIENT_SECRET:-}
+      AGENTDIFF_SLACK_REDIRECT_URL: ${AGENTDIFF_SLACK_REDIRECT_URL:-}
+      AGENTDIFF_DASHBOARD_URL: ${AGENTDIFF_DASHBOARD_URL:-}
+      AGENTDIFF_ANTHROPIC_API_KEY: ${AGENTDIFF_ANTHROPIC_API_KEY:-}
+      AGENTDIFF_CORS_ORIGINS: ${AGENTDIFF_CORS_ORIGINS:-http://localhost:5173}
+      AGENTDIFF_CORS_ORIGIN_REGEX: ${AGENTDIFF_CORS_ORIGIN_REGEX:-}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -42,6 +51,7 @@ services:
       AGENTDIFF_DATABASE_URL: postgresql+asyncpg://agentdiff:agentdiff@postgres:5432/agentdiff
       AGENTDIFF_REDIS_URL: redis://redis:6379
       AGENTDIFF_SECRET_ENCRYPTION_KEY: ${AGENTDIFF_SECRET_ENCRYPTION_KEY}
+      AGENTDIFF_ANTHROPIC_API_KEY: ${AGENTDIFF_ANTHROPIC_API_KEY:-}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -55,3 +65,6 @@ services:
     restart: unless-stopped
     ports: ["5173:80"]
     depends_on: [api]
+
+volumes:
+  pgdata:

@@ -3,19 +3,43 @@ from typing import Any
 from uuid import UUID
 
 from agentdiff.capture.events import StreamChunkEvent
+from agentdiff.capture.http.redact import (
+    get_active_redaction_config,
+    hash_content,
+    redact_nested,
+    redact_text,
+)
 
 
 def record_stream_chunks(tracer, *, call_id: UUID, provider: str, body: bytes) -> int:
-    """Record reconstructed streaming deltas from common HTTP stream formats."""
+    """Record reconstructed streaming deltas from common HTTP stream formats.
+
+    ``text_delta``/``tool_delta`` are redacted with the active
+    ``RedactionConfig`` before the ``StreamChunkEvent`` is built — streamed
+    text/tool payloads must never bypass the same redaction applied to the
+    non-streaming canonical request/response.
+    """
+    cfg = get_active_redaction_config()
     count = 0
     for count, chunk in enumerate(extract_stream_chunks(provider, body), start=1):
+        text_delta = chunk.get("text_delta")
+        tool_delta = chunk.get("tool_delta")
+
+        if text_delta is not None:
+            text_delta = hash_content(text_delta) if cfg.mode == "strict" else redact_text(text_delta, cfg)
+        if tool_delta is not None:
+            # tool_delta is a structured dict (tool_calls / partial_json / etc.):
+            # always recurse and mask nested string leaves, matching how
+            # tool_use_blocks[].args is handled for the non-streaming path.
+            tool_delta = redact_nested(tool_delta, cfg)
+
         tracer.record(
             StreamChunkEvent(
                 call_id=call_id,
                 provider=provider,
                 chunk_index=count - 1,
-                text_delta=chunk.get("text_delta"),
-                tool_delta=chunk.get("tool_delta"),
+                text_delta=text_delta,
+                tool_delta=tool_delta,
                 metadata=chunk.get("metadata", {}),
             )
         )

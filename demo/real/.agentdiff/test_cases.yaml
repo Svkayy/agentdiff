@@ -1,0 +1,10 @@
+test_cases:
+  - id: support_query_1
+    input:
+      query: How does AgentDiff detect behavioral changes?
+  - id: support_query_2
+    input:
+      query: What is the difference between CI and live drift monitoring?
+  - id: support_query_3
+    input:
+      query: How do I configure Slack notifications in AgentDiff?

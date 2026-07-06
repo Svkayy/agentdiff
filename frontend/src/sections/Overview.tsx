@@ -11,17 +11,20 @@ function VerdictBanner({ verdict, baseRef, candRef }: {
   baseRef: string;
   candRef: string;
 }) {
+  // Verdict mapping (DESIGN.md, locked): pass = neutral/cream; warn = orange
+  // outline; fail = solid orange. On the dark plate we keep fail/warn orange
+  // and pass neutral cream so the states stay instantly distinguishable.
   const isEmber = verdict === "fail";
   const accentClass = isEmber
-    ? "text-ember"
+    ? "text-[#ea580c]"
     : verdict === "warn"
-      ? "text-verdict-warn"
-      : "text-verdict-pass";
+      ? "text-[#ea580c]"
+      : "text-[#ede8dc]";
   const borderClass = isEmber
-    ? "border-ember/20 bg-ember/5"
+    ? "border-[#ea580c] border-2"
     : verdict === "warn"
-      ? "border-verdict-warn/20 bg-verdict-warn/5"
-      : "border-verdict-pass/20 bg-verdict-pass/5";
+      ? "border-[#ea580c] border-2"
+      : "border-node-border border-2";
 
   const label =
     verdict === "fail"
@@ -38,16 +41,16 @@ function VerdictBanner({ verdict, baseRef, candRef }: {
         : "Agent behavior is statistically consistent across both runs.";
 
   return (
-    <div className={`rounded-lg border px-xl py-lg ${borderClass}`}>
+    <div className={`px-xl py-lg ${borderClass}`}>
       <div className="flex items-start justify-between gap-lg">
         <div>
-          <h1 className={`font-display text-display font-bold leading-tight ${accentClass}`}>
+          <h1 className={`font-mono text-display font-bold uppercase leading-tight ${accentClass}`}>
             {label}
           </h1>
-          <p className="mt-xs text-body text-neutral-faint">{sub}</p>
+          <p className="mt-xs font-mono text-body text-neutral-faint">{sub}</p>
         </div>
         <div className="shrink-0 text-right">
-          <div className="font-mono text-micro text-neutral-faint">Compare</div>
+          <div className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">Compare</div>
           <div className="mt-2xs font-mono text-small text-ink-light">
             <span>{baseRef}</span>
             <span className="mx-xs text-neutral-faint">→</span>
@@ -71,25 +74,30 @@ function GraphPlate({
 }) {
   return (
     <div
-      className="relative overflow-hidden rounded-lg border border-node-border"
+      className="relative min-w-0 overflow-x-auto overflow-y-hidden border-2 border-node-border"
       style={{ background: "#0E1116", height: "480px" }}
     >
-      {/* Plate label */}
+      {/* Plate label (header-bar nameplate style) */}
       <div className="absolute left-lg top-lg z-10 flex items-center gap-sm">
-        <span className="font-display text-small font-semibold text-ink-light">
-          Agent Graph
+        <span className="font-mono text-xs uppercase tracking-[0.2em] text-ink-light">
+          agent_graph.viz
         </span>
-        <span className="rounded-sm border border-node-border bg-node-fill px-xs py-2xs font-mono text-micro text-neutral-faint">
+        <span className="border-2 border-node-border bg-node-fill px-xs py-2xs font-mono text-micro uppercase tracking-wider text-neutral-faint">
           before / after
         </span>
       </div>
 
-      {/* React Flow fills the plate */}
-      <AgentGraph
-        graph={data.graph}
-        selectedId={selectedId}
-        onSelect={onSelect}
-      />
+      {/* React Flow fills the plate. min-w-0 on mobile lets the plate shrink
+          to the viewport (no forced horizontal scroll on narrow screens);
+          md:min-w-[620px] guarantees the graph stays readable at tablet+
+          widths, scrolling within this plate rather than the whole page. */}
+      <div className="h-full min-w-0 md:min-w-[620px]">
+        <AgentGraph
+          graph={data.graph}
+          selectedId={selectedId}
+          onSelect={onSelect}
+        />
+      </div>
     </div>
   );
 }
@@ -109,47 +117,47 @@ function NodeDetail({ node }: { node: GraphNode }) {
   const isEmber = node.stopped || node.verdict === "fail";
 
   return (
-    <div className="rounded-md border border-node-border bg-node-fill p-lg">
+    <div className="border-2 border-node-border bg-node-fill p-lg">
       <div className="mb-md flex items-start justify-between gap-sm">
         <div>
-          <div className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+          <div className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">
             {node.kind}
           </div>
           <div
-            className={`mt-2xs font-display text-h2 font-bold ${isEmber ? "text-ember" : "text-ink-light"}`}
+            className={`mt-2xs font-mono text-h2 font-bold uppercase ${isEmber ? "text-[#ea580c]" : "text-ink-light"}`}
           >
             {node.label}
           </div>
         </div>
         {node.stopped && (
-          <span className="shrink-0 rounded-sm border border-ember/30 bg-ember/10 px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-ember">
+          <span className="shrink-0 border-2 border-[#ea580c] bg-[#ea580c] px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-background">
             STOPPED
           </span>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-sm">
-        <div className="rounded-sm bg-canvas px-md py-sm">
-          <div className="font-mono text-micro text-neutral-faint">Baseline</div>
-          <div className="tnum mt-2xs font-mono text-small font-medium text-ink-light">
+        <div className="border-2 border-node-border bg-canvas px-md py-sm">
+          <div className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">Baseline</div>
+          <div className="tnum mt-2xs font-mono text-small font-bold text-ink-light">
             {baseVal}
           </div>
         </div>
-        <div className="rounded-sm bg-canvas px-md py-sm">
-          <div className="font-mono text-micro text-neutral-faint">Candidate</div>
+        <div className="border-2 border-node-border bg-canvas px-md py-sm">
+          <div className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">Candidate</div>
           <div
-            className={`tnum mt-2xs font-mono text-small font-medium ${isEmber ? "text-ember" : "text-ink-light"}`}
+            className={`tnum mt-2xs font-mono text-small font-bold ${isEmber ? "text-[#ea580c]" : "text-ink-light"}`}
           >
             {candVal}
           </div>
         </div>
       </div>
 
-      <div className="mt-sm border-t border-node-border pt-sm">
+      <div className="mt-sm border-t-2 border-node-border pt-sm">
         <div className="flex items-center justify-between">
-          <span className="font-mono text-micro text-neutral-faint">{rateLabel}</span>
+          <span className="font-mono text-micro uppercase tracking-wider text-neutral-faint">{rateLabel}</span>
           <span
-            className={`tnum font-mono text-small font-bold ${isEmber ? "text-ember" : "text-verdict-pass"}`}
+            className={`tnum font-mono text-small font-bold ${isEmber ? "text-[#ea580c]" : "text-ink-light"}`}
           >
             {baseVal} → {candVal}
           </span>
@@ -157,12 +165,12 @@ function NodeDetail({ node }: { node: GraphNode }) {
       </div>
 
       {node.explanation && (
-        <p className="mt-md text-small text-neutral-faint">{node.explanation}</p>
+        <p className="mt-md font-mono text-small text-neutral-faint">{node.explanation}</p>
       )}
 
       {node.cause_file && (
-        <div className="mt-md rounded-sm bg-canvas px-md py-sm">
-          <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        <div className="mt-md border-2 border-node-border bg-canvas px-md py-sm">
+          <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">
             Attributed to
           </div>
           <code className="font-mono text-micro text-ink-light">{node.cause_file}</code>
@@ -170,8 +178,8 @@ function NodeDetail({ node }: { node: GraphNode }) {
       )}
 
       {node.hunk && (
-        <div className="mt-md overflow-x-auto rounded-sm bg-canvas p-md">
-          <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+        <div className="mt-md overflow-x-auto border-2 border-node-border bg-canvas p-md">
+          <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">
             Code Change
           </div>
           <pre className="font-mono text-micro leading-relaxed text-ink-light whitespace-pre-wrap">
@@ -221,15 +229,15 @@ export function Overview({ data }: { data: ReportData }) {
           {selected ? (
             <NodeDetail node={selected} />
           ) : (
-            <div className="flex flex-1 items-center justify-center rounded-md border border-node-border bg-node-fill p-lg text-small text-neutral-faint">
+            <div className="flex flex-1 items-center justify-center border-2 border-node-border bg-node-fill p-lg font-mono text-small text-neutral-faint">
               Click a node to inspect it.
             </div>
           )}
           {/* Stopped node count callout */}
           {data.graph.nodes.filter((n) => n.stopped).length > 0 && (
-            <div className="rounded-md border border-ember/20 bg-ember/5 px-md py-sm">
-              <p className="text-micro text-neutral-faint">
-                <span className="font-bold text-ember">
+            <div className="border-2 border-[#ea580c] bg-node-fill px-md py-sm">
+              <p className="font-mono text-micro text-neutral-faint">
+                <span className="font-bold text-[#ea580c]">
                   {data.graph.nodes.filter((n) => n.stopped).length} stopped
                 </span>{" "}
                 {data.graph.nodes.filter((n) => n.stopped).length === 1 ? "node" : "nodes"} detected — fired in baseline, silent in candidate.

@@ -28,9 +28,11 @@ CLAUDE.md
 
 frontend/node_modules/
 frontend/dist/
+frontend/dist-cli/
 landing/node_modules/
 landing/dist/
 docs/demo/sample-report/dashboard.html
 docs/demo/video/
 docs/demo/shots/
 .superpowers/
+docker-compose.override.yml

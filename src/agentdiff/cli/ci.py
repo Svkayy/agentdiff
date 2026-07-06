@@ -11,11 +11,14 @@ from rich.console import Console
 from agentdiff import compare as compare_engine, sampling, storage
 from agentdiff.attribution.git_diff import GitRange
 from agentdiff.cli.compare import (
+    HermeticSampleError,
     _failed_count,
     _load_test_cases,
     _validate_trajectory_quality,
     git_validation_error,
     resolve_baseline,
+    run_hermetic_sample,
+    validate_runner_importable,
 )
 from agentdiff.config import load_config, thresholds_for_compare
 from agentdiff.incident.findings import IncidentContext, build_incident_summary
@@ -173,6 +176,14 @@ def ci_run_cmd(
         console.print("[yellow]No test cases found; wrote WARN CI artifacts.[/yellow]")
         raise SystemExit(_exit_code(summary.verdict, fail_on))
 
+    runner_error = validate_runner_importable(root, runner_module, config.runner.callable)
+    if runner_error:
+        console.print(f"[red]{runner_error}[/red]")
+        raise SystemExit(1)
+
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    set_active_redaction_config(config.capture.redaction)
+
     baseline_ref, baseline_label, smoke_mode = resolve_baseline(root, baseline)
     git_error = git_validation_error(root, baseline_ref, candidate)
     if git_error:
@@ -190,25 +201,51 @@ def ci_run_cmd(
         ("candidate", candidate_ref, candidate_jsonl),
     ):
         console.print(f"[bold]CI sampling {tag}[/bold] (ref: {ref or 'working'}, tier: {tier})")
-        try:
-            sampling.sample_for_side(
-                git_ref=ref,
-                runner_module=runner_module,
-                runner_callable=config.runner.callable,
-                test_cases=test_cases,
-                samples_per_case=samples_per_case,
-                version_tag=tag,  # type: ignore[arg-type]
-                output_path=jsonl,
-                repo_root=root,
-                install_deps=should_install_deps,
-                capture=config.capture.model_dump(),
-                workers=worker_count,
-                cassette_path=cassette_path,
-                cassette_mode=cassette_mode_for_sampling,
-            )
-        except Exception as exc:
-            console.print(f"[red]{tag.capitalize()} sampling failed: {type(exc).__name__}: {exc}[/red]")
-            raise SystemExit(1)
+        if cassette_path:
+            try:
+                run_hermetic_sample(
+                    root=root,
+                    config=config,
+                    test_cases=test_cases,
+                    output_path=jsonl,
+                    version_tag=tag,
+                    samples_per_case=samples_per_case,
+                    cassette_path=cassette_path,
+                    cassette_mode=cassette_mode_for_sampling or "replay",
+                    git_ref=ref,
+                    install_deps=should_install_deps,
+                    workers=worker_count,
+                )
+            except HermeticSampleError as exc:
+                console.print(f"[red]{tag.capitalize()} sampling failed: {exc}[/red]")
+                raise SystemExit(1)
+            except Exception as exc:
+                console.print(f"[red]{tag.capitalize()} sampling failed: {type(exc).__name__}: {exc}[/red]")
+                raise SystemExit(1)
+        else:
+            try:
+                sampling.sample_for_side(
+                    git_ref=ref,
+                    runner_module=runner_module,
+                    runner_callable=config.runner.callable,
+                    test_cases=test_cases,
+                    samples_per_case=samples_per_case,
+                    version_tag=tag,  # type: ignore[arg-type]
+                    output_path=jsonl,
+                    repo_root=root,
+                    install_deps=should_install_deps,
+                    capture=config.capture.model_dump(),
+                    workers=worker_count,
+                    cassette_path=None,
+                    cassette_mode=None,
+                    timeout_seconds=config.sampling.timeout_seconds,
+                    retries=config.sampling.retries,
+                    retry_backoff_seconds=config.sampling.retry_backoff_seconds,
+                    redaction_config=config.capture.redaction,
+                )
+            except Exception as exc:
+                console.print(f"[red]{tag.capitalize()} sampling failed: {type(exc).__name__}: {exc}[/red]")
+                raise SystemExit(1)
 
     baseline_set = storage.load_trajectory_set(baseline_jsonl, "baseline")
     candidate_set = storage.load_trajectory_set(candidate_jsonl, "candidate")
@@ -222,6 +259,7 @@ def ci_run_cmd(
         structure,
         test_case_ids,
         thresholds=thresholds_for_compare(config),
+        stats_config=config.stats,
     )
 
     attribution = None
@@ -234,7 +272,7 @@ def ci_run_cmd(
             candidate_trajectories=candidate_set.trajectories,
             repo_root=root,
             git_range=GitRange(base_ref=baseline_ref, head_ref=candidate_ref),
-            llm_client=None,
+            llm_client=attribution_engine.AUTO_LLM_EXPLAINER,
         )
 
     summary = build_incident_summary(
@@ -286,10 +324,10 @@ def ci_run_cmd(
             baseline_ref=baseline_label,
             candidate_ref=candidate,
             tier=tier,
-            config=structure.model_dump() if hasattr(structure, "model_dump") else {},
-            attribution=attribution.model_dump() if attribution is not None else None,
-            baseline_trajs=[t.model_dump() for t in baseline_set.trajectories],
-            candidate_trajs=[t.model_dump() for t in candidate_set.trajectories],
+            config=structure.model_dump(mode="json") if hasattr(structure, "model_dump") else {},
+            attribution=attribution.model_dump(mode="json") if attribution is not None else None,
+            baseline_trajs=[t.model_dump(mode="json") for t in baseline_set.trajectories],
+            candidate_trajs=[t.model_dump(mode="json") for t in candidate_set.trajectories],
         )
         try:
             _uploader.upload(_api_url, _api_key, _payload)

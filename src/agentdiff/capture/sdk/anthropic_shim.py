@@ -7,19 +7,21 @@ _PATCHED = False
 _ORIGINALS: dict[str, Any] = {}
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch anthropic if installed. Returns False if anthropic isn't importable."""
     global _PATCHED
     if _PATCHED:
-        return
+        return True
     try:
         import anthropic.resources.messages as _mod
     except ImportError:
-        return
+        return False
     _ORIGINALS["sync_create"] = _mod.Messages.create
     _ORIGINALS["async_create"] = _mod.AsyncMessages.create
     _mod.Messages.create = _wrap_sync(_ORIGINALS["sync_create"])  # type: ignore[method-assign]
     _mod.AsyncMessages.create = _wrap_async(_ORIGINALS["async_create"])  # type: ignore[method-assign]
     _PATCHED = True
+    return True
 
 
 def uninstall() -> None:
@@ -131,12 +133,13 @@ def _canonical_from_response(kwargs: dict, response: Any) -> "Any":
 def _record_error_response(tracer, call_id, kwargs, t0) -> None:
     """Record an is_error response when the SDK call raises (API error, timeout)."""
     from agentdiff.capture.events import LLMResponseEvent
+    from agentdiff.capture.http.redact import get_active_redaction_config, redact_canonical
 
     try:
         tracer.record(LLMResponseEvent(
             call_id=call_id,
             latency_ms=int((time.perf_counter() - t0) * 1000),
-            canonical=_canonical_from_request(kwargs),
+            canonical=redact_canonical(_canonical_from_request(kwargs), get_active_redaction_config()),
             captured_by="sdk_shim",
             is_error=True,
         ))
@@ -154,12 +157,14 @@ def _wrap_sync(original):
         from agentdiff.capture.callstack import (
             capture_call_stack, classify_call_stack, callsite_from_stack,
         )
+        from agentdiff.capture.http.redact import get_active_redaction_config, redact_canonical
 
         tracer = get_active_tracer()
         if tracer is None:
             return original(self, *args, **kwargs)
 
         call_id = uuid4()
+        redaction_cfg = get_active_redaction_config()
 
         try:
             stack = capture_call_stack(skip=1)
@@ -167,7 +172,7 @@ def _wrap_sync(original):
             callsite = callsite_from_stack(stack)
             tracer.record(LLMRequestEvent(
                 call_id=call_id,
-                canonical=_canonical_from_request(kwargs),
+                canonical=redact_canonical(_canonical_from_request(kwargs), redaction_cfg),
                 captured_by="sdk_shim",
                 sdk_method="anthropic.messages.create",
                 callsite=callsite,
@@ -192,7 +197,7 @@ def _wrap_sync(original):
             tracer.record(LLMResponseEvent(
                 call_id=call_id,
                 latency_ms=latency_ms,
-                canonical=_canonical_from_response(kwargs, response),
+                canonical=redact_canonical(_canonical_from_response(kwargs, response), redaction_cfg),
                 captured_by="sdk_shim",
                 is_error=False,
             ))
@@ -213,12 +218,14 @@ def _wrap_async(original):
         from agentdiff.capture.callstack import (
             capture_call_stack, classify_call_stack, callsite_from_stack,
         )
+        from agentdiff.capture.http.redact import get_active_redaction_config, redact_canonical
 
         tracer = get_active_tracer()
         if tracer is None:
             return await original(self, *args, **kwargs)
 
         call_id = uuid4()
+        redaction_cfg = get_active_redaction_config()
 
         try:
             stack = capture_call_stack(skip=1)
@@ -226,7 +233,7 @@ def _wrap_async(original):
             callsite = callsite_from_stack(stack)
             tracer.record(LLMRequestEvent(
                 call_id=call_id,
-                canonical=_canonical_from_request(kwargs),
+                canonical=redact_canonical(_canonical_from_request(kwargs), redaction_cfg),
                 captured_by="sdk_shim",
                 sdk_method="anthropic.messages.create",
                 callsite=callsite,
@@ -251,7 +258,7 @@ def _wrap_async(original):
             tracer.record(LLMResponseEvent(
                 call_id=call_id,
                 latency_ms=latency_ms,
-                canonical=_canonical_from_response(kwargs, response),
+                canonical=redact_canonical(_canonical_from_response(kwargs, response), redaction_cfg),
                 captured_by="sdk_shim",
                 is_error=False,
             ))

@@ -1,12 +1,21 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { viteSingleFile } from "vite-plugin-singlefile";
 import path from "node:path";
 
-// Single-file build: the dashboard ships as one self-contained index.html the
-// Python CLI serves. No external asset paths, works offline.
+// Default build: a normal, code-split SPA for hosting (Vercel/Pages). This is
+// the unified marketing + dashboard app. The CLI single-file dashboard is a
+// separate build — see vite.cli.config.ts (`npm run build:cli`).
 export default defineConfig({
-  plugins: [react(), viteSingleFile()],
+  plugins: [react()],
+  // Load env from the repo root so VITE_CLERK_PUBLISHABLE_KEY in Repo/.env is
+  // picked up; only VITE_-prefixed vars are exposed to the client.
+  envDir: path.resolve(__dirname, ".."),
+  server: {
+    // Honor an externally assigned port (preview harnesses set PORT);
+    // Vite's default 5173 fallback applies when PORT is unset.
+    port: process.env.PORT ? Number(process.env.PORT) : undefined,
+    strictPort: !!process.env.PORT,
+  },
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },

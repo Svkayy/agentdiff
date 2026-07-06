@@ -58,7 +58,7 @@ def test_ci_run_empty_inputs_writes_warn_artifacts(tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    assert "WARN" in (out / "agentdiff-ci.md").read_text(encoding="utf-8")
+    assert "NOTICE" in (out / "agentdiff-ci.md").read_text(encoding="utf-8")
     assert "0 inputs" in (out / "summary.json").read_text(encoding="utf-8")
 
 
@@ -103,7 +103,7 @@ def test_ci_run_live_writes_artifacts(tmp_path, monkeypatch):
     assert (out / "summary.json").exists()
     assert (out / "slack_blocks.json").exists()
     assert (out / "slack_payload.json").exists()
-    assert "AgentDiff CI Gate: PASS" in (out / "agentdiff-ci.md").read_text(encoding="utf-8")
+    assert "AgentDiff CI Gate: STABLE" in (out / "agentdiff-ci.md").read_text(encoding="utf-8")
 
 
 def test_ci_run_hermetic_requires_cassette(tmp_path):
@@ -118,6 +118,45 @@ def test_ci_run_hermetic_requires_cassette(tmp_path):
 
     assert result.exit_code == 1
     assert "Hermetic tier requires --cassette" in result.output
+
+
+def test_ci_run_hermetic_non_cassette_error_exits_clean(tmp_path, monkeypatch):
+    """A non-HermeticSampleError raised during hermetic sampling (e.g. a bad
+    git ref or a sampling-internals bug) must exit 1 with a clean [red]
+    message, not an unhandled traceback — mirroring the live-tier fallback.
+    """
+    project = tmp_path / "proj"
+    project.mkdir()
+    _make_project(project, "def run(input):\n    return 'ok'\n")
+    cassette_path = project / ".agentdiff" / "cassettes" / "main.jsonl"
+    cassette_path.parent.mkdir(parents=True)
+    cassette_path.write_text("", encoding="utf-8")
+    out = tmp_path / "ci-out"
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("kaboom: sampling internals exploded")
+
+    monkeypatch.setattr("agentdiff.sampling.sample_for_side", _boom)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "ci",
+            "run",
+            "--project",
+            str(project),
+            "--tier",
+            "hermetic",
+            "--cassette",
+            str(cassette_path),
+            "--output",
+            str(out),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "kaboom" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_ci_run_writes_github_outputs(tmp_path, monkeypatch):
@@ -146,4 +185,4 @@ def test_ci_run_writes_github_outputs(tmp_path, monkeypatch):
     outputs = gh_output.read_text(encoding="utf-8")
     assert "verdict=warn" in outputs
     assert f"artifact_dir={out}" in outputs
-    assert "AgentDiff CI Gate: WARN" in gh_summary.read_text(encoding="utf-8")
+    assert "AgentDiff CI Gate: NOTICE" in gh_summary.read_text(encoding="utf-8")

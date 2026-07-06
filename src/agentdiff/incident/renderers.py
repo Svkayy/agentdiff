@@ -5,7 +5,7 @@ from typing import Any
 
 from agentdiff.incident.findings import IncidentContext, IncidentSummary
 
-_LABEL = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}
+_LABEL = {"pass": "STABLE", "warn": "NOTICE", "fail": "CHANGE"}
 # DESIGN.md semantic verdict colors: pass green, warn amber, fail ember.
 _COLOR = {"pass": "#3FB27F", "warn": "#E8A33D", "fail": "#FF4D2E"}
 _EMOJI = {"pass": "\U0001f7e2", "warn": "\U0001f7e1", "fail": "\U0001f534"}
@@ -22,16 +22,20 @@ def render_pr_check(summary: IncidentSummary, *, context: IncidentContext | None
         lines.extend(f"- {warning}" for warning in summary.warnings)
         lines.append("")
     if not summary.findings:
-        lines.append("No behavioral regressions were detected.")
+        lines.append("No behavioral changes detected.")
         return "\n".join(lines) + "\n"
     lines.append("## Findings")
     for finding in summary.findings:
-        cause = f" Cause: `{finding.cause_path}`." if finding.cause_path else ""
+        cause = f" Cause: `{finding.cause_path}`.{_low_confidence_suffix(finding)}" if finding.cause_path else ""
         lines.append(
             f"- **{_LABEL[finding.verdict]}** `{finding.test_case_id}`: "
             f"{finding.impact_summary}{cause}"
         )
     return "\n".join(lines) + "\n"
+
+
+def _low_confidence_suffix(finding) -> str:
+    return " (low-confidence heuristic)" if finding.cause_confidence == "low" else ""
 
 
 def render_postmortem(summary: IncidentSummary, *, context: IncidentContext | None = None) -> str:
@@ -57,7 +61,7 @@ def render_postmortem(summary: IncidentSummary, *, context: IncidentContext | No
         ]
     )
     if not summary.findings:
-        lines.append("No behavioral regression was detected.")
+        lines.append("No behavioral changes detected.")
     for finding in summary.findings:
         lines.append(f"- {finding.impact_summary}")
     if summary.warnings:
@@ -68,7 +72,7 @@ def render_postmortem(summary: IncidentSummary, *, context: IncidentContext | No
     if not caused:
         lines.append("No code or prompt hunk was attributed.")
     for finding in caused:
-        lines.append(f"- `{finding.cause_path}` via `{finding.cause_rule}`")
+        lines.append(f"- `{finding.cause_path}` via `{finding.cause_rule}`{_low_confidence_suffix(finding)}")
     lines.extend(["", "## Follow-Up", "", "- Confirm owner and remediation status."])
     return "\n".join(lines) + "\n"
 
@@ -94,7 +98,7 @@ def render_slack_blocks(
         cause = ""
         if top.cause_path:
             rule = f" — {top.cause_rule}" if top.cause_rule else ""
-            cause = f"\n*Likely cause:* `{top.cause_path}`{rule}"
+            cause = f"\n*Likely cause:* `{top.cause_path}`{rule}{_low_confidence_suffix(top)}"
         blocks.append(_section(f"*Impact:* {top.impact_summary}{cause}"))
         extra = summary.findings[1:_MAX_SLACK_FINDINGS]
         if extra:
@@ -104,7 +108,7 @@ def render_slack_blocks(
                 listed += f"\n_+ {remaining} more in the full report_"
             blocks.append(_section(f"*Also affected:*\n{listed}"))
     else:
-        blocks.append(_section("No behavioral regressions were detected."))
+        blocks.append(_section("No behavioral changes detected."))
     buttons = _buttons(context, detail_url)
     if buttons:
         blocks.append({"type": "actions", "elements": buttons})
@@ -132,14 +136,14 @@ def render_slack_payload(
 def _headline(summary: IncidentSummary) -> str:
     emoji = _EMOJI[summary.verdict]
     if summary.verdict == "pass":
-        return f"{emoji} AgentDiff: no behavioral regressions"
+        return f"{emoji} AgentDiff: no behavioral changes"
     if summary.verdict == "warn":
         if summary.findings:
-            return f"{emoji} AgentDiff warning: {summary.findings[0].title}"
-        return f"{emoji} AgentDiff: gate ran with warnings"
+            return f"{emoji} AgentDiff notice: {summary.findings[0].title}"
+        return f"{emoji} AgentDiff: gate ran with notices"
     if len(summary.findings) > 1:
-        return f"{_EMOJI['fail']} AgentDiff: {len(summary.findings)} behavioral regressions"
-    title = summary.findings[0].title if summary.findings else "behavioral regression"
+        return f"{_EMOJI['fail']} AgentDiff: {len(summary.findings)} behavioral changes detected"
+    title = summary.findings[0].title if summary.findings else "behavioral change"
     return f"{_EMOJI['fail']} AgentDiff: {title}"
 
 
@@ -151,7 +155,7 @@ def _fallback_text(summary: IncidentSummary) -> str:
         return f"{head}: {top.title}{cause}"
     if summary.warnings:
         return f"{head}: {summary.warnings[0]}"
-    return f"{head}: no behavioral regressions"
+    return f"{head}: no behavioral changes"
 
 
 def _context_line(context: IncidentContext) -> str:

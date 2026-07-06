@@ -26,8 +26,41 @@ class Settings(BaseSettings):
     drift_min_samples: int = 10
     drift_check_interval_minutes: int = 5
 
+    # LLM explanation (optional — absent key leaves rule-based explanation intact).
+    # Maps to AGENTDIFF_ANTHROPIC_API_KEY in the environment.
+    anthropic_api_key: str = ""
+    # Model override; leave empty to use the LLMClient default (claude-3-5-haiku-20241022).
+    llm_model: str = ""
+
     # CORS: comma-separated allowed origins.
     cors_origins: str = "http://localhost:5173"
+    # CORS: optional origin regex, matched in addition to cors_origins. Meant
+    # for local dev where the Vite server lands on a dynamic port (e.g.
+    # ^http://localhost:\d+$). Leave empty in production.
+    cors_origin_regex: str = ""
+
+    # Slack OAuth (platform-level app — owner registers once).
+    slack_client_id: str = ""
+    slack_client_secret: str = ""
+    # Slack requires an HTTPS redirect URL in production; for local dev use an
+    # ngrok/cloudflared tunnel pointing to :8000.
+    slack_redirect_url: str = "http://localhost:8000/v1/slack/callback"
+    dashboard_url: str = "http://localhost:5173"
+
+    # ── Usage metering / quotas ──────────────────────────────────────────────
+    # Monthly caps for the free plan. pro / unlimited plans have no cap.
+    free_runs_per_month: int = 500
+    free_trajectories_per_month: int = 50000
+
+    # ── Retention (days) ─────────────────────────────────────────────────────
+    # Runs older than this are deleted by the daily retention cron; 0 disables.
+    retention_days: int = 90
+    # LiveTrajectories older than this are deleted by the same cron; 0 disables.
+    live_retention_days: int = 30
+
+    # ── Observability ────────────────────────────────────────────────────────
+    # Optional Sentry DSN; when set, the worker calls sentry_sdk.init.
+    sentry_dsn: str = ""
 
 
 @lru_cache

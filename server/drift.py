@@ -121,12 +121,20 @@ async def check_drift_for_project(
     if verdict == "pass":
         return None
 
-    # Stamp the model-drift explanation on every finding
+    # Stamp the model-drift explanation on every finding (rule-based baseline)
     for fd in finding_dicts:
         fd["cause_path"] = None
         fd["cause_rule"] = None
         fd["cause_hunk"] = None
         fd["explanation"] = _DRIFT_EXPLANATION
+
+    # LLM explanation for drift (default-on when AGENTDIFF_ANTHROPIC_API_KEY is set)
+    # We need a temporary Run-like object so explain_findings can read .kind
+    class _DriftRunProxy:
+        kind = "drift"
+
+    from server.explain import explain_findings
+    await explain_findings(finding_dicts, run=_DriftRunProxy())
 
     baseline_ref = f"window[-{2*W}m,-{W}m)"
     candidate_ref = f"window[-{W}m,now)"
@@ -146,12 +154,28 @@ async def check_drift_for_project(
     session.add(drift_run)
     await session.flush()  # get drift_run.id
 
+    # Strip aggregation-only fields that are not stored as DB columns.
+    _finding_db_keys = {
+        "test_case_id", "title", "verdict", "metric", "impact_summary",
+        "statistical_evidence", "cause_path", "cause_rule", "cause_hunk", "explanation",
+    }
     for fd in finding_dicts:
-        session.add(Finding(run_id=drift_run.id, **fd))
+        db_fd = {k: v for k, v in fd.items() if k in _finding_db_keys}
+        session.add(Finding(run_id=drift_run.id, **db_fd))
 
     await session.commit()
 
-    await maybe_post_slack(session, drift_run, finding_dicts, verdict)
+    await maybe_post_slack(
+        session,
+        drift_run,
+        finding_dicts,
+        verdict,
+        extra_context={
+            "window_minutes": W,
+            "baseline_samples": len(baseline_rows),
+            "candidate_samples": len(candidate_rows),
+        },
+    )
 
     log.info(
         "project %s: drift run %s created with verdict=%s findings=%d",

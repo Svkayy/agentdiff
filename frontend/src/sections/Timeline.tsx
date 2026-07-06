@@ -28,7 +28,7 @@ export function Timeline({ data }: { data: ReportData }) {
   if (caseIds.length === 0) {
     return (
       <div className="space-y-lg">
-        <h1 className="font-display text-h1 font-bold text-ink-light">Trajectory Timeline</h1>
+        <h1 className="font-mono text-h1 font-bold uppercase text-ink-light">Trajectory Timeline</h1>
         <p className="text-small text-neutral-faint">No trajectory data in this run.</p>
       </div>
     );
@@ -41,7 +41,7 @@ export function Timeline({ data }: { data: ReportData }) {
   return (
     <div className="space-y-xl">
       <div>
-        <h1 className="font-display text-h1 font-bold text-ink-light">Trajectory Timeline</h1>
+        <h1 className="font-mono text-h1 font-bold uppercase text-ink-light">Trajectory Timeline</h1>
         <p className="mt-xs text-small text-neutral-faint">
           Step-by-step event log for a single trajectory. The candidate side is missing the{" "}
           <code className="font-mono text-small text-ink-light">fact_checker</code> LLM calls and
@@ -69,7 +69,7 @@ export function Timeline({ data }: { data: ReportData }) {
         </div>
 
         {/* Side toggle */}
-        <div className="ml-auto flex rounded-sm border border-node-border overflow-hidden">
+        <div className="ml-auto flex border-2 border-node-border overflow-hidden">
           {(["baseline", "candidate"] as Side[]).map((s) => (
             <button
               key={s}
@@ -88,11 +88,11 @@ export function Timeline({ data }: { data: ReportData }) {
 
       {/* Regression callout when viewing candidate */}
       {side === "candidate" && (
-        <div className="rounded-md border border-ember/20 bg-ember/5 px-md py-sm">
+        <div className="border-2 border-[#ea580c] bg-node-fill px-md py-sm">
           <p className="text-small text-neutral-faint">
-            <span className="font-bold text-ember">Regression visible:</span> this candidate
+            <span className="font-bold text-[#ea580c]">Regression visible:</span> this candidate
             trajectory has fewer events because{" "}
-            <code className="font-mono text-ember">fact_checker</code> stopped firing — compare
+            <code className="font-mono text-[#ea580c]">fact_checker</code> stopped firing — compare
             with baseline to see the missing LLM calls and tool invocations.
           </p>
         </div>
@@ -102,7 +102,7 @@ export function Timeline({ data }: { data: ReportData }) {
       {traj ? (
         <TimelineView trajectory={traj} side={side} />
       ) : (
-        <div className="rounded-md border border-node-border bg-node-fill px-lg py-2xl text-center">
+        <div className="border-2 border-node-border bg-node-fill px-lg py-2xl text-center">
           <p className="text-small text-neutral-faint">
             No trajectory found for{" "}
             <code className="font-mono text-small text-ink-light">{activeCaseId}</code> ({side}).

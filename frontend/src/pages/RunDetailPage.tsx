@@ -1,355 +1,367 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
-import { motion } from "framer-motion";
-import { fetchRun, type RunDetail, type Finding } from "@/lib/api";
-import { useSkipEntrance } from "@/lib/utils";
+import { fetchRun, fetchRunPayload, ApiError, type RunDetail } from "@/lib/api";
+import { toReportData } from "@/lib/payloadAdapter";
 import { cn } from "@/lib/utils";
-
-// ── Design tokens (light plate — user-approved) ───────────────────────────────
-const EMBER = "#FF4D2E";
-const PASS = "#3FB27F";
-const NODE_FILL = "#FFFFFF";
-const NODE_BORDER = "#E6E3DD";
-const TEXT = "#15181D";
-const MUTED = "#8A929C";
-const EDGE = "#E6E3DD";
+import type { ReportData } from "@/types";
+import { verdictLabel } from "./ProjectPage";
+import { Overview } from "@/sections/Overview";
+import { BehavioralDeltas } from "@/sections/BehavioralDeltas";
+import { Attribution } from "@/sections/Attribution";
+import { Timeline } from "@/sections/Timeline";
+import { RunSummary } from "@/sections/RunSummary";
 
 // ── Verdict / kind badges ─────────────────────────────────────────────────────
 
+// Verdict mapping (DESIGN.md, locked): pass = neutral/foreground chip;
+// warn = orange OUTLINE; fail = solid #ea580c.
 function VerdictBadge({ verdict }: { verdict: string | null }) {
   const styles: Record<string, string> = {
-    pass: "bg-verdict-pass/10 text-verdict-pass border border-verdict-pass/30",
-    warn: "bg-verdict-warn/10 text-verdict-warn border border-verdict-warn/30",
-    fail: "bg-ember/10 text-ember border border-ember/30",
+    pass: "border-2 border-foreground text-foreground",
+    warn: "border-2 border-[#ea580c] text-[#ea580c]",
+    fail: "border-2 border-[#ea580c] bg-[#ea580c] text-background",
   };
-  const v = verdict ?? "—";
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-sm px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
-        verdict ? styles[verdict] ?? "border border-hairline text-neutral-faint" : "text-neutral-faint",
+        "inline-flex items-center px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
+        verdict ? styles[verdict] ?? "border-2 border-border text-muted-foreground" : "text-muted-foreground",
       )}
+      title={verdict ?? undefined}
     >
-      {v}
+      {verdictLabel(verdict)}
     </span>
   );
 }
 
 function KindBadge({ kind }: { kind: string }) {
   return kind === "drift" ? (
-    <span className="inline-flex items-center rounded-sm border border-ember/30 px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-ember">
+    <span className="inline-flex items-center border-2 border-[#ea580c] px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest text-[#ea580c]">
       Live Drift
     </span>
   ) : (
-    <span className="inline-flex items-center rounded-sm border border-hairline px-sm py-2xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <span className="inline-flex items-center border-2 border-border px-sm py-2xs font-mono text-micro uppercase tracking-widest text-muted-foreground">
       CI
     </span>
   );
 }
 
-// ── Light agent graph ─────────────────────────────────────────────────────────
+// ── Not-found card ────────────────────────────────────────────────────────────
 
-interface AgentSpec {
-  name: string;
-  function?: string;
-}
-
-const NODE_W = 120;
-const NODE_H = 44;
-const PLATE_W = 320;
-
-function layoutNodes(agents: AgentSpec[]): Array<AgentSpec & { x: number; y: number }> {
-  // Simple vertical layout with orchestrator at top
-  const spacing = 72;
-  return agents.map((a, i) => ({
-    ...a,
-    x: (PLATE_W - NODE_W) / 2,
-    y: 16 + i * spacing,
-  }));
-}
-
-function edgePath(
-  ay: number,
-  by: number,
-  cx: number,
-): string {
-  const ax = cx;
-  const bx = cx;
-  const mid = (ay + NODE_H + by) / 2;
-  return `M ${ax} ${ay + NODE_H} C ${ax} ${mid}, ${bx} ${mid}, ${bx} ${by}`;
-}
-
-function GraphPanel({
-  title,
-  verdict,
-  agents,
-  stoppedAgents,
-  side,
-  skip,
-}: {
-  title: string;
-  verdict: "PASS" | "FAIL" | null;
-  agents: Array<AgentSpec & { x: number; y: number }>;
-  stoppedAgents: Set<string>;
-  side: "baseline" | "candidate";
-  skip: boolean;
-}) {
-  const plateH = 16 + agents.length * 72 + 16;
-  const centerX = PLATE_W / 2;
-
+function NotFoundCard({ runId }: { runId: string }) {
   return (
-    <div className="flex-1 min-w-0">
-      <div className="flex items-baseline justify-between px-1 pb-2">
-        <span className="font-mono text-[11px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>
-          {title}
-        </span>
-        {verdict && (
-          <span
-            className="font-mono text-[11px] font-medium tabular-nums"
-            style={{ color: verdict === "FAIL" ? EMBER : PASS }}
-          >
-            {verdict}
-          </span>
-        )}
+    <div className="border-2 border-foreground bg-background p-2xl text-center">
+      <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+        Run not found
       </div>
-      <svg
-        viewBox={`0 0 ${PLATE_W} ${plateH}`}
-        role="img"
-        aria-label={`${title} agent graph, verdict ${verdict ?? "pending"}`}
-        className="w-full"
-      >
-        {/* Edges between consecutive nodes */}
-        {agents.slice(1).map((n, i) => {
-          const prev = agents[i];
-          const stoppedEdge = side === "candidate" && stoppedAgents.has(n.name);
-          return (
-            <motion.path
-              key={`e-${n.name}`}
-              d={edgePath(prev.y, n.y, centerX)}
-              fill="none"
-              stroke={stoppedEdge ? EMBER : EDGE}
-              strokeWidth={1.25}
-              strokeDasharray={stoppedEdge ? "3 4" : undefined}
-              strokeOpacity={stoppedEdge ? 0.7 : 1}
-              initial={skip ? false : { pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: 0.32, ease: "easeOut", delay: 0.3 + i * 0.08 }}
-            />
-          );
-        })}
-
-        {/* Nodes */}
-        {agents.map((n, i) => {
-          const stopped = side === "candidate" && stoppedAgents.has(n.name);
-          return (
-            <motion.g
-              key={n.name}
-              initial={skip ? false : { opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.32, ease: "easeOut", delay: 0.15 + i * 0.08 }}
-            >
-              {stopped && (
-                <motion.rect
-                  x={n.x}
-                  y={n.y}
-                  width={NODE_W}
-                  height={NODE_H}
-                  rx={10}
-                  fill="none"
-                  stroke={EMBER}
-                  initial={skip ? false : { opacity: 0.9, scale: 1, strokeWidth: 1.5 }}
-                  animate={{ opacity: 0, scale: 1.28, strokeWidth: 0.5 }}
-                  transition={{ duration: 0.6, ease: "easeOut", delay: 0.9 }}
-                  style={{
-                    transformOrigin: `${n.x + NODE_W / 2}px ${n.y + NODE_H / 2}px`,
-                  }}
-                />
-              )}
-              <rect
-                x={n.x}
-                y={n.y}
-                width={NODE_W}
-                height={NODE_H}
-                rx={10}
-                fill={NODE_FILL}
-                stroke={stopped ? EMBER : NODE_BORDER}
-                strokeWidth={stopped ? 1.5 : 1}
-              />
-              <circle
-                cx={n.x + 14}
-                cy={n.y + NODE_H / 2}
-                r={3}
-                fill={stopped ? EMBER : PASS}
-              />
-              <text
-                x={n.x + 26}
-                y={n.y + 17}
-                fontSize={10}
-                fontFamily="'JetBrains Mono', monospace"
-                fill={TEXT}
-              >
-                {n.name.length > 14 ? n.name.slice(0, 14) + "…" : n.name}
-              </text>
-              <text
-                x={n.x + 26}
-                y={n.y + 31}
-                fontSize={9}
-                fontFamily="'JetBrains Mono', monospace"
-                fill={stopped ? EMBER : MUTED}
-              >
-                {stopped ? "stopped" : "active"}
-              </text>
-            </motion.g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-function AgentGraph({
-  run,
-  findings,
-}: {
-  run: RunDetail;
-  findings: Finding[];
-}) {
-  const skip = useSkipEntrance();
-
-  // Extract agents from run.config.agents if present
-  type AgentConfig = { name?: string; function?: string };
-  const configAgents = (
-    Array.isArray((run.config as Record<string, unknown>)?.agents)
-      ? ((run.config as Record<string, unknown>).agents as AgentConfig[])
-      : []
-  );
-
-  const agents: AgentSpec[] =
-    configAgents.length > 0
-      ? configAgents.map((a) => ({ name: a.name ?? "agent", function: a.function }))
-      : [
-          { name: "orchestrator" },
-          { name: "retriever" },
-          { name: "executor" },
-        ];
-
-  const laidOut = layoutNodes(agents);
-
-  // Which agents are "stopped" = have a failing finding whose title starts with agent name
-  const stoppedAgents = new Set<string>(
-    findings
-      .filter((f) => f.verdict === "fail")
-      .flatMap((f) =>
-        agents.map((a) => a.name).filter((name) => {
-          const t = f.title.toLowerCase();
-          const n = name.toLowerCase();
-          return t.startsWith(n) && (t.length === n.length || t[n.length] === " ");
-        }),
-      ),
-  );
-
-  const overallVerdict =
-    run.verdict === "pass" ? "PASS" : run.verdict === "fail" ? "FAIL" : null;
-
-  const plateH = 16 + agents.length * 72 + 16;
-
-  return (
-    <motion.figure
-      initial={skip ? false : { opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: "easeOut", delay: 0.1 }}
-      className="mb-2xl overflow-hidden rounded-lg border border-hairline bg-white shadow-[0_4px_24px_rgba(21,24,29,0.06)]"
-    >
-      <div className="flex items-center justify-between border-b border-hairline px-5 py-3">
-        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-neutral-faint">
-          agentdiff compare · {run.baseline_ref?.slice(0, 7)} → {run.candidate_ref?.slice(0, 7)}
-        </span>
-        <span className="font-mono text-[11px] tabular-nums" style={{ color: MUTED }}>
-          {findings.length} finding{findings.length !== 1 ? "s" : ""}
-        </span>
-      </div>
-      <div className="dot-grid-light flex flex-col gap-6 p-5 sm:flex-row sm:gap-4" style={{ minHeight: plateH + 40 }}>
-        <GraphPanel
-          title={`baseline · ${run.baseline_ref?.slice(0, 7) ?? "—"}`}
-          verdict="PASS"
-          agents={laidOut}
-          stoppedAgents={new Set()}
-          side="baseline"
-          skip={skip}
-        />
-        <div aria-hidden="true" className="hidden w-px self-stretch bg-hairline sm:block" />
-        <GraphPanel
-          title={`candidate · ${run.candidate_ref?.slice(0, 7) ?? "—"}`}
-          verdict={overallVerdict}
-          agents={laidOut}
-          stoppedAgents={stoppedAgents}
-          side="candidate"
-          skip={skip}
-        />
-      </div>
-      {stoppedAgents.size > 0 && (
-        <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-hairline px-5 py-3 font-mono text-[11px]">
-          {Array.from(stoppedAgents).map((name) => (
-            <span key={name} style={{ color: EMBER }}>
-              {name}: stopped
-            </span>
-          ))}
-        </figcaption>
-      )}
-    </motion.figure>
-  );
-}
-
-// ── Findings list ─────────────────────────────────────────────────────────────
-
-function FindingRow({ finding }: { finding: Finding }) {
-  return (
-    <div className="rounded-md border border-hairline bg-white p-lg">
-      <div className="mb-sm flex flex-wrap items-center gap-sm">
-        <span
-          className={cn(
-            "rounded-sm px-sm py-2xs font-mono text-micro font-bold uppercase tracking-widest",
-            finding.verdict === "fail"
-              ? "bg-ember/10 text-ember"
-              : finding.verdict === "warn"
-              ? "bg-verdict-warn/10 text-verdict-warn"
-              : "bg-verdict-pass/10 text-verdict-pass",
-          )}
-        >
-          {finding.verdict}
-        </span>
-        {finding.cause_rule && (
-          <span className="rounded-sm border border-hairline px-sm py-2xs font-mono text-micro text-neutral-faint">
-            {finding.cause_rule}
-          </span>
-        )}
-        <span className="font-mono text-micro text-neutral-faint">{finding.metric}</span>
-      </div>
-      <h3 className="mb-xs font-display text-small font-bold text-ink-dark">{finding.title}</h3>
-      <p className="mb-sm text-small text-neutral-muted">{finding.impact_summary}</p>
-      {finding.cause_path && (
-        <div className="mt-sm font-mono text-micro text-neutral-faint">{finding.cause_path}</div>
-      )}
-    </div>
-  );
-}
-
-// ── Drift callout ─────────────────────────────────────────────────────────────
-
-function DriftCallout() {
-  return (
-    <div className="mb-xl rounded-md border border-ember/30 bg-ember/5 p-lg">
-      <div className="mb-xs font-mono text-micro font-bold uppercase tracking-widest text-ember">
-        Model drift detected
-      </div>
-      <p className="text-small text-ink-dark">
-        Suspected upstream model drift — no attributable code change found in the
-        candidate ref. Behavioral delta may be caused by a model update or sampling
-        shift.
+      <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">
+        This run isn&apos;t in your project
+      </h2>
+      <p className="mb-lg max-w-md mx-auto font-mono text-small text-muted-foreground">
+        Run <code className="font-mono text-foreground">{runId.slice(0, 8)}…</code>{" "}
+        doesn&apos;t belong to your current project, or it was deleted. Check that you&apos;re
+        logged into the correct organisation.
       </p>
+      <Link
+        to="/projects"
+        className="inline-block bg-foreground px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-background transition-opacity hover:opacity-80"
+      >
+        Back to Projects
+      </Link>
     </div>
   );
+}
+
+// ── Export / share ────────────────────────────────────────────────────────────
+
+function DownloadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M9 17H7A5 5 0 0 1 7 7h2m6 0h2a5 5 0 0 1 0 10h-2M8 12h8"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ExportBar({ runId, payload }: { runId: string; payload: unknown }) {
+  const [copied, setCopied] = useState(false);
+
+  const downloadJson = useCallback(() => {
+    if (!payload) return;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `agentdiff-run-${runId.slice(0, 8)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, [payload, runId]);
+
+  const copyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore clipboard errors — non-critical affordance
+    }
+  }, []);
+
+  return (
+    <div className="flex items-center gap-xs">
+      <button
+        type="button"
+        onClick={downloadJson}
+        disabled={!payload}
+        aria-label="Download run payload as JSON"
+        title="Download run payload as JSON"
+        className="flex items-center gap-xs border-2 border-foreground bg-background px-sm py-2xs font-mono text-micro uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <DownloadIcon />
+        <span>Download JSON</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => void copyLink()}
+        aria-label="Copy link to this run"
+        title="Copy link to this run"
+        className="flex items-center gap-xs border-2 border-foreground bg-background px-sm py-2xs font-mono text-micro uppercase tracking-wider text-foreground transition-colors hover:bg-foreground hover:text-background"
+      >
+        <LinkIcon />
+        <span>{copied ? "Copied!" : "Copy link"}</span>
+      </button>
+    </div>
+  );
+}
+
+// ── Rigor banners: low-power warnings + eval-incomplete skipped checks ───────
+
+function RigorBanners({ data }: { data: ReportData }) {
+  const skippedCount = data.outputEvals.reduce((n, e) => n + e.skipped_checks.length, 0);
+  if (data.warnings.length === 0 && skippedCount === 0) return null;
+
+  return (
+    <div className="mb-xl mt-xl space-y-sm">
+      {data.warnings.length > 0 && (
+        <div className="border-2 border-[#ea580c] bg-background px-lg py-md">
+          <div className="mb-xs font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#ea580c]">
+            Low statistical power
+          </div>
+          <ul className="list-inside list-disc space-y-2xs font-mono text-small text-foreground">
+            {data.warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {skippedCount > 0 && (
+        <div className="border-2 border-[#ea580c] bg-background px-lg py-md">
+          <div className="mb-xs font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#ea580c]">
+            Evaluation incomplete
+          </div>
+          <ul className="list-inside list-disc space-y-2xs font-mono text-small text-foreground">
+            {data.outputEvals.flatMap((e) =>
+              e.skipped_checks.map((s, i) => (
+                <li key={`${e.test_case_id}-${s.check}-${i}`}>
+                  <code className="font-mono text-micro">{e.test_case_id}</code>: {s.check} skipped
+                  — {s.reason}
+                </li>
+              )),
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: "overview", label: "Overview", file: "overview.sys" },
+  { id: "deltas", label: "Behavioral Deltas", file: "behavioral_deltas.log" },
+  { id: "attribution", label: "Attribution", file: "attribution.map" },
+  { id: "timeline", label: "Timeline", file: "trajectory.log" },
+  { id: "summary", label: "Summary", file: "run_summary.md" },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
+function TabBar({ active, onChange }: { active: TabId; onChange: (id: TabId) => void }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Run report sections"
+      className="flex flex-wrap border-2 border-foreground"
+    >
+      {TABS.map((tab, i) => {
+        const isActive = tab.id === active;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            aria-controls={`panel-${tab.id}`}
+            id={`tab-${tab.id}`}
+            onClick={() => onChange(tab.id)}
+            className={cn(
+              "px-md py-sm font-mono text-micro uppercase tracking-widest transition-colors duration-[80ms]",
+              i > 0 && "border-l-2 border-foreground",
+              isActive
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
+            )}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReportPanel({ data }: { data: ReportData }) {
+  const [active, setActive] = useState<TabId>("overview");
+  const activeTab = TABS.find((t) => t.id === active) ?? TABS[0];
+
+  return (
+    <div>
+      <TabBar active={active} onChange={setActive} />
+      <RigorBanners data={data} />
+      {/* Header-bar card: `file.ext` nameplate + section index */}
+      <div className="mt-xl border-2 border-node-border">
+        <div className="flex items-center justify-between border-b-2 border-node-border bg-canvas px-5 py-3">
+          <span className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">
+            {activeTab.file}
+          </span>
+          <span className="font-mono text-xs tracking-[0.2em] text-neutral-faint opacity-50">
+            {String(TABS.findIndex((t) => t.id === active) + 1).padStart(3, "0")}
+          </span>
+        </div>
+        <div
+          role="tabpanel"
+          id={`panel-${active}`}
+          aria-labelledby={`tab-${active}`}
+          className="p-xl"
+          style={{ background: "var(--color-canvas)" }}
+        >
+          {active === "overview" && <Overview data={data} />}
+          {active === "deltas" && <BehavioralDeltas data={data} />}
+          {active === "attribution" && <Attribution data={data} />}
+          {active === "timeline" && <Timeline data={data} />}
+          {active === "summary" && <RunSummary data={data} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Payload loading states ───────────────────────────────────────────────────
+
+const POLL_MS = 5000;
+
+/** Bound on in-progress polling so a stuck "processing" run doesn't poll forever. */
+const MAX_POLL_ATTEMPTS = 200; // ~16.6 minutes at 5s intervals
+
+export function usePayload(
+  runId: string,
+  status: string | null,
+  getToken: () => Promise<string | null>,
+  retryKey = 0,
+) {
+  const [payload, setPayload] = useState<ReportData | null>(null);
+  const [rawPayload, setRawPayload] = useState<unknown>(null);
+  const [payloadPending, setPayloadPending] = useState(false);
+  const [payloadError, setPayloadError] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    let attempts = 0;
+
+    const clearTimer = () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+
+    const load = () => {
+      fetchRunPayload(runId, getToken)
+        .then((raw) => {
+          if (cancelled) return;
+          setRawPayload(raw);
+          setPayload(toReportData(raw));
+          setPayloadPending(false);
+          setPayloadError(null);
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          const notReady = e instanceof ApiError && e.status === 404;
+          const inProgress = status === "pending" || status === "processing";
+
+          if (notReady && inProgress) {
+            attempts += 1;
+            if (attempts >= MAX_POLL_ATTEMPTS) {
+              // Give up after a bounded number of retries rather than polling forever.
+              setPayloadPending(false);
+              setPayloadError("Report data is unavailable for this run.");
+              return;
+            }
+            setPayloadPending(true);
+            setPayloadError(null);
+            timerRef.current = setTimeout(load, POLL_MS);
+            return;
+          }
+
+          if (notReady) {
+            // Run is in a terminal state (completed/failed/unknown) but the payload
+            // still 404s — this is a real error, not "not ready yet". No further
+            // polling: nothing will make a terminal run's missing payload appear.
+            setPayloadPending(false);
+            setPayloadError("Report data is unavailable for this run.");
+            return;
+          }
+
+          setPayloadPending(false);
+          setPayloadError(e instanceof Error ? e.message : "Failed to load run report");
+        });
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+      clearTimer();
+    };
+  }, [runId, status, getToken, retryKey]);
+
+  return { payload, rawPayload, payloadPending, payloadError };
 }
 
 // ── RunDetailPage ─────────────────────────────────────────────────────────────
@@ -360,47 +372,64 @@ export function RunDetailPage() {
   const { getToken } = useAuth();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setNotFound(false);
     fetchRun(runId, getToken)
       .then((data) => {
         setRun(data);
         setError(null);
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : "Failed to load run");
+        if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
+          setNotFound(true);
+        } else {
+          setError(e instanceof Error ? e.message : "Failed to load run");
+        }
       })
       .finally(() => setLoading(false));
   }, [runId, getToken]);
 
+  const [payloadRetryKey, setPayloadRetryKey] = useState(0);
+  const { payload, rawPayload, payloadPending, payloadError } = usePayload(
+    runId,
+    run?.status ?? null,
+    getToken,
+    payloadRetryKey,
+  );
+
   return (
     <div className="mx-auto w-full max-w-[1240px] px-xl py-2xl">
       {/* Breadcrumb */}
-      <div className="mb-xl flex items-center gap-xs font-mono text-micro text-neutral-faint">
-        <Link to="/" className="transition-colors hover:text-ink-dark">
+      <div className="mb-xl flex items-center gap-xs font-mono text-micro uppercase tracking-wider text-muted-foreground">
+        <Link to="/projects" className="transition-colors hover:text-foreground">
           Projects
         </Link>
         <span>/</span>
         {run && (
           <>
-            <span className="text-ink-dark">Run</span>
+            <span className="text-foreground">Run</span>
             <span>/</span>
           </>
         )}
-        <span className="text-ink-dark">{runId.slice(0, 8)}…</span>
+        <span className="text-foreground">{runId.slice(0, 8)}…</span>
       </div>
 
       {loading && (
         <div className="space-y-md">
-          <div className="h-10 w-64 animate-pulse rounded-sm border border-hairline bg-hairline" />
-          <div className="h-64 animate-pulse rounded-md border border-hairline bg-hairline" />
+          <div className="h-10 w-64 animate-pulse border-2 border-foreground bg-muted" />
+          <div className="h-64 animate-pulse border-2 border-foreground bg-muted" />
         </div>
       )}
 
-      {error && (
-        <div className="rounded-sm border border-ember/30 bg-ember/5 px-md py-sm text-small text-ember">
+      {/* Graceful not-found: 404/403 → clear card with back-link, never blank */}
+      {!loading && notFound && <NotFoundCard runId={runId} />}
+
+      {!loading && error && (
+        <div className="border-2 border-[#ea580c] bg-background px-md py-sm font-mono text-small text-[#ea580c]">
           {error}
         </div>
       )}
@@ -408,61 +437,88 @@ export function RunDetailPage() {
       {run && (
         <>
           {/* Header */}
-          <div className="mb-2xl">
-            <div className="mb-sm flex flex-wrap items-center gap-sm">
-              <VerdictBadge verdict={run.verdict} />
-              <KindBadge kind={run.kind} />
-              <span className="font-mono text-micro text-neutral-faint">
-                {new Date(run.created_at).toLocaleString()}
-              </span>
+          <div className="mb-2xl flex flex-wrap items-start justify-between gap-md">
+            <div>
+              <div className="mb-sm flex flex-wrap items-center gap-sm">
+                <VerdictBadge verdict={run.verdict} />
+                <KindBadge kind={run.kind} />
+                <span className="font-mono text-micro tabular-nums text-muted-foreground">
+                  {new Date(run.created_at).toLocaleString()}
+                </span>
+              </div>
+              <h1 className="font-mono text-2xl font-bold uppercase tracking-tight text-foreground">Run detail</h1>
+              <div className="mt-xs font-mono text-micro text-muted-foreground">
+                <span className="text-foreground">{run.baseline_ref}</span>
+                <span className="mx-xs">→</span>
+                <span className="text-foreground">{run.candidate_ref}</span>
+                <span className="mx-sm text-muted-foreground">·</span>
+                <span className="tabular-nums">
+                  n={run.baseline_samples} vs {run.candidate_samples} samples
+                </span>
+              </div>
             </div>
-            <h1 className="font-display text-h1 font-bold text-ink-dark">
-              Run detail
-            </h1>
-            <div className="mt-xs font-mono text-micro text-neutral-faint">
-              <span className="text-ink-dark">{run.baseline_ref}</span>
-              <span className="mx-xs">→</span>
-              <span className="text-ink-dark">{run.candidate_ref}</span>
-            </div>
+            <ExportBar runId={runId} payload={rawPayload} />
           </div>
 
-          {/* Drift callout for drift runs with no cause_path */}
-          {run.kind === "drift" &&
-            run.findings.every((f) => !f.cause_path) &&
-            run.findings.length > 0 && <DriftCallout />}
-
-          {/* Agent graph hero */}
-          <AgentGraph run={run} findings={run.findings} />
-
-          {/* Findings */}
-          <div>
-            <div className="mb-xs font-mono text-micro uppercase tracking-widest text-neutral-faint">
-              Findings
+          {/* Failed run banner — show engine error prominently before the report */}
+          {run.status === "failed" && run.error && (
+            <div className="mb-2xl border-2 border-[#ea580c] bg-background p-lg">
+              <div className="mb-xs font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#ea580c]">
+                Run failed
+              </div>
+              <pre className="whitespace-pre-wrap font-mono text-micro text-[#ea580c]">
+                {run.error}
+              </pre>
             </div>
-            <h2 className="mb-lg font-display text-h2 font-bold text-ink-dark">
-              {run.findings.length} finding{run.findings.length !== 1 ? "s" : ""}
-            </h2>
+          )}
 
-            {run.findings.length === 0 ? (
-              <div className="rounded-md border border-hairline bg-white py-xl text-center text-small text-neutral-muted">
-                No findings — all behavioral metrics within thresholds.
-              </div>
-            ) : (
-              <div className="space-y-md">
-                {run.findings.map((f) => (
-                  <FindingRow key={f.test_case_id + f.title} finding={f} />
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Five-view report, once the payload is ready */}
+          {run.status !== "failed" && (
+            <>
+              {payloadPending && (
+                <div className="border-2 border-foreground bg-background p-2xl text-center">
+                  <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    Processing
+                  </div>
+                  <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">
+                    Report isn&apos;t ready yet
+                  </h2>
+                  <p className="font-mono text-small text-muted-foreground">
+                    This run is still being processed — checking again every 5 seconds.
+                  </p>
+                </div>
+              )}
 
-          {/* Error from run engine */}
-          {run.error && (
-            <div className="mt-2xl rounded-sm border border-ember/30 bg-ember/5 px-md py-sm">
-              <div className="mb-xs font-mono text-micro uppercase tracking-widest text-ember">
+              {!payloadPending && payloadError && (
+                <div className="border-2 border-[#ea580c] bg-background p-2xl text-center">
+                  <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-[#ea580c]">
+                    Error
+                  </div>
+                  <h2 className="mb-sm font-mono text-xl font-bold uppercase text-foreground">
+                    Report unavailable
+                  </h2>
+                  <p className="mb-lg font-mono text-small text-muted-foreground">{payloadError}</p>
+                  <button
+                    type="button"
+                    onClick={() => setPayloadRetryKey((k) => k + 1)}
+                    className="bg-foreground px-lg py-sm font-mono text-small font-medium uppercase tracking-wider text-background transition-opacity hover:opacity-80"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {!payloadPending && !payloadError && payload && <ReportPanel data={payload} />}
+            </>
+          )}
+
+          {/* Engine error on non-failed runs (e.g. partial error) */}
+          {run.status !== "failed" && run.error && (
+            <div className="mt-2xl border-2 border-[#ea580c] bg-background px-md py-sm">
+              <div className="mb-xs font-mono text-xs uppercase tracking-[0.2em] text-[#ea580c]">
                 Run error
               </div>
-              <pre className="whitespace-pre-wrap font-mono text-micro text-ember">
+              <pre className="whitespace-pre-wrap font-mono text-micro text-[#ea580c]">
                 {run.error}
               </pre>
             </div>

@@ -1,6 +1,8 @@
+import importlib
 import json
 import os
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -11,7 +13,8 @@ from rich.console import Console
 
 from agentdiff import compare as compare_engine
 from agentdiff import output_eval, report, sampling, storage
-from agentdiff.config import load_config, load_raw_config, thresholds_for_compare
+from agentdiff.capture.cassette import CassetteMissError
+from agentdiff.config import AgentDiffConfig, load_config, load_raw_config, thresholds_for_compare
 from agentdiff.dashboard import write_dashboard
 from agentdiff.structure import structure_yaml
 
@@ -92,6 +95,14 @@ def compare_cmd(
         console.print("[red]No test cases found in test_cases.yaml.[/red]")
         raise SystemExit(1)
 
+    runner_error = validate_runner_importable(root, runner_module, runner_callable)
+    if runner_error:
+        console.print(f"[red]{runner_error}[/red]")
+        raise SystemExit(1)
+
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    set_active_redaction_config(config.capture.redaction)
+
     baseline_ref, baseline_label, smoke_mode = resolve_baseline(root, baseline)
     git_error = git_validation_error(root, baseline_ref, candidate)
     if git_error:
@@ -129,6 +140,10 @@ def compare_cmd(
                 install_deps=should_install_deps,
                 capture=config.capture.model_dump(),
                 workers=worker_count,
+                timeout_seconds=config.sampling.timeout_seconds,
+                retries=config.sampling.retries,
+                retry_backoff_seconds=config.sampling.retry_backoff_seconds,
+                redaction_config=config.capture.redaction,
             )
         except Exception as e:  # import failure, git failure, runner setup crash
             console.print(f"[red]{tag.capitalize()} sampling failed: {type(e).__name__}: {e}[/red]")
@@ -151,6 +166,7 @@ def compare_cmd(
         structure,
         test_case_ids,
         thresholds=thresholds_for_compare(config),
+        stats_config=config.stats,
     )
 
     # --- Output eval (judge optional) -------------------------------------
@@ -161,7 +177,9 @@ def compare_cmd(
         b_out = [t.final_output or "" for t in baseline_set.for_test_case(tc_id)]
         c_out = [t.final_output or "" for t in candidate_set.for_test_case(tc_id)]
         output_evals.append(
-            output_eval.evaluate_output(tc_id, b_out, c_out, llm_client=llm_client)
+            output_eval.evaluate_output(
+                tc_id, b_out, c_out, llm_client=llm_client, thresholds=config.output_eval
+            )
         )
 
     # --- Causal attribution ----------------------------------------------
@@ -177,7 +195,7 @@ def compare_cmd(
             repo_root=root,
             baseline_ref=baseline_ref,
             candidate_ref=candidate_ref,
-            llm_client=llm_client,
+            llm_client=llm_client or attribution_engine.AUTO_LLM_EXPLAINER,
         )
     else:
         console.print("[dim]Skipping attribution for working-tree smoke comparison.[/dim]")
@@ -266,6 +284,128 @@ def git_validation_error(root: Path, baseline: str | None, candidate: str) -> st
             "Pass an existing ref or 'working' via --candidate."
         )
     return None
+
+
+def validate_runner_importable(root: Path, module: str, callable_name: str) -> str | None:
+    """Return an error string if the runner can't be imported, else None.
+
+    Fails fast before sampling: a bad runner module/callable would otherwise
+    only surface deep inside the sampling loop (or, worse, inside a git
+    checkout subprocess), producing a confusing empty-trajectories error.
+    """
+    root_str = str(root)
+    old_path = list(sys.path)
+    try:
+        if root_str not in sys.path:
+            sys.path.insert(0, root_str)
+        try:
+            mod = importlib.import_module(module)
+        except Exception as e:  # noqa: BLE001 — surfaced to the user as a fast-fail message
+            return f"Run 'agentdiff doctor' — could not import {module}: {type(e).__name__}: {e}"
+        runner = getattr(mod, callable_name, None)
+        if not callable(runner):
+            return (
+                f"Run 'agentdiff doctor' — could not import {module}: "
+                f"{module}.{callable_name} is not callable"
+            )
+        return None
+    finally:
+        sys.path[:] = old_path
+
+
+class HermeticSampleError(RuntimeError):
+    """A clean, user-facing error raised by ``run_hermetic_sample``."""
+
+
+def run_hermetic_sample(
+    *,
+    root: Path,
+    config: "AgentDiffConfig",
+    test_cases: list[dict],
+    output_path: Path,
+    version_tag: str = "candidate",
+    samples_per_case: int | None = None,
+    cassette_path: str | Path,
+    cassette_mode: str = "replay",
+    git_ref: str | None = None,
+    install_deps: bool | None = None,
+    workers: int | None = None,
+) -> None:
+    """Sample a runner against an HTTP cassette, deterministically.
+
+    Shared by ``agentdiff ci run --tier hermetic`` and ``agentdiff replay``:
+    both need "run this runner against a recorded cassette, with no live
+    network calls" plumbing (validate the runner imports, apply redaction
+    config, drive ``sampling.sample_for_side`` with the cassette wired
+    through). ``git_ref=None`` (the default, and all ``replay`` ever passes)
+    samples the working tree directly; ``ci run --tier hermetic`` passes its
+    baseline/candidate refs so each side still gets its own git checkout.
+
+    Raises ``HermeticSampleError`` with a clear, actionable message (instead
+    of a raw traceback or an opaque failure-rate message) when the cassette
+    file is missing or replay hits a request that was never recorded.
+    """
+    cassette_path = Path(cassette_path)
+    if cassette_mode == "replay" and not cassette_path.exists():
+        raise HermeticSampleError(f"cassette file not found: {cassette_path}")
+
+    if git_ref is None:
+        runner_error = validate_runner_importable(root, config.runner.module or "", config.runner.callable)
+        if runner_error:
+            raise HermeticSampleError(runner_error)
+
+    from agentdiff.capture.http.redact import set_active_redaction_config
+    set_active_redaction_config(config.capture.redaction)
+
+    try:
+        sampling.sample_for_side(
+            git_ref=git_ref,
+            runner_module=config.runner.module or "",
+            runner_callable=config.runner.callable,
+            test_cases=test_cases,
+            samples_per_case=samples_per_case or config.samples_per_case,
+            version_tag=version_tag,  # type: ignore[arg-type]
+            output_path=output_path,
+            repo_root=root,
+            install_deps=config.sampling.install_deps if install_deps is None else install_deps,
+            capture=config.capture.model_dump(),
+            workers=config.sampling.workers if workers is None else workers,
+            cassette_path=cassette_path,
+            cassette_mode=cassette_mode,
+            timeout_seconds=config.sampling.timeout_seconds,
+            retries=config.sampling.retries,
+            retry_backoff_seconds=config.sampling.retry_backoff_seconds,
+            redaction_config=config.capture.redaction,
+        )
+    except CassetteMissError as exc:
+        raise HermeticSampleError(_cassette_miss_message(exc)) from exc
+
+    # A cassette miss doesn't propagate as an exception out of sample_for_side:
+    # the sampling loop catches it (see sampling._run_one_sample_with_retry),
+    # retries, then — on final failure — writes a "failed" trajectory carrying
+    # the error message instead of raising, the same way any other runner
+    # exception would be budgeted. Inspect what was written so a miss still
+    # fails loud and names the request, rather than silently surfacing later
+    # as an opaque "sample failure rate exceeded" message.
+    written = storage.load_trajectory_set(output_path, version_tag)  # type: ignore[arg-type]
+    for trajectory in written.trajectories:
+        # sampling._run_one_sample_with_retry wraps the final exception as
+        # f"{type(exc).__name__}: {exc}" (see sampling.py) before writing it
+        # to the trajectory's error field. Anchor on that exact, deterministic
+        # prefix rather than a bare substring match on "no cassette recording"
+        # — a runner's own error could legitimately contain that phrase
+        # without being a real cassette miss, and a bare substring match would
+        # misreport it with the misleading re-record suggestion.
+        if trajectory.error and trajectory.error.startswith("CassetteMissError:"):
+            detail = trajectory.error[len("CassetteMissError:") :].strip()
+            raise HermeticSampleError(_cassette_miss_message(detail))
+
+
+def _cassette_miss_message(detail: object) -> str:
+    return (
+        f"{detail} — re-record the cassette with "
+        "`agentdiff ci run --cassette-mode record`."
+    )
 
 
 def _git_ok(root: Path, args: list[str]) -> bool:

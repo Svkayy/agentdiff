@@ -3,7 +3,8 @@ from agentdiff.capture.framework.base import PatchRegistry, object_name, span_wr
 _PATCHES = PatchRegistry("llamaindex")
 
 
-def install() -> None:
+def install() -> bool:
+    """Patch llama_index if installed. Returns False if it isn't importable."""
     BaseQueryEngine = _import_attr(
         ("llama_index.core.base.base_query_engine", "BaseQueryEngine"),
         ("llama_index.core.query_engine", "BaseQueryEngine"),
@@ -16,6 +17,9 @@ def install() -> None:
         ("llama_index.core.retrievers.router_retriever", "RouterRetriever"),
     )
 
+    if BaseQueryEngine is None and BaseRetriever is None and BaseRouterRetriever is None:
+        return False
+
     if BaseQueryEngine is not None:
         for method_name in ("query", "aquery"):
             _PATCHES.patch_method(BaseQueryEngine, method_name, _span("query_engine"))
@@ -25,6 +29,7 @@ def install() -> None:
     if BaseRouterRetriever is not None:
         for method_name in ("retrieve", "aretrieve"):
             _PATCHES.patch_method(BaseRouterRetriever, method_name, _span("router_retriever"))
+    return True
 
 
 def uninstall() -> None:

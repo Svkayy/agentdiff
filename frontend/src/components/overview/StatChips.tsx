@@ -10,18 +10,18 @@ function Chip({
   value: string | number;
   accent?: "ember" | "pass" | "warn";
 }) {
+  // Verdict mapping (DESIGN.md, locked): fail/warn = orange signal; pass and
+  // neutral stats = cream (no color signal) so the orange stays meaningful.
   const accentClass =
     accent === "ember"
-      ? "text-ember"
-      : accent === "pass"
-        ? "text-verdict-pass"
-        : accent === "warn"
-          ? "text-verdict-warn"
-          : "text-ink-light";
+      ? "text-[#ea580c]"
+      : accent === "warn"
+        ? "text-[#ea580c]"
+        : "text-ink-light";
 
   return (
-    <div className="flex flex-col gap-2xs rounded-md border border-node-border bg-node-fill px-lg py-md">
-      <span className="font-mono text-micro uppercase tracking-widest text-neutral-faint">
+    <div className="flex flex-col gap-2xs border-2 border-node-border bg-node-fill px-lg py-md">
+      <span className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-faint">
         {label}
       </span>
       <span className={`tnum font-mono text-h2 font-bold ${accentClass}`}>{value}</span>
@@ -49,6 +49,11 @@ export function StatChips({ data }: { data: ReportData }) {
       ? Math.round((overlaps.reduce((a, b) => a + b, 0) / overlaps.length) * 100)
       : null;
 
+  // Runtime metric deltas (latency/tokens/error-rate — Task 7/8) flagged non-pass.
+  const runMetrics = tcs.flatMap((tc) => tc.run_metrics ?? []);
+  const flaggedRunMetrics = runMetrics.filter((m) => m.verdict !== "pass").length;
+  const lowPowerCount = data.warnings.length;
+
   return (
     <div className="grid grid-cols-2 gap-md sm:grid-cols-4">
       <Chip
@@ -68,6 +73,16 @@ export function StatChips({ data }: { data: ReportData }) {
         label="Behavioral Overlap"
         value={avgOverlap !== null ? `${avgOverlap}%` : "—"}
       />
+      {runMetrics.length > 0 && (
+        <Chip
+          label="Runtime Metric Flags"
+          value={flaggedRunMetrics}
+          accent={flaggedRunMetrics > 0 ? "ember" : "pass"}
+        />
+      )}
+      {lowPowerCount > 0 && (
+        <Chip label="Low-Power Warnings" value={lowPowerCount} accent="warn" />
+      )}
     </div>
   );
 }
